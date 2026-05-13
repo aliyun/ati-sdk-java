@@ -1,0 +1,24 @@
+# Build outputs
+build/
+*/build/
+
+# Gradle
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reference projects (not part of this SDK)
+ans-sdk-java/
+ans-registry/
+
+# Claude Code
+.claude/
