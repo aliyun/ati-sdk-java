@@ -32,7 +32,7 @@ ati-sdk-core          （已完成）
   └── + CertUtils（SHA-256 指纹计算，新增）
 
 ati-sdk-discovery     依赖 core
-  └── DNS 解析 _ati TXT 记录，返回 AtiAgentDescriptor
+  └── DNS 解析 _ati / _ati-badge TXT 记录，返回 AtiAgentDescriptor
 
 ati-sdk-transparency  依赖 core
   ├── BadgeVerificationService（透明日志查询 + 证书指纹比对）
@@ -58,10 +58,32 @@ ati://v{version}.{agentHost}
 
 ### 4.2 DNS 记录
 
+ATI 使用两个独立的 TXT 记录，职责分离：
+
+**发现记录**（指向 Agent 元数据端点）：
 ```
 _ati.{agentHost}  TXT
-内容示例：v=ati1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/{uuid}
+内容示例：v=ati1; version=v1.0.0; url=https://my-agent.example.com/.well-known/ati/trust-card.json
 ```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `v` | 是 | 固定 `ati1` |
+| `version` | 是 | Agent 版本（semver，带 `v` 前缀） |
+| `url` | 否 | Trust Card 地址，默认 `/.well-known/ati/trust-card.json` |
+| `mode` | 否 | `card`（默认）或 `direct`（直连，省略 url） |
+
+**Badge 验证记录**（指向透明日志）：
+```
+_ati-badge.{agentHost}  TXT
+内容示例：v=ati-badge1; version=v1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/{uuid}
+```
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `v` | 是 | 固定 `ati-badge1` |
+| `version` | 是 | 对应哪个 ACTIVE 版本 |
+| `url` | 是 | 透明日志中该 Agent 的完整 URL（从中提取 agentId） |
 
 ### 4.3 核心类
 
@@ -106,13 +128,14 @@ _ati.{agentHost}  TXT
 ```
 VerificationMode：DISABLED / ADVISORY / REQUIRED / FALLBACK_ALLOWED
 
-VerificationPolicy 预定义组合：
-  PKI_ONLY        全部 DISABLED（最低安全）
-  BADGE_REQUIRED  Badge=REQUIRED，其余 DISABLED
-  DANE_REQUIRED   DANE=REQUIRED，其余 DISABLED
-  DANE_AND_BADGE  DANE+Badge=REQUIRED
-  SCITT_ENHANCED  SCITT=FALLBACK_ALLOWED + Badge=REQUIRED（迁移过渡）
-  SCITT_REQUIRED  SCITT=REQUIRED（默认，推荐生产）
+VerificationPolicy 预定义组合（对应 Bronze/Silver/Gold 验证层级）：
+  PKI_ONLY        全部 DISABLED（Bronze：仅 PKI CA 证书链）
+  BADGE_REQUIRED  Badge=REQUIRED，其余 DISABLED（Bronze+：有 TL 证明但无 DANE）
+  DANE_REQUIRED   DANE=REQUIRED，其余 DISABLED（Silver：DANE + DNSSEC）
+  DANE_AND_BADGE  DANE+Badge=REQUIRED（Gold：DANE + 透明日志实时验证）
+  DANE_AND_SCITT  DANE+SCITT=REQUIRED（Gold 离线版：DANE + SCITT 离线回执）
+  SCITT_ENHANCED  SCITT=FALLBACK_ALLOWED + Badge=REQUIRED（迁移过渡，未达 Gold）
+  SCITT_REQUIRED  SCITT=REQUIRED（默认，推荐生产，未达 Gold 需配合 DANE）
 ```
 
 ### 6.2 ATI Client 侧连接流程
@@ -122,7 +145,7 @@ AtiVerifiedClient.connect(AtiName, ConnectOptions)
 
 Pre-verify（TLS 握手前，并行执行）：
   ├── DANE：DNS 查 _tlsa.{port}.{host} 获取 TLSA 记录
-  ├── Badge：_ati.{host} TXT → 透明日志 GET /v1/agents/{id}
+  ├── Badge：_ati-badge.{host} TXT → 透明日志 GET /v1/agents/{id}
   └── SCITT：preflight HEAD 请求 Agent，捕获 ATI-Receipt + ATI-Status-Token 响应头
 
 Post-verify（TLS 握手后，本地完成）：
