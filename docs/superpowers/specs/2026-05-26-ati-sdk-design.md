@@ -76,7 +76,7 @@ _ati.{agentHost}  TXT
 **Badge 验证记录**（指向透明日志）：
 ```
 _ati-badge.{agentHost}  TXT
-内容示例：v=ati-badge1; version=v1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/{uuid}
+内容示例：v=ati-badge1; version=v1.0.0; url=https://tl.ansagent.cn:8180/tl/agents/{uuid}
 ```
 
 | 字段 | 必填 | 说明 |
@@ -109,7 +109,8 @@ _ati-badge.{agentHost}  TXT
 
 **Badge 验证响应关键字段：**
 - `status` — Agent 当前状态（ACTIVE / REVOKED 等）
-- `payload.certificates.serverCertFingerprint` — 预期服务端证书指纹
+- `payload.certificates.serverCertFingerprint` — 预期服务端证书指纹（ATI Client 验证服务端用）
+- `payload.certificates.identityCertFingerprint` — 预期 identity 证书指纹（ATI Server 验证入站客户端用）
 - `merkleProof` — Merkle 包含证明（leafHash / leafIndex / treeSize / path / rootHash）
 - `seal` — TL 封存签名（SHA-256withECDSA over JCS 规范化内容）
 
@@ -186,7 +187,7 @@ ati.sdk.server.mtls.keystore-password=***
 | 类 | 激活条件 | 注册的 Bean |
 |---|---|---|
 | `AtiClientAutoConfiguration` | `mode=client` 或 `both` | `AtiTransparencyClient`、`RootKeyManager`、`BadgeVerificationService`、`AtiVerifiedClient` |
-| `AtiServerAutoConfiguration` | `mode=server` 或 `both` | `ClientRequestVerifier` |
+| `AtiServerAutoConfiguration` | `mode=server` 或 `both` | `AtiTransparencyClient`、`RootKeyManager`、`BadgeVerificationService`、`ClientRequestVerifier` |
 
 不强依赖 `spring-web`，通过可选依赖适配 Servlet / WebFlux。
 
