@@ -8,12 +8,13 @@ ATI（Agent Trust Infrastructure）Java SDK 为 Agent 间的安全通信提供�
 
 **在范围内：**
 - Agent 发现（Discovery）：ATI Client 通过 DNS 找到目标 Agent
-- 安全连接（Secure Connection）：mTLS + 三层验证（DANE / Badge / SCITT）
+- 安全连接（Secure Connection）：mTLS + 两层验证（DANE / Badge）
 - Spring Boot 自动配置
 
 **不在范围内：**
 - Agent 注册——由外部 ATI Registry 负责
 - 证书签发——注册后由 ATI Registry 颁发，业务方自行装入 keystore
+- SCITT 离线验证——ATI TL 暂不支持，后续版本扩展
 
 ## 2. 角色定义
 
@@ -35,11 +36,10 @@ ati-sdk-discovery     依赖 core
   └── DNS 解析 _ati / _ati-badge TXT 记录，返回 AtiAgentDescriptor
 
 ati-sdk-transparency  依赖 core
-  ├── BadgeVerificationService（透明日志查询 + 证书指纹比对）
-  └── ScittVerifier（Merkle 回执验证 + Status Token 解析）
+  └── BadgeVerificationService（透明日志查询 + 证书指纹比对）
 
 ati-sdk-agent-client  依赖 core + discovery + transparency
-  ├── VerificationPolicy（DANE/Badge/SCITT 三层策略组合）
+  ├── VerificationPolicy（DANE/Badge 两层策略组合）
   ├── AtiVerifiedClient（ATI Client 主入口）
   └── ClientRequestVerifier（ATI Server 验证入站客户端）
 
@@ -104,14 +104,14 @@ _ati-badge.{agentHost}  TXT
 
 | 接口 | 调用方 | 调用时机 | 用途 |
 |---|---|---|---|
-| `GET /v1/agents/{agentId}` | ATI Client | 每次连接时实时调用 | Badge 验证：状态 + 证书指纹 + Merkle 证明 |
-| `GET /v1/agents/{agentId}/receipt` | ATI Server | 启动时预先拉取，缓存内存 | 为 SCITT 离线验证准备回执，注入响应头 |
-| `GET /v1/agents/{agentId}/status-token` | ATI Server | 启动时预先拉取，按有效期 80% 刷新 | 为 SCITT 离线验证准备状态令牌，注入响应头 |
-| `GET /root-keys` | ATI Client + ATI Server | 首次使用时拉取，缓存 24h | ATI Client 验证服务端 SCITT 头；ATI Server 验证入站客户端 SCITT 头 |
+| `GET /tl/agents/{agentId}/logs/latest` | ATI Client | 每次连接时实时调用 | Badge 验证：状态 + 证书指纹 + Merkle 证明 + TL 封存签名 |
+| `GET /tl/root-keys` | ATI Client | 首次使用时拉取，缓存 24h | 获取 TL 签名公钥，用于验证 seal 签名和 Merkle 证明 |
 
-**Badge vs SCITT 验证的在线/离线区别：**
-- **Badge**：ATI Client 每次连接时实时调透明日志，属于在线验证
-- **SCITT**：ATI Server 提前拉取 receipt + status-token 缓存在内存，连接时 ATI Client 只做本地运算，无需额外网络请求，属于离线验证
+**Badge 验证响应关键字段：**
+- `status` — Agent 当前状态（ACTIVE / REVOKED 等）
+- `payload.certificates.serverCertFingerprint` — 预期服务端证书指纹
+- `merkleProof` — Merkle 包含证明（leafHash / leafIndex / treeSize / path / rootHash）
+- `seal` — TL 封存签名（SHA-256withECDSA over JCS 规范化内容）
 
 **URL 安全校验**：白名单限定 `transparency.ati.aliyun.com`，拒绝非 HTTPS、非标准端口、路径不合法的 URL。
 
@@ -119,27 +119,24 @@ _ati-badge.{agentHost}  TXT
 
 | 类 | 职责 |
 |---|---|
-| `AtiTransparencyClient` | HTTP 客户端，封装上述四个接口 |
+| `AtiTransparencyClient` | HTTP 客户端，封装上述两个接口 |
 | `BadgeVerificationService` | `verifyServer(hostname)` / `verifyClient(X509Certificate)` |
 | `CachingBadgeVerificationService` | Caffeine 缓存包装（正向 15min，负向 5min，上限 10,000 条） |
-| `ScittVerifier` | 本地验签：Merkle 证明 → Token 签名 → 未过期 → 指纹匹配 |
-| `AtiScittTokenManager` | 仅 ATI Server 使用：启动拉取 + 按 token 有效期 80% 定时刷新 |
+| `TlSealVerifier` | 验证 TL 封存签名（SHA-256withECDSA over JCS）+ Merkle 包含证明 |
+| `RootKeyManager` | 拉取并缓存 TL 签名公钥（缓存 24h） |
 
 ## 6. Agent Client 模块（ati-sdk-agent-client）
 
 ### 6.1 验证策略
 
 ```
-VerificationMode：DISABLED / ADVISORY / REQUIRED / FALLBACK_ALLOWED
+VerificationMode：DISABLED / ADVISORY / REQUIRED
 
 VerificationPolicy 预定义组合（对应 Bronze/Silver/Gold 验证层级）：
   PKI_ONLY        全部 DISABLED（Bronze：仅 PKI CA 证书链）
-  BADGE_REQUIRED  Badge=REQUIRED，其余 DISABLED（Bronze+：有 TL 证明但无 DANE）
-  DANE_REQUIRED   DANE=REQUIRED，其余 DISABLED（Silver：DANE + DNSSEC）
-  DANE_AND_BADGE  DANE+Badge=REQUIRED（Gold：DANE + 透明日志实时验证）
-  DANE_AND_SCITT  DANE+SCITT=REQUIRED（Gold 离线版：DANE + SCITT 离线回执）
-  SCITT_ENHANCED  SCITT=FALLBACK_ALLOWED + Badge=REQUIRED（迁移过渡，未达 Gold）
-  SCITT_REQUIRED  SCITT=REQUIRED（默认，推荐生产，未达 Gold 需配合 DANE）
+  BADGE_REQUIRED  Badge=REQUIRED，DANE=DISABLED（Bronze+：有 TL 证明但无 DANE）
+  DANE_REQUIRED   DANE=REQUIRED，Badge=DISABLED（Silver：DANE + DNSSEC）
+  DANE_AND_BADGE  DANE+Badge=REQUIRED（Gold：DANE + 透明日志实时验证，推荐生产）
 ```
 
 ### 6.2 ATI Client 侧连接流程
@@ -149,11 +146,11 @@ AtiVerifiedClient.connect(AtiName, ConnectOptions)
 
 Pre-verify（TLS 握手前，并行执行）：
   ├── DANE：DNS 查 _tlsa.{port}.{host} 获取 TLSA 记录
-  ├── Badge：_ati-badge.{host} TXT → 透明日志 GET /v1/agents/{id}
-  └── SCITT：preflight HEAD 请求 Agent，捕获 ATI-Receipt + ATI-Status-Token 响应头
+  └── Badge：_ati-badge.{host} TXT → 透明日志 GET /tl/agents/{id}/logs/latest
 
 Post-verify（TLS 握手后，本地完成）：
-  └── 比对实际证书指纹 vs DANE/Badge/SCITT 预期值
+  └── 比对实际证书指纹 vs DANE/Badge 预期值
+      Badge 还需验证 seal 签名 + Merkle 包含证明
 ```
 
 `CertificateCapturingTrustManager` 在 TLS 握手时拦截并保存服务端证书链。
@@ -162,8 +159,7 @@ Post-verify（TLS 握手后，本地完成）：
 
 | 类 | 职责 |
 |---|---|
-| `ClientRequestVerifier` | 验证入站客户端：提取请求头 SCITT 数据 → 本地验签 → 比对 mTLS 客户端证书指纹 |
-| `AtiScittResponseFilter` | 自动把 receipt/token 注入每个 HTTP 响应头（`ATI-Receipt`、`ATI-Status-Token`） |
+| `ClientRequestVerifier` | 验证入站客户端：比对 mTLS 客户端证书指纹是否在 TL 注册记录中 |
 
 ## 7. Spring Boot Starter（ati-sdk-spring-boot-starter）
 
@@ -172,7 +168,7 @@ Post-verify（TLS 握手后，本地完成）：
 ```properties
 ati.sdk.mode=client                    # client / server / both
 ati.sdk.transparency.base-url=https://transparency.ati.aliyun.com
-ati.sdk.verification.policy=SCITT_REQUIRED
+ati.sdk.verification.policy=DANE_AND_BADGE
 
 # ATI Client 侧
 ati.sdk.client.dns-timeout=5s
@@ -183,15 +179,14 @@ ati.sdk.client.mtls.keystore-password=***
 # ATI Server 侧
 ati.sdk.server.mtls.keystore=classpath:server-keystore.p12
 ati.sdk.server.mtls.keystore-password=***
-ati.sdk.server.scitt.refresh-ahead=0.8
 ```
 
 ### 7.2 自动配置类
 
 | 类 | 激活条件 | 注册的 Bean |
 |---|---|---|
-| `AtiClientAutoConfiguration` | `mode=client` 或 `both` | `AtiTransparencyClient`、`BadgeVerificationService`、`AtiVerifiedClient` |
-| `AtiServerAutoConfiguration` | `mode=server` 或 `both` | `AtiScittTokenManager`、`ClientRequestVerifier`、`AtiScittResponseFilter` |
+| `AtiClientAutoConfiguration` | `mode=client` 或 `both` | `AtiTransparencyClient`、`RootKeyManager`、`BadgeVerificationService`、`AtiVerifiedClient` |
+| `AtiServerAutoConfiguration` | `mode=server` 或 `both` | `ClientRequestVerifier` |
 
 不强依赖 `spring-web`，通过可选依赖适配 Servlet / WebFlux。
 
@@ -200,7 +195,7 @@ ati.sdk.server.scitt.refresh-ahead=0.8
 | 依赖 | 用途 |
 |---|---|
 | `dnsjava` | DNS TXT / TLSA 查询，DNSSEC 验证 |
-| `Bouncy Castle` | 证书指纹计算、COSE/CBOR 解析（SCITT） |
+| `Bouncy Castle` | 证书指纹计算、ECDSA 签名验证（TL seal）、Merkle 证明计算 |
 | `Caffeine` | Badge 验证结果缓存、root-key 缓存 |
 | `Jackson` | 透明日志 API 响应解析 |
 | `spring-boot-autoconfigure` | Starter 自动配置 |
