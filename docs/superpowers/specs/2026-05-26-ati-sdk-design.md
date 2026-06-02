@@ -102,12 +102,16 @@ _ati-badge.{agentHost}  TXT
 
 所有请求打向配置的 base URL（`https://transparency.ati.aliyun.com`）：
 
-| 接口 | 调用方 | 用途 |
-|---|---|---|
-| `GET /v1/agents/{agentId}` | ATI Client | Badge 验证：状态 + 证书指纹 + Merkle 证明 |
-| `GET /v1/agents/{agentId}/receipt` | ATI Server | 启动时拉取 SCITT 回执 |
-| `GET /v1/agents/{agentId}/status-token` | ATI Server | 启动时拉取状态令牌 |
-| `GET /root-keys` | ATI Client | 获取 SCITT 根公钥，缓存 24h |
+| 接口 | 调用方 | 调用时机 | 用途 |
+|---|---|---|---|
+| `GET /v1/agents/{agentId}` | ATI Client | 每次连接时实时调用 | Badge 验证：状态 + 证书指纹 + Merkle 证明 |
+| `GET /v1/agents/{agentId}/receipt` | ATI Server | 启动时预先拉取，缓存内存 | 为 SCITT 离线验证准备回执，注入响应头 |
+| `GET /v1/agents/{agentId}/status-token` | ATI Server | 启动时预先拉取，按有效期 80% 刷新 | 为 SCITT 离线验证准备状态令牌，注入响应头 |
+| `GET /root-keys` | ATI Client + ATI Server | 首次使用时拉取，缓存 24h | ATI Client 验证服务端 SCITT 头；ATI Server 验证入站客户端 SCITT 头 |
+
+**Badge vs SCITT 验证的在线/离线区别：**
+- **Badge**：ATI Client 每次连接时实时调透明日志，属于在线验证
+- **SCITT**：ATI Server 提前拉取 receipt + status-token 缓存在内存，连接时 ATI Client 只做本地运算，无需额外网络请求，属于离线验证
 
 **URL 安全校验**：白名单限定 `transparency.ati.aliyun.com`，拒绝非 HTTPS、非标准端口、路径不合法的 URL。
 
