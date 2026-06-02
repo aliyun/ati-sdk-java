@@ -100,7 +100,7 @@ _ati-badge.{agentHost}  TXT
 
 ### 5.1 透明日志 API
 
-所有请求打向配置的 base URL（`https://transparency.ati.aliyun.com`）：
+所有请求打向配置的 base URL（当前为 `http://tl.ansagent.cn:8180`，后续可能变更，通过配置项指定）：
 
 | 接口 | 调用方 | 调用时机 | 用途 |
 |---|---|---|---|
@@ -113,7 +113,7 @@ _ati-badge.{agentHost}  TXT
 - `merkleProof` — Merkle 包含证明（leafHash / leafIndex / treeSize / path / rootHash）
 - `seal` — TL 封存签名（SHA-256withECDSA over JCS 规范化内容）
 
-**URL 安全校验**：白名单限定 `transparency.ati.aliyun.com`，拒绝非 HTTPS、非标准端口、路径不合法的 URL。
+**URL 安全校验**：白名单通过配置项指定（当前默认 `tl.ansagent.cn`），拒绝路径不合法的 URL。
 
 ### 5.2 核心类
 
@@ -167,7 +167,7 @@ Post-verify（TLS 握手后，本地完成）：
 
 ```properties
 ati.sdk.mode=client                    # client / server / both
-ati.sdk.transparency.base-url=https://transparency.ati.aliyun.com
+ati.sdk.transparency.base-url=http://tl.ansagent.cn:8180
 ati.sdk.verification.policy=DANE_AND_BADGE
 
 # ATI Client 侧
