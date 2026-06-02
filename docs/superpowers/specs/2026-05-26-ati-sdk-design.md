@@ -100,12 +100,12 @@ _ati-badge.{agentHost}  TXT
 
 ### 5.1 透明日志 API
 
-所有请求打向配置的 base URL（当前为 `http://tl.ansagent.cn:8180`，后续可能变更，通过配置项指定）：
+所有请求打向配置的 base URL（当前为 `https://tl.ansagent.cn:8180`，后续可能变更，通过配置项指定）。查询接口公开，无需认证：
 
 | 接口 | 调用方 | 调用时机 | 用途 |
 |---|---|---|---|
 | `GET /tl/agents/{agentId}/logs/latest` | ATI Client | 每次连接时实时调用 | Badge 验证：状态 + 证书指纹 + Merkle 证明 + TL 封存签名 |
-| `GET /tl/root-keys` | ATI Client | 首次使用时拉取，缓存 24h | 获取 TL 签名公钥，用于验证 seal 签名和 Merkle 证明 |
+| `GET /tl/root-keys` | ATI Client | 首次使用时拉取，缓存 24h | 获取 TL 封存公钥，用于验证 seal 签名和 Merkle 证明（走 HTTPS，传输层保障安全） |
 
 **Badge 验证响应关键字段：**
 - `status` — Agent 当前状态（ACTIVE / REVOKED 等）
@@ -113,7 +113,7 @@ _ati-badge.{agentHost}  TXT
 - `merkleProof` — Merkle 包含证明（leafHash / leafIndex / treeSize / path / rootHash）
 - `seal` — TL 封存签名（SHA-256withECDSA over JCS 规范化内容）
 
-**URL 安全校验**：白名单通过配置项指定（当前默认 `tl.ansagent.cn`），拒绝路径不合法的 URL。
+**URL 安全校验**：白名单域名通过配置项指定（当前默认 `tl.ansagent.cn`），允许非标准端口（当前 8180）。
 
 ### 5.2 核心类
 
@@ -167,7 +167,7 @@ Post-verify（TLS 握手后，本地完成）：
 
 ```properties
 ati.sdk.mode=client                    # client / server / both
-ati.sdk.transparency.base-url=http://tl.ansagent.cn:8180
+ati.sdk.transparency.base-url=https://tl.ansagent.cn:8180
 ati.sdk.verification.policy=DANE_AND_BADGE
 
 # ATI Client 侧
