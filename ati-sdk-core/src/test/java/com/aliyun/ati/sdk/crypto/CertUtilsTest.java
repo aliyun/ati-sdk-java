@@ -56,4 +56,17 @@ class CertUtilsTest {
         assertThatThrownBy(() -> CertUtils.sha256Fingerprint(null))
             .isInstanceOf(NullPointerException.class);
     }
+
+    @Test
+    void shouldRejectNullDataForSha256Hex() {
+        assertThatThrownBy(() -> CertUtils.sha256Hex(null))
+            .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    void shouldReturnFalseWhenComparingNullFingerprints() {
+        assertThat(CertUtils.fingerprintMatches(null, "SHA-256:abc")).isFalse();
+        assertThat(CertUtils.fingerprintMatches("SHA-256:abc", null)).isFalse();
+        assertThat(CertUtils.fingerprintMatches(null, null)).isFalse();
+    }
 }

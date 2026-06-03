@@ -1,5 +1,6 @@
 package com.aliyun.ati.sdk.crypto;
 
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateEncodingException;
@@ -36,7 +37,9 @@ public final class CertUtils {
         if (a == null || b == null) {
             return false;
         }
-        return MessageDigest.isEqual(a.getBytes(), b.getBytes());
+        return MessageDigest.isEqual(
+                a.getBytes(StandardCharsets.UTF_8),
+                b.getBytes(StandardCharsets.UTF_8));
     }
 
     private static String bytesToHex(byte[] bytes) {
