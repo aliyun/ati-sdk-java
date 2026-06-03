@@ -7,6 +7,7 @@ public final class VerificationResult {
     public enum Type {
         DANE,
         BADGE,
+        IDCA,
         PKI_ONLY
     }
 
