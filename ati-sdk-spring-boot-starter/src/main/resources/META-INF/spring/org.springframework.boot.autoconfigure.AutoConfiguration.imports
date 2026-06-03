@@ -1,0 +1,2 @@
+com.aliyun.ati.sdk.spring.AtiClientAutoConfiguration
+com.aliyun.ati.sdk.spring.AtiServerAutoConfiguration
