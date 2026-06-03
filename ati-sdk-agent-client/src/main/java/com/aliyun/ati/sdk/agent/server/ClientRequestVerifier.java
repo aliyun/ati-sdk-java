@@ -3,6 +3,8 @@ package com.aliyun.ati.sdk.agent.server;
 import java.security.cert.X509Certificate;
 import java.util.Objects;
 
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
+import com.aliyun.ati.sdk.agent.verification.VerificationResult;
 import com.aliyun.ati.sdk.crypto.CertUtils;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.ClientVerificationResult;
@@ -25,9 +27,27 @@ public final class ClientRequestVerifier {
     private static final Logger LOG = LoggerFactory.getLogger(ClientRequestVerifier.class);
 
     private final CachingBadgeVerificationService badgeService;
+    private final IdcaChainVerifier idcaVerifier;
 
-    public ClientRequestVerifier(CachingBadgeVerificationService badgeService) {
+    /**
+     * Creates a verifier with both badge and IDCA verification.
+     *
+     * @param badgeService the badge verification service (required)
+     * @param idcaVerifier the IDCA chain verifier (nullable)
+     */
+    public ClientRequestVerifier(CachingBadgeVerificationService badgeService,
+                                  IdcaChainVerifier idcaVerifier) {
         this.badgeService = Objects.requireNonNull(badgeService, "badgeService must not be null");
+        this.idcaVerifier = idcaVerifier; // nullable
+    }
+
+    /**
+     * Creates a verifier with badge verification only (no IDCA).
+     *
+     * @param badgeService the badge verification service (required)
+     */
+    public ClientRequestVerifier(CachingBadgeVerificationService badgeService) {
+        this(badgeService, null);
     }
 
     /**
@@ -60,5 +80,21 @@ public final class ClientRequestVerifier {
         LOG.warn("Client cert fingerprint mismatch for agent {}: expected={}, actual={}",
             agentId, expectedFingerprint, actualFingerprint);
         return ClientVerificationResult.failed(VerificationStatus.FINGERPRINT_MISMATCH, agentId);
+    }
+
+    /**
+     * Verifies a client certificate against the IDCA trust chain.
+     *
+     * @param clientCert the client's X.509 certificate from the mTLS handshake
+     * @return verification result indicating success or the reason for failure
+     */
+    public VerificationResult verifyIdca(X509Certificate clientCert) {
+        Objects.requireNonNull(clientCert, "clientCert must not be null");
+        if (idcaVerifier == null) {
+            return VerificationResult.failure(VerificationResult.Type.IDCA,
+                VerificationResult.Status.ERROR,
+                "IDCA verifier not configured");
+        }
+        return idcaVerifier.verify(clientCert);
     }
 }
