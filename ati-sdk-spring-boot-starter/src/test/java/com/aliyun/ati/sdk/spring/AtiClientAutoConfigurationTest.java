@@ -10,6 +10,7 @@ import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.agent.verification.BadgeVerifier;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
 import com.aliyun.ati.sdk.transparency.RootKeyManager;
@@ -74,5 +75,13 @@ class AtiClientAutoConfigurationTest {
                 assertThat(context).doesNotHaveBean(
                     DaneTlsaVerifier.class);
             });
+    }
+
+    @Test
+    void shouldNotRegisterIdcaVerifierByDefault() {
+        contextRunner.run(context -> {
+            assertThat(context).doesNotHaveBean(IdcaChainVerifier.class);
+            assertThat(context).hasSingleBean(DefaultConnectionVerifier.class);
+        });
     }
 }

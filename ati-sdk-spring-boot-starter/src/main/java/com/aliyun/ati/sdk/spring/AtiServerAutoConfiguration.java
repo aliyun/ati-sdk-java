@@ -2,12 +2,16 @@ package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.aliyun.ati.sdk.agent.server.ClientRequestVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
 import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
@@ -71,8 +75,16 @@ public class AtiServerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "ati.sdk.idca", name = "trust-certificate")
+    @ConditionalOnMissingBean
+    public IdcaChainVerifier idcaChainVerifier(AtiSdkProperties props) {
+        return new IdcaChainVerifier(props.getIdca().getTrustCertificate());
+    }
+
+    @Bean
     public ClientRequestVerifier clientRequestVerifier(
-            CachingBadgeVerificationService service) {
-        return new ClientRequestVerifier(service);
+            CachingBadgeVerificationService service,
+            @Autowired(required = false) IdcaChainVerifier idcaVerifier) {
+        return new ClientRequestVerifier(service, idcaVerifier);
     }
 }

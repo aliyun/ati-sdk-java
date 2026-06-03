@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.agent.server.ClientRequestVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
 import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
@@ -55,6 +56,16 @@ class AtiServerAutoConfigurationTest {
                     AtiTransparencyClient.class);
                 assertThat(context).doesNotHaveBean(
                     AtiVerifiedClient.class);
+            });
+    }
+
+    @Test
+    void shouldNotRegisterIdcaVerifierByDefault() {
+        contextRunner
+            .withPropertyValues("ati.sdk.mode=server")
+            .run(context -> {
+                assertThat(context).doesNotHaveBean(IdcaChainVerifier.class);
+                assertThat(context).hasSingleBean(ClientRequestVerifier.class);
             });
     }
 }

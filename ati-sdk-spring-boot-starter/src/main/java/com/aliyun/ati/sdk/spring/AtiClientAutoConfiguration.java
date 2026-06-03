@@ -2,7 +2,10 @@ package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +14,7 @@ import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.agent.verification.BadgeVerifier;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.discovery.DnsAtiDiscoveryClient;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
@@ -90,10 +94,18 @@ public class AtiClientAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "ati.sdk.idca", name = "trust-certificate")
+    public IdcaChainVerifier idcaChainVerifier(AtiSdkProperties props) {
+        return new IdcaChainVerifier(props.getIdca().getTrustCertificate());
+    }
+
+    @Bean
     public DefaultConnectionVerifier defaultConnectionVerifier(
             DaneTlsaVerifier daneVerifier,
-            BadgeVerifier badgeVerifier) {
-        return new DefaultConnectionVerifier(daneVerifier, badgeVerifier);
+            BadgeVerifier badgeVerifier,
+            @Autowired(required = false) IdcaChainVerifier idcaVerifier) {
+        return new DefaultConnectionVerifier(daneVerifier, badgeVerifier, idcaVerifier);
     }
 
     @Bean

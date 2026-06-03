@@ -15,6 +15,7 @@ public class AtiSdkProperties {
     private Verification verification = new Verification();
     private Client client = new Client();
     private Server server = new Server();
+    private Idca idca = new Idca();
 
     public String getMode() {
         return mode;
@@ -54,6 +55,14 @@ public class AtiSdkProperties {
 
     public void setServer(Server server) {
         this.server = server;
+    }
+
+    public Idca getIdca() {
+        return idca;
+    }
+
+    public void setIdca(Idca idca) {
+        this.idca = idca;
     }
 
     /**
@@ -160,6 +169,22 @@ public class AtiSdkProperties {
 
         public void setKeystorePassword(String keystorePassword) {
             this.keystorePassword = keystorePassword;
+        }
+    }
+
+    /**
+     * IDCA (Identity CA) chain verification configuration.
+     */
+    public static class Idca {
+
+        private String trustCertificate;
+
+        public String getTrustCertificate() {
+            return trustCertificate;
+        }
+
+        public void setTrustCertificate(String trustCertificate) {
+            this.trustCertificate = trustCertificate;
         }
     }
 }
