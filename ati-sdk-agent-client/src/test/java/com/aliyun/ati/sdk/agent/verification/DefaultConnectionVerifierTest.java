@@ -182,4 +182,95 @@ class DefaultConnectionVerifierTest {
             .isInstanceOf(NullPointerException.class)
             .hasMessageContaining("policy");
     }
+
+    @Test
+    void shouldRunIdcaVerificationWhenRequired() {
+        IdcaChainVerifier idcaVerifier = mock(IdcaChainVerifier.class);
+        DefaultConnectionVerifier v = new DefaultConnectionVerifier(
+            daneVerifier, badgeVerifier, idcaVerifier);
+
+        when(idcaVerifier.verify(serverCert))
+            .thenReturn(VerificationResult.success(VerificationResult.Type.IDCA));
+
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "example.com", "v1", null, null);
+        List<VerificationResult> results = v.verify(
+            descriptor, serverCert, VerificationPolicy.IDCA_REQUIRED);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getType()).isEqualTo(VerificationResult.Type.IDCA);
+        assertThat(results.get(0).isSuccess()).isTrue();
+    }
+
+    @Test
+    void shouldSkipIdcaWhenDisabled() {
+        IdcaChainVerifier idcaVerifier = mock(IdcaChainVerifier.class);
+        DefaultConnectionVerifier v = new DefaultConnectionVerifier(
+            daneVerifier, badgeVerifier, idcaVerifier);
+
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "example.com", "v1", null, null);
+        List<VerificationResult> results = v.verify(
+            descriptor, serverCert, VerificationPolicy.PKI_ONLY);
+
+        assertThat(results).isEmpty();
+        verify(idcaVerifier, never()).verify(any(X509Certificate.class));
+    }
+
+    @Test
+    void shouldSkipIdcaWhenVerifierIsNull() {
+        // Uses existing 2-arg constructor (idcaVerifier is null)
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "example.com", "v1", null, null);
+        VerificationPolicy policy = new VerificationPolicy("test",
+            VerificationMode.DISABLED, VerificationMode.DISABLED,
+            VerificationMode.REQUIRED);
+
+        List<VerificationResult> results = verifier.verify(
+            descriptor, serverCert, policy);
+
+        assertThat(results).isEmpty();
+    }
+
+    @Test
+    void shouldLogWarningOnAdvisoryIdcaFailure() {
+        IdcaChainVerifier idcaVerifier = mock(IdcaChainVerifier.class);
+        DefaultConnectionVerifier v = new DefaultConnectionVerifier(
+            daneVerifier, badgeVerifier, idcaVerifier);
+
+        VerificationPolicy advisory = new VerificationPolicy("IDCA_ADVISORY",
+            VerificationMode.DISABLED, VerificationMode.DISABLED,
+            VerificationMode.ADVISORY);
+
+        when(idcaVerifier.verify(serverCert))
+            .thenReturn(VerificationResult.failure(VerificationResult.Type.IDCA,
+                VerificationResult.Status.ERROR, "cert expired"));
+
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "example.com", "v1", null, null);
+        List<VerificationResult> results = v.verify(
+            descriptor, serverCert, advisory);
+
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).isSuccess()).isFalse();
+        // No exception thrown -- advisory mode should only warn
+    }
+
+    @Test
+    void shouldThrowOnRequiredIdcaFailure() {
+        IdcaChainVerifier idcaVerifier = mock(IdcaChainVerifier.class);
+        DefaultConnectionVerifier v = new DefaultConnectionVerifier(
+            daneVerifier, badgeVerifier, idcaVerifier);
+
+        when(idcaVerifier.verify(serverCert))
+            .thenReturn(VerificationResult.failure(VerificationResult.Type.IDCA,
+                VerificationResult.Status.MISMATCH, "chain validation failed"));
+
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "example.com", "v1", null, null);
+        assertThatThrownBy(() -> v.verify(
+                descriptor, serverCert, VerificationPolicy.IDCA_REQUIRED))
+            .isInstanceOf(AtiException.class)
+            .hasMessageContaining("IDCA verification failed");
+    }
 }
