@@ -100,8 +100,10 @@ public final class AtiVerifiedClient {
         LOG.debug("Discovered agent: {}", descriptor);
 
         // Step 2: Create SSL context with cert capturing
+        // TODO: Task 5 will inject idcaChainVerifier.createTrustManager() here
         AtiVerifiedSslContextFactory.Result sslResult =
             AtiVerifiedSslContextFactory.create(
+                null,
                 options.getKeystorePath(),
                 options.getKeystorePassword());
 

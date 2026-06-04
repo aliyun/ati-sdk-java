@@ -4,22 +4,24 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.util.Objects;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
-import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import com.aliyun.ati.sdk.exception.AtiException;
 
 /**
- * Factory for creating {@link SSLContext} with ATI certificate capture.
+ * Factory for creating {@link SSLContext} with IDCA-rooted trust and
+ * ATI certificate capture.
  *
  * <p>The SSLContext created by this factory:</p>
  * <ol>
- *   <li>Performs standard PKI validation (CA chain verification)</li>
+ *   <li>Validates the server certificate against the ATI private CA
+ *       (IDCA) chain via the provided {@link X509TrustManager}</li>
  *   <li>Captures the server certificate for post-handshake DANE/Badge
  *       verification via {@link CertificateCapturingTrustManager}</li>
  *   <li>Optionally includes a client certificate for mTLS</li>
@@ -27,8 +29,9 @@ import com.aliyun.ati.sdk.exception.AtiException;
  *
  * <h2>Usage</h2>
  * <pre>{@code
+ * X509TrustManager idcaTm = idcaChainVerifier.createTrustManager();
  * AtiVerifiedSslContextFactory.Result result =
- *     AtiVerifiedSslContextFactory.create();
+ *     AtiVerifiedSslContextFactory.create(idcaTm, null, null);
  * SSLContext sslContext = result.getSslContext();
  * CertificateCapturingTrustManager tm = result.getTrustManager();
  *
@@ -49,8 +52,11 @@ public final class AtiVerifiedSslContextFactory {
     }
 
     /**
-     * Creates an SSLContext with certificate capture and optional mTLS.
+     * Creates an SSLContext with IDCA-rooted trust, certificate capture,
+     * and optional mTLS.
      *
+     * @param idcaTrustManager the IDCA trust manager for validating server
+     *                         certificates against the ATI private CA chain
      * @param keystorePath     path to a PKCS12 keystore for client
      *                         certificate (prefix with {@code classpath:}
      *                         for classpath resources), or {@code null}
@@ -58,19 +64,16 @@ public final class AtiVerifiedSslContextFactory {
      * @param keystorePassword the keystore password, or {@code null}
      * @return a {@link Result} containing the SSLContext and capturing
      *         trust manager
+     * @throws NullPointerException if idcaTrustManager is null
      * @throws AtiException if SSL context creation fails
      */
-    public static Result create(String keystorePath, String keystorePassword) {
+    public static Result create(X509TrustManager idcaTrustManager,
+                                String keystorePath, String keystorePassword) {
+        Objects.requireNonNull(idcaTrustManager, "idcaTrustManager must not be null");
         try {
-            // Get default trust manager
-            TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm());
-            tmf.init((KeyStore) null);
-            X509TrustManager defaultTm = findX509TrustManager(tmf.getTrustManagers());
-
-            // Wrap with capturing trust manager
+            // Wrap IDCA trust manager with capturing trust manager
             CertificateCapturingTrustManager capturingTm =
-                new CertificateCapturingTrustManager(defaultTm);
+                new CertificateCapturingTrustManager(idcaTrustManager);
 
             // Load client keystore for mTLS if provided
             KeyManager[] keyManagers = null;
@@ -87,17 +90,6 @@ public final class AtiVerifiedSslContextFactory {
         } catch (Exception e) {
             throw new AtiException("Failed to create SSL context", e);
         }
-    }
-
-    /**
-     * Creates an SSLContext with certificate capture, without mTLS.
-     *
-     * @return a {@link Result} containing the SSLContext and capturing
-     *         trust manager
-     * @throws AtiException if SSL context creation fails
-     */
-    public static Result create() {
-        return create(null, null);
     }
 
     private static KeyManager[] loadKeyManagers(String keystorePath,
@@ -125,16 +117,6 @@ public final class AtiVerifiedSslContextFactory {
             KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(ks, pwChars);
         return kmf.getKeyManagers();
-    }
-
-    private static X509TrustManager findX509TrustManager(
-            TrustManager[] managers) {
-        for (TrustManager tm : managers) {
-            if (tm instanceof X509TrustManager) {
-                return (X509TrustManager) tm;
-            }
-        }
-        throw new AtiException("No X509TrustManager found");
     }
 
     /**
