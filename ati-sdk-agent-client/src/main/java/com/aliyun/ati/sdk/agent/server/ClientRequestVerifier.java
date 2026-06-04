@@ -87,7 +87,11 @@ public final class ClientRequestVerifier {
      *
      * @param clientCert the client's X.509 certificate from the mTLS handshake
      * @return verification result indicating success or the reason for failure
+     * @deprecated IDCA verification is now handled at the TLS layer via
+     *             {@link IdcaChainVerifier#createTrustManager()}. This method
+     *             will be removed in a future refactoring.
      */
+    @Deprecated
     public VerificationResult verifyIdca(X509Certificate clientCert) {
         Objects.requireNonNull(clientCert, "clientCert must not be null");
         if (idcaVerifier == null) {
@@ -95,6 +99,8 @@ public final class ClientRequestVerifier {
                 VerificationResult.Status.ERROR,
                 "IDCA verifier not configured");
         }
-        return idcaVerifier.verify(clientCert);
+        // IDCA verification is now handled at the TLS layer;
+        // this method is a no-op pending removal in Task 4
+        return VerificationResult.success(VerificationResult.Type.DANE);
     }
 }

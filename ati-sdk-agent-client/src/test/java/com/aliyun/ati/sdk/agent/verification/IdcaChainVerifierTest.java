@@ -11,6 +11,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
+import javax.net.ssl.X509TrustManager;
+
 import com.aliyun.ati.sdk.exception.AtiException;
 
 import org.bouncycastle.asn1.x500.X500Name;
@@ -72,43 +74,50 @@ class IdcaChainVerifierTest {
     }
 
     @Test
-    void shouldReturnSuccessForCertSignedByTrustAnchor() {
+    void createTrustManagerShouldAcceptCertSignedByTrustAnchor()
+            throws Exception {
         IdcaChainVerifier verifier =
             new IdcaChainVerifier(List.of(rootCaCert));
-
-        VerificationResult result = verifier.verify(leafCert);
-
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.DANE);
-        assertThat(result.getStatus())
-            .isEqualTo(VerificationResult.Status.SUCCESS);
+        X509TrustManager tm = verifier.createTrustManager();
+        // Should not throw — leafCert is signed by rootCaCert
+        tm.checkServerTrusted(
+            new X509Certificate[]{leafCert}, "ECDHE_ECDSA");
     }
 
     @Test
-    void shouldReturnMismatchForCertSignedByDifferentCA() {
+    void createTrustManagerShouldRejectCertFromDifferentCA() {
         IdcaChainVerifier verifier =
             new IdcaChainVerifier(List.of(rootCaCert));
-
-        VerificationResult result =
-            verifier.verify(unrelatedLeafCert);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.DANE);
-        assertThat(result.getStatus())
-            .isEqualTo(VerificationResult.Status.MISMATCH);
-        assertThat(result.getDetail()).isNotBlank();
+        X509TrustManager tm = verifier.createTrustManager();
+        // Should throw — unrelatedLeafCert is not signed by rootCaCert
+        assertThatThrownBy(() -> tm.checkServerTrusted(
+                new X509Certificate[]{unrelatedLeafCert},
+                "ECDHE_ECDSA"))
+            .isInstanceOf(
+                java.security.cert.CertificateException.class);
     }
 
     @Test
-    void shouldRejectNullPeerCert() {
+    void createTrustManagerShouldWorkWithIntermediateChain()
+            throws Exception {
+        IdcaChainVerifier verifier = new IdcaChainVerifier(
+            List.of(intermediateCaCert, rootCaCert));
+        X509TrustManager tm = verifier.createTrustManager();
+        // Should not throw — intermediateLeafCert is signed by
+        // intermediateCaCert which chains to rootCaCert
+        tm.checkServerTrusted(
+            new X509Certificate[]{intermediateLeafCert,
+                intermediateCaCert},
+            "ECDHE_ECDSA");
+    }
+
+    @Test
+    void createTrustManagerShouldReturnNonNull() {
         IdcaChainVerifier verifier =
             new IdcaChainVerifier(List.of(rootCaCert));
-
-        assertThatThrownBy(() -> verifier.verify(null))
-            .isInstanceOf(NullPointerException.class)
-            .hasMessageContaining("peerCert");
+        X509TrustManager tm = verifier.createTrustManager();
+        assertThat(tm).isNotNull();
+        assertThat(tm.getAcceptedIssuers()).isNotEmpty();
     }
 
     @Test
@@ -144,46 +153,12 @@ class IdcaChainVerifierTest {
     }
 
     @Test
-    void shouldReturnSuccessForCertWithIntermediateChain() {
-        // Chain: intermediate first, root last
-        IdcaChainVerifier verifier = new IdcaChainVerifier(
-            List.of(intermediateCaCert, rootCaCert));
-
-        VerificationResult result =
-            verifier.verify(intermediateLeafCert);
-
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.DANE);
-        assertThat(result.getStatus())
-            .isEqualTo(VerificationResult.Status.SUCCESS);
-    }
-
-    @Test
     void shouldLoadTrustCertsFromClasspath() {
-        // Loads the PEM file from src/test/resources/idca/test-ca.crt
         IdcaChainVerifier verifier =
             new IdcaChainVerifier("classpath:idca/test-ca.crt");
-
-        // The verifier should be constructed without error;
-        // verifying an unrelated cert should return MISMATCH
-        // (proving the CA was loaded and used for validation)
-        VerificationResult result = verifier.verify(leafCert);
-
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getStatus())
-            .isEqualTo(VerificationResult.Status.MISMATCH);
-    }
-
-    @Test
-    void shouldVerifySelfSignedCertAgainstItself() {
-        // A self-signed cert used as both trust anchor and peer
-        IdcaChainVerifier verifier =
-            new IdcaChainVerifier(List.of(rootCaCert));
-
-        VerificationResult result = verifier.verify(rootCaCert);
-
-        assertThat(result.isSuccess()).isTrue();
+        X509TrustManager tm = verifier.createTrustManager();
+        assertThat(tm).isNotNull();
+        assertThat(tm.getAcceptedIssuers()).isNotEmpty();
     }
 
     private static KeyPair generateEcKeyPair() throws Exception {

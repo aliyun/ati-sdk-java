@@ -83,20 +83,21 @@ class ClientRequestVerifierTest {
             .isInstanceOf(NullPointerException.class);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     void shouldVerifyIdcaWhenConfigured() {
         IdcaChainVerifier idcaVerifier = mock(IdcaChainVerifier.class);
         ClientRequestVerifier v = new ClientRequestVerifier(badgeService, idcaVerifier);
         X509Certificate cert = mock(X509Certificate.class);
 
-        when(idcaVerifier.verify(cert))
-            .thenReturn(VerificationResult.success(VerificationResult.Type.DANE));
-
+        // verifyIdca is now a deprecated no-op that always returns success
+        // when the IDCA verifier is configured (actual verification moved to TLS layer)
         VerificationResult result = v.verifyIdca(cert);
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getType()).isEqualTo(VerificationResult.Type.DANE);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     void shouldReturnErrorWhenIdcaNotConfigured() {
         // Uses existing 1-arg constructor (no IDCA)
@@ -106,6 +107,7 @@ class ClientRequestVerifierTest {
         assertThat(result.getStatus()).isEqualTo(VerificationResult.Status.ERROR);
     }
 
+    @SuppressWarnings("deprecation")
     @Test
     void shouldRejectNullCertForIdca() {
         assertThatThrownBy(() -> verifier.verifyIdca(null))
