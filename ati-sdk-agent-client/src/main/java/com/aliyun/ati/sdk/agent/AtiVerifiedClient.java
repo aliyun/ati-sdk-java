@@ -10,11 +10,14 @@ import java.util.Objects;
 
 import com.aliyun.ati.sdk.agent.http.AtiVerifiedSslContextFactory;
 import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.agent.verification.VerificationResult;
 import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.discovery.AtiName;
 import com.aliyun.ati.sdk.exception.AtiException;
+
+import javax.net.ssl.X509TrustManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,6 +53,7 @@ public final class AtiVerifiedClient {
 
     private final AtiDiscoveryClient discoveryClient;
     private final DefaultConnectionVerifier connectionVerifier;
+    private final IdcaChainVerifier idcaChainVerifier;
 
     private AtiVerifiedClient(Builder builder) {
         this.discoveryClient = Objects.requireNonNull(
@@ -58,6 +62,9 @@ public final class AtiVerifiedClient {
         this.connectionVerifier = Objects.requireNonNull(
             builder.connectionVerifier,
             "connectionVerifier must not be null");
+        this.idcaChainVerifier = Objects.requireNonNull(
+            builder.idcaChainVerifier,
+            "idcaChainVerifier must not be null");
     }
 
     /**
@@ -99,11 +106,12 @@ public final class AtiVerifiedClient {
         AtiAgentDescriptor descriptor = discoveryClient.discover(name);
         LOG.debug("Discovered agent: {}", descriptor);
 
-        // Step 2: Create SSL context with cert capturing
-        // TODO: Task 5 will inject idcaChainVerifier.createTrustManager() here
+        // Step 2: Create SSL context with IDCA trust anchor
+        X509TrustManager idcaTrustManager =
+            idcaChainVerifier.createTrustManager();
         AtiVerifiedSslContextFactory.Result sslResult =
             AtiVerifiedSslContextFactory.create(
-                null,
+                idcaTrustManager,
                 options.getKeystorePath(),
                 options.getKeystorePassword());
 
@@ -168,6 +176,7 @@ public final class AtiVerifiedClient {
 
         private AtiDiscoveryClient discoveryClient;
         private DefaultConnectionVerifier connectionVerifier;
+        private IdcaChainVerifier idcaChainVerifier;
 
         private Builder() {
         }
@@ -193,6 +202,18 @@ public final class AtiVerifiedClient {
         public Builder connectionVerifier(
                 DefaultConnectionVerifier connectionVerifier) {
             this.connectionVerifier = connectionVerifier;
+            return this;
+        }
+
+        /**
+         * Sets the IDCA chain verifier for TLS trust anchor.
+         *
+         * @param idcaChainVerifier the IDCA chain verifier
+         * @return this builder
+         */
+        public Builder idcaChainVerifier(
+                IdcaChainVerifier idcaChainVerifier) {
+            this.idcaChainVerifier = idcaChainVerifier;
             return this;
         }
 
