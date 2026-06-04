@@ -91,7 +91,7 @@ public final class ClientRequestVerifier {
     public VerificationResult verifyIdca(X509Certificate clientCert) {
         Objects.requireNonNull(clientCert, "clientCert must not be null");
         if (idcaVerifier == null) {
-            return VerificationResult.failure(VerificationResult.Type.IDCA,
+            return VerificationResult.failure(VerificationResult.Type.DANE,
                 VerificationResult.Status.ERROR,
                 "IDCA verifier not configured");
         }

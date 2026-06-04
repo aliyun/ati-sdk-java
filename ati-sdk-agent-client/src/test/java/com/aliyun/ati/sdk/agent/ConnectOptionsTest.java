@@ -11,7 +11,7 @@ class ConnectOptionsTest {
         ConnectOptions options = ConnectOptions.builder().build();
 
         assertThat(options.getPolicy())
-            .isEqualTo(VerificationPolicy.DANE_AND_BADGE);
+            .isEqualTo(VerificationPolicy.GOLD);
         assertThat(options.getPort()).isEqualTo(443);
         assertThat(options.getKeystorePath()).isNull();
         assertThat(options.getKeystorePassword()).isNull();
@@ -20,14 +20,14 @@ class ConnectOptionsTest {
     @Test
     void shouldOverrideValues() {
         ConnectOptions options = ConnectOptions.builder()
-            .policy(VerificationPolicy.PKI_ONLY)
+            .policy(VerificationPolicy.BRONZE)
             .port(8443)
             .keystorePath("/tmp/keystore.p12")
             .keystorePassword("secret")
             .build();
 
         assertThat(options.getPolicy())
-            .isEqualTo(VerificationPolicy.PKI_ONLY);
+            .isEqualTo(VerificationPolicy.BRONZE);
         assertThat(options.getPort()).isEqualTo(8443);
         assertThat(options.getKeystorePath())
             .isEqualTo("/tmp/keystore.p12");
@@ -40,7 +40,7 @@ class ConnectOptionsTest {
         ConnectOptions.Builder builder = ConnectOptions.builder();
 
         ConnectOptions.Builder returned = builder
-            .policy(VerificationPolicy.BADGE_REQUIRED);
+            .policy(VerificationPolicy.SILVER);
         assertThat(returned).isSameAs(builder);
 
         returned = builder.port(9443);

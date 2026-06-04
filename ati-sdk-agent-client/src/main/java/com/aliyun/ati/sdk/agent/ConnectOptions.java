@@ -5,7 +5,7 @@ package com.aliyun.ati.sdk.agent;
  *
  * <p>Uses the builder pattern with sensible defaults:
  * <ul>
- *   <li>{@code policy} — {@link VerificationPolicy#DANE_AND_BADGE}</li>
+ *   <li>{@code policy} — {@link VerificationPolicy#GOLD}</li>
  *   <li>{@code port} — 443</li>
  *   <li>{@code keystorePath} — {@code null} (no mTLS)</li>
  *   <li>{@code keystorePassword} — {@code null}</li>
@@ -14,7 +14,7 @@ package com.aliyun.ati.sdk.agent;
  * <h2>Usage</h2>
  * <pre>{@code
  * ConnectOptions options = ConnectOptions.builder()
- *     .policy(VerificationPolicy.DANE_REQUIRED)
+ *     .policy(VerificationPolicy.SILVER)
  *     .port(8443)
  *     .keystorePath("/path/to/keystore.p12")
  *     .keystorePassword("secret")
@@ -85,7 +85,7 @@ public final class ConnectOptions {
      */
     public static final class Builder {
 
-        private VerificationPolicy policy = VerificationPolicy.DANE_AND_BADGE;
+        private VerificationPolicy policy = VerificationPolicy.GOLD;
         private int port = 443;
         private String keystorePath;
         private String keystorePassword;

@@ -15,7 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Orchestrates DANE, Badge and IDCA verification against a server certificate
+ * Orchestrates DANE and Badge verification against a server certificate
  * based on the configured {@link VerificationPolicy}.
  *
  * <p>Respects {@link VerificationMode}:
@@ -32,38 +32,23 @@ public final class DefaultConnectionVerifier {
 
     private final DaneTlsaVerifier daneVerifier;
     private final BadgeVerifier badgeVerifier;
-    private final IdcaChainVerifier idcaVerifier;
 
     /**
-     * Creates a new connection verifier with IDCA support.
-     *
-     * @param daneVerifier  the DANE TLSA verifier
-     * @param badgeVerifier the badge verifier
-     * @param idcaVerifier  the IDCA chain verifier (nullable)
-     */
-    public DefaultConnectionVerifier(DaneTlsaVerifier daneVerifier,
-                                     BadgeVerifier badgeVerifier,
-                                     IdcaChainVerifier idcaVerifier) {
-        this.daneVerifier = Objects.requireNonNull(daneVerifier,
-            "daneVerifier must not be null");
-        this.badgeVerifier = Objects.requireNonNull(badgeVerifier,
-            "badgeVerifier must not be null");
-        this.idcaVerifier = idcaVerifier; // nullable
-    }
-
-    /**
-     * Creates a new connection verifier without IDCA support.
+     * Creates a new connection verifier.
      *
      * @param daneVerifier  the DANE TLSA verifier
      * @param badgeVerifier the badge verifier
      */
     public DefaultConnectionVerifier(DaneTlsaVerifier daneVerifier,
                                      BadgeVerifier badgeVerifier) {
-        this(daneVerifier, badgeVerifier, null);
+        this.daneVerifier = Objects.requireNonNull(daneVerifier,
+            "daneVerifier must not be null");
+        this.badgeVerifier = Objects.requireNonNull(badgeVerifier,
+            "badgeVerifier must not be null");
     }
 
     /**
-     * Verifies the server certificate using DANE, Badge and/or IDCA verification
+     * Verifies the server certificate using DANE and/or Badge verification
      * according to the given policy.
      *
      * @param descriptor the agent descriptor from discovery
@@ -97,18 +82,6 @@ public final class DefaultConnectionVerifier {
                 descriptor.getAgentId(), serverCert);
             results.add(badgeResult);
             handleResult(badgeResult, policy.getBadgeMode(), "Badge");
-        }
-
-        if (policy.getIdcaMode() != VerificationMode.DISABLED) {
-            if (idcaVerifier != null) {
-                VerificationResult idcaResult = idcaVerifier.verify(serverCert);
-                results.add(idcaResult);
-                handleResult(idcaResult, policy.getIdcaMode(), "IDCA");
-            } else {
-                LOG.warn("IDCA verification requested (mode={}) "
-                    + "but no IdcaChainVerifier configured; skipping",
-                    policy.getIdcaMode());
-            }
         }
 
         return Collections.unmodifiableList(results);

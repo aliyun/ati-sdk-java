@@ -80,7 +80,7 @@ class IdcaChainVerifierTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.IDCA);
+            .isEqualTo(VerificationResult.Type.DANE);
         assertThat(result.getStatus())
             .isEqualTo(VerificationResult.Status.SUCCESS);
     }
@@ -95,7 +95,7 @@ class IdcaChainVerifierTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.IDCA);
+            .isEqualTo(VerificationResult.Type.DANE);
         assertThat(result.getStatus())
             .isEqualTo(VerificationResult.Status.MISMATCH);
         assertThat(result.getDetail()).isNotBlank();
@@ -154,7 +154,7 @@ class IdcaChainVerifierTest {
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getType())
-            .isEqualTo(VerificationResult.Type.IDCA);
+            .isEqualTo(VerificationResult.Type.DANE);
         assertThat(result.getStatus())
             .isEqualTo(VerificationResult.Status.SUCCESS);
     }

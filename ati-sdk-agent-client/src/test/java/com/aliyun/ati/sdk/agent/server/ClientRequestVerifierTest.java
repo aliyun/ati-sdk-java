@@ -90,11 +90,11 @@ class ClientRequestVerifierTest {
         X509Certificate cert = mock(X509Certificate.class);
 
         when(idcaVerifier.verify(cert))
-            .thenReturn(VerificationResult.success(VerificationResult.Type.IDCA));
+            .thenReturn(VerificationResult.success(VerificationResult.Type.DANE));
 
         VerificationResult result = v.verifyIdca(cert);
         assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getType()).isEqualTo(VerificationResult.Type.IDCA);
+        assertThat(result.getType()).isEqualTo(VerificationResult.Type.DANE);
     }
 
     @Test

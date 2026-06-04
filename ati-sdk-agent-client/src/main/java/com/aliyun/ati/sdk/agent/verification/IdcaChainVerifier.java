@@ -119,19 +119,19 @@ public final class IdcaChainVerifier {
 
             LOG.debug("IDCA chain verification succeeded");
             return VerificationResult.success(
-                VerificationResult.Type.IDCA);
+                VerificationResult.Type.DANE);
         } catch (CertPathValidatorException e) {
             LOG.debug("IDCA chain verification failed: {}",
                 e.getMessage());
             return VerificationResult.failure(
-                VerificationResult.Type.IDCA,
+                VerificationResult.Type.DANE,
                 VerificationResult.Status.MISMATCH,
                 e.getMessage());
         } catch (Exception e) {
             LOG.warn("IDCA chain verification error: {}",
                 e.getMessage());
             return VerificationResult.failure(
-                VerificationResult.Type.IDCA,
+                VerificationResult.Type.DANE,
                 VerificationResult.Status.ERROR,
                 e.getMessage());
         }

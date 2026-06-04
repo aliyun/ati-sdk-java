@@ -35,9 +35,9 @@ class VerificationResultTest {
     @Test
     void shouldFormatToStringWithoutDetail() {
         VerificationResult result =
-            VerificationResult.success(VerificationResult.Type.PKI_ONLY);
+            VerificationResult.success(VerificationResult.Type.DANE);
 
-        assertThat(result.toString()).isEqualTo("PKI_ONLY:SUCCESS");
+        assertThat(result.toString()).isEqualTo("DANE:SUCCESS");
     }
 
     @Test
