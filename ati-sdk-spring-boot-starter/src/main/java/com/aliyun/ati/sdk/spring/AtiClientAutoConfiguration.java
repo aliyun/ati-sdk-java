@@ -2,7 +2,6 @@ package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -103,18 +102,19 @@ public class AtiClientAutoConfiguration {
     @Bean
     public DefaultConnectionVerifier defaultConnectionVerifier(
             DaneTlsaVerifier daneVerifier,
-            BadgeVerifier badgeVerifier,
-            @Autowired(required = false) IdcaChainVerifier idcaVerifier) {
-        return new DefaultConnectionVerifier(daneVerifier, badgeVerifier, idcaVerifier);
+            BadgeVerifier badgeVerifier) {
+        return new DefaultConnectionVerifier(daneVerifier, badgeVerifier);
     }
 
     @Bean
     public AtiVerifiedClient atiVerifiedClient(
             AtiDiscoveryClient discoveryClient,
-            DefaultConnectionVerifier verifier) {
+            DefaultConnectionVerifier verifier,
+            IdcaChainVerifier idcaChainVerifier) {
         return AtiVerifiedClient.builder()
             .discoveryClient(discoveryClient)
             .connectionVerifier(verifier)
+            .idcaChainVerifier(idcaChainVerifier)
             .build();
     }
 }

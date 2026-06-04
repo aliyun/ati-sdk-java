@@ -1,6 +1,7 @@
 package com.aliyun.ati.sdk.spring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -27,34 +28,39 @@ class AtiClientAutoConfigurationTest {
                 AtiClientAutoConfiguration.class));
 
     @Test
-    void shouldRegisterClientBeansWithDefaultMode() {
-        contextRunner.run(context -> {
-            assertThat(context).hasSingleBean(
-                AtiVerifiedClient.class);
-            assertThat(context).hasSingleBean(
-                AtiTransparencyClient.class);
-            assertThat(context).hasSingleBean(RootKeyManager.class);
-            assertThat(context).hasSingleBean(TlSealVerifier.class);
-            assertThat(context).hasSingleBean(
-                MerkleProofVerifier.class);
-            assertThat(context).hasSingleBean(
-                BadgeVerificationService.class);
-            assertThat(context).hasSingleBean(
-                CachingBadgeVerificationService.class);
-            assertThat(context).hasSingleBean(
-                AtiDiscoveryClient.class);
-            assertThat(context).hasSingleBean(
-                DaneTlsaVerifier.class);
-            assertThat(context).hasSingleBean(BadgeVerifier.class);
-            assertThat(context).hasSingleBean(
-                DefaultConnectionVerifier.class);
-        });
+    void shouldRegisterAllBeansWhenIdcaConfigured() {
+        contextRunner
+            .withBean(IdcaChainVerifier.class,
+                () -> mock(IdcaChainVerifier.class))
+            .run(context -> {
+                assertThat(context).hasSingleBean(
+                    AtiVerifiedClient.class);
+                assertThat(context).hasSingleBean(
+                    AtiTransparencyClient.class);
+                assertThat(context).hasSingleBean(RootKeyManager.class);
+                assertThat(context).hasSingleBean(TlSealVerifier.class);
+                assertThat(context).hasSingleBean(
+                    MerkleProofVerifier.class);
+                assertThat(context).hasSingleBean(
+                    BadgeVerificationService.class);
+                assertThat(context).hasSingleBean(
+                    CachingBadgeVerificationService.class);
+                assertThat(context).hasSingleBean(
+                    AtiDiscoveryClient.class);
+                assertThat(context).hasSingleBean(
+                    DaneTlsaVerifier.class);
+                assertThat(context).hasSingleBean(BadgeVerifier.class);
+                assertThat(context).hasSingleBean(
+                    DefaultConnectionVerifier.class);
+            });
     }
 
     @Test
     void shouldRegisterClientBeansWithExplicitClientMode() {
         contextRunner
             .withPropertyValues("ati.sdk.mode=client")
+            .withBean(IdcaChainVerifier.class,
+                () -> mock(IdcaChainVerifier.class))
             .run(context -> {
                 assertThat(context).hasSingleBean(
                     AtiVerifiedClient.class);
@@ -78,10 +84,9 @@ class AtiClientAutoConfigurationTest {
     }
 
     @Test
-    void shouldNotRegisterIdcaVerifierByDefault() {
+    void shouldFailWithoutIdcaChainVerifier() {
         contextRunner.run(context -> {
-            assertThat(context).doesNotHaveBean(IdcaChainVerifier.class);
-            assertThat(context).hasSingleBean(DefaultConnectionVerifier.class);
+            assertThat(context).hasFailed();
         });
     }
 }
