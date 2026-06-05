@@ -87,4 +87,42 @@ class AtiVerifiedClientTest {
             .isInstanceOf(NullPointerException.class)
             .hasMessageContaining("idcaChainVerifier");
     }
+
+    @Test
+    void shouldAcceptIdentityCertAndKeyPaths() {
+        AtiDiscoveryClient discoveryClient =
+            mock(AtiDiscoveryClient.class);
+        DefaultConnectionVerifier connectionVerifier =
+            mock(DefaultConnectionVerifier.class);
+        IdcaChainVerifier idcaChainVerifier =
+            mock(IdcaChainVerifier.class);
+
+        AtiVerifiedClient client = AtiVerifiedClient.builder()
+            .discoveryClient(discoveryClient)
+            .connectionVerifier(connectionVerifier)
+            .idcaChainVerifier(idcaChainVerifier)
+            .identityCertificatePath("/path/to/cert.pem")
+            .identityPrivateKeyPath("/path/to/key.pem")
+            .build();
+
+        assertThat(client).isNotNull();
+    }
+
+    @Test
+    void shouldBuildWithoutIdentityCertPaths() {
+        AtiDiscoveryClient discoveryClient =
+            mock(AtiDiscoveryClient.class);
+        DefaultConnectionVerifier connectionVerifier =
+            mock(DefaultConnectionVerifier.class);
+        IdcaChainVerifier idcaChainVerifier =
+            mock(IdcaChainVerifier.class);
+
+        AtiVerifiedClient client = AtiVerifiedClient.builder()
+            .discoveryClient(discoveryClient)
+            .connectionVerifier(connectionVerifier)
+            .idcaChainVerifier(idcaChainVerifier)
+            .build();
+
+        assertThat(client).isNotNull();
+    }
 }

@@ -13,8 +13,6 @@ class ConnectOptionsTest {
         assertThat(options.getPolicy())
             .isEqualTo(VerificationPolicy.GOLD);
         assertThat(options.getPort()).isEqualTo(443);
-        assertThat(options.getKeystorePath()).isNull();
-        assertThat(options.getKeystorePassword()).isNull();
     }
 
     @Test
@@ -22,17 +20,11 @@ class ConnectOptionsTest {
         ConnectOptions options = ConnectOptions.builder()
             .policy(VerificationPolicy.BRONZE)
             .port(8443)
-            .keystorePath("/tmp/keystore.p12")
-            .keystorePassword("secret")
             .build();
 
         assertThat(options.getPolicy())
             .isEqualTo(VerificationPolicy.BRONZE);
         assertThat(options.getPort()).isEqualTo(8443);
-        assertThat(options.getKeystorePath())
-            .isEqualTo("/tmp/keystore.p12");
-        assertThat(options.getKeystorePassword())
-            .isEqualTo("secret");
     }
 
     @Test
@@ -44,12 +36,6 @@ class ConnectOptionsTest {
         assertThat(returned).isSameAs(builder);
 
         returned = builder.port(9443);
-        assertThat(returned).isSameAs(builder);
-
-        returned = builder.keystorePath("/tmp/ks.p12");
-        assertThat(returned).isSameAs(builder);
-
-        returned = builder.keystorePassword("pw");
         assertThat(returned).isSameAs(builder);
     }
 }

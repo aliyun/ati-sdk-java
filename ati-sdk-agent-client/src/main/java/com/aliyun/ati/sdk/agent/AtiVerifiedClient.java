@@ -54,6 +54,8 @@ public final class AtiVerifiedClient {
     private final AtiDiscoveryClient discoveryClient;
     private final DefaultConnectionVerifier connectionVerifier;
     private final IdcaChainVerifier idcaChainVerifier;
+    private final String identityCertificatePath;
+    private final String identityPrivateKeyPath;
 
     private AtiVerifiedClient(Builder builder) {
         this.discoveryClient = Objects.requireNonNull(
@@ -65,6 +67,8 @@ public final class AtiVerifiedClient {
         this.idcaChainVerifier = Objects.requireNonNull(
             builder.idcaChainVerifier,
             "idcaChainVerifier must not be null");
+        this.identityCertificatePath = builder.identityCertificatePath;
+        this.identityPrivateKeyPath = builder.identityPrivateKeyPath;
     }
 
     /**
@@ -112,8 +116,8 @@ public final class AtiVerifiedClient {
         AtiVerifiedSslContextFactory.Result sslResult =
             AtiVerifiedSslContextFactory.create(
                 idcaTrustManager,
-                options.getKeystorePath(),
-                options.getKeystorePassword());
+                identityCertificatePath,
+                identityPrivateKeyPath);
 
         // Step 3: Build HttpClient
         HttpClient httpClient = HttpClient.newBuilder()
@@ -177,6 +181,8 @@ public final class AtiVerifiedClient {
         private AtiDiscoveryClient discoveryClient;
         private DefaultConnectionVerifier connectionVerifier;
         private IdcaChainVerifier idcaChainVerifier;
+        private String identityCertificatePath;
+        private String identityPrivateKeyPath;
 
         private Builder() {
         }
@@ -214,6 +220,40 @@ public final class AtiVerifiedClient {
         public Builder idcaChainVerifier(
                 IdcaChainVerifier idcaChainVerifier) {
             this.idcaChainVerifier = idcaChainVerifier;
+            return this;
+        }
+
+        /**
+         * Sets the path to the PEM-encoded identity certificate for mTLS.
+         *
+         * <p>Both {@code identityCertificatePath} and
+         * {@code identityPrivateKeyPath} must be set together for mTLS,
+         * or both left {@code null} for server-only authentication.</p>
+         *
+         * @param identityCertificatePath path to the PEM certificate
+         *                                (supports {@code classpath:} prefix)
+         * @return this builder
+         */
+        public Builder identityCertificatePath(
+                String identityCertificatePath) {
+            this.identityCertificatePath = identityCertificatePath;
+            return this;
+        }
+
+        /**
+         * Sets the path to the PEM-encoded PKCS8 private key for mTLS.
+         *
+         * <p>Both {@code identityCertificatePath} and
+         * {@code identityPrivateKeyPath} must be set together for mTLS,
+         * or both left {@code null} for server-only authentication.</p>
+         *
+         * @param identityPrivateKeyPath path to the PEM private key
+         *                               (supports {@code classpath:} prefix)
+         * @return this builder
+         */
+        public Builder identityPrivateKeyPath(
+                String identityPrivateKeyPath) {
+            this.identityPrivateKeyPath = identityPrivateKeyPath;
             return this;
         }
 
