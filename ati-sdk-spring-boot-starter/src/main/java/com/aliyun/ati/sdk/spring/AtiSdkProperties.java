@@ -16,6 +16,7 @@ public class AtiSdkProperties {
     private Client client = new Client();
     private Server server = new Server();
     private Idca idca = new Idca();
+    private Identity identity = new Identity();
 
     public String getMode() {
         return mode;
@@ -65,6 +66,14 @@ public class AtiSdkProperties {
         this.idca = idca;
     }
 
+    public Identity getIdentity() {
+        return identity;
+    }
+
+    public void setIdentity(Identity identity) {
+        this.identity = identity;
+    }
+
     /**
      * Transparency Log configuration.
      */
@@ -104,7 +113,6 @@ public class AtiSdkProperties {
 
         private String dnsTimeout = "5s";
         private String connectTimeout = "10s";
-        private Mtls mtls = new Mtls();
 
         public String getDnsTimeout() {
             return dnsTimeout;
@@ -121,54 +129,36 @@ public class AtiSdkProperties {
         public void setConnectTimeout(String connectTimeout) {
             this.connectTimeout = connectTimeout;
         }
-
-        public Mtls getMtls() {
-            return mtls;
-        }
-
-        public void setMtls(Mtls mtls) {
-            this.mtls = mtls;
-        }
     }
 
     /**
      * Server-side configuration.
      */
     public static class Server {
-
-        private Mtls mtls = new Mtls();
-
-        public Mtls getMtls() {
-            return mtls;
-        }
-
-        public void setMtls(Mtls mtls) {
-            this.mtls = mtls;
-        }
     }
 
     /**
-     * Mutual TLS keystore configuration.
+     * Agent identity certificate configuration (PEM format).
      */
-    public static class Mtls {
+    public static class Identity {
 
-        private String keystore;
-        private String keystorePassword;
+        private String certificate;
+        private String privateKey;
 
-        public String getKeystore() {
-            return keystore;
+        public String getCertificate() {
+            return certificate;
         }
 
-        public void setKeystore(String keystore) {
-            this.keystore = keystore;
+        public void setCertificate(String certificate) {
+            this.certificate = certificate;
         }
 
-        public String getKeystorePassword() {
-            return keystorePassword;
+        public String getPrivateKey() {
+            return privateKey;
         }
 
-        public void setKeystorePassword(String keystorePassword) {
-            this.keystorePassword = keystorePassword;
+        public void setPrivateKey(String privateKey) {
+            this.privateKey = privateKey;
         }
     }
 

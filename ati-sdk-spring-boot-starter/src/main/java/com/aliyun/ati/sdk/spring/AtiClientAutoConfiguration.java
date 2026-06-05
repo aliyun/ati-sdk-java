@@ -110,11 +110,14 @@ public class AtiClientAutoConfiguration {
     public AtiVerifiedClient atiVerifiedClient(
             AtiDiscoveryClient discoveryClient,
             DefaultConnectionVerifier verifier,
-            IdcaChainVerifier idcaChainVerifier) {
+            IdcaChainVerifier idcaChainVerifier,
+            AtiSdkProperties props) {
         return AtiVerifiedClient.builder()
             .discoveryClient(discoveryClient)
             .connectionVerifier(verifier)
             .idcaChainVerifier(idcaChainVerifier)
+            .identityCertificatePath(props.getIdentity().getCertificate())
+            .identityPrivateKeyPath(props.getIdentity().getPrivateKey())
             .build();
     }
 }
