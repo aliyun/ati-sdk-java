@@ -1,9 +1,16 @@
 package com.aliyun.ati.sdk.agent.http;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyFactory;
 import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
 import java.util.Objects;
 
 import javax.net.ssl.KeyManager;
@@ -24,7 +31,7 @@ import com.aliyun.ati.sdk.exception.AtiException;
  *       (IDCA) chain via the provided {@link X509TrustManager}</li>
  *   <li>Captures the server certificate for post-handshake DANE/Badge
  *       verification via {@link CertificateCapturingTrustManager}</li>
- *   <li>Optionally includes a client certificate for mTLS</li>
+ *   <li>Optionally includes a client identity certificate for mTLS</li>
  * </ol>
  *
  * <h2>Usage</h2>
@@ -55,68 +62,141 @@ public final class AtiVerifiedSslContextFactory {
      * Creates an SSLContext with IDCA-rooted trust, certificate capture,
      * and optional mTLS.
      *
-     * @param idcaTrustManager the IDCA trust manager for validating server
-     *                         certificates against the ATI private CA chain
-     * @param keystorePath     path to a PKCS12 keystore for client
-     *                         certificate (prefix with {@code classpath:}
-     *                         for classpath resources), or {@code null}
-     *                         for server-only authentication
-     * @param keystorePassword the keystore password, or {@code null}
+     * @param idcaTrustManager   the IDCA trust manager for validating server
+     *                           certificates against the ATI private CA chain
+     * @param certificatePath    path to a PEM-encoded X.509 identity
+     *                           certificate (prefix with {@code classpath:}
+     *                           for classpath resources), or {@code null}
+     *                           for server-only authentication
+     * @param privateKeyPath     path to a PEM-encoded PKCS8 private key
+     *                           matching the certificate, or {@code null}
      * @return a {@link Result} containing the SSLContext and capturing
      *         trust manager
      * @throws NullPointerException if idcaTrustManager is null
-     * @throws AtiException if SSL context creation fails
+     * @throws AtiException if certificatePath is set without privateKeyPath
+     *                      or vice versa, or if SSL context creation fails
      */
     public static Result create(X509TrustManager idcaTrustManager,
-                                String keystorePath, String keystorePassword) {
-        Objects.requireNonNull(idcaTrustManager, "idcaTrustManager must not be null");
+                                String certificatePath,
+                                String privateKeyPath) {
+        Objects.requireNonNull(idcaTrustManager,
+            "idcaTrustManager must not be null");
+
+        if (certificatePath != null && privateKeyPath == null) {
+            throw new AtiException(
+                "privateKeyPath is required when certificatePath is set");
+        }
+        if (privateKeyPath != null && certificatePath == null) {
+            throw new AtiException(
+                "certificatePath is required when privateKeyPath is set");
+        }
+
         try {
             // Wrap IDCA trust manager with capturing trust manager
             CertificateCapturingTrustManager capturingTm =
                 new CertificateCapturingTrustManager(idcaTrustManager);
 
-            // Load client keystore for mTLS if provided
+            // Load client identity for mTLS if provided
             KeyManager[] keyManagers = null;
-            if (keystorePath != null) {
-                keyManagers = loadKeyManagers(keystorePath, keystorePassword);
+            if (certificatePath != null) {
+                keyManagers = loadKeyManagers(
+                    certificatePath, privateKeyPath);
             }
 
             SSLContext sslContext = SSLContext.getInstance("TLS");
-            sslContext.init(keyManagers, new TrustManager[]{capturingTm}, null);
+            sslContext.init(
+                keyManagers, new TrustManager[]{capturingTm}, null);
 
             return new Result(sslContext, capturingTm);
         } catch (AtiException e) {
             throw e;
         } catch (Exception e) {
-            throw new AtiException("Failed to create SSL context", e);
+            throw new AtiException(
+                "Failed to create SSL context", e);
         }
     }
 
-    private static KeyManager[] loadKeyManagers(String keystorePath,
-            String password) throws Exception {
-        KeyStore ks = KeyStore.getInstance("PKCS12");
-        char[] pwChars = password != null ? password.toCharArray() : null;
+    private static KeyManager[] loadKeyManagers(
+            String certificatePath,
+            String privateKeyPath) throws Exception {
+        X509Certificate cert = loadCertificate(certificatePath);
+        PrivateKey key = loadPrivateKey(privateKeyPath);
+        validateKeyPair(cert, key);
 
-        if (keystorePath.startsWith("classpath:")) {
-            String resource = keystorePath.substring("classpath:".length());
-            try (InputStream is = AtiVerifiedSslContextFactory.class
-                    .getClassLoader().getResourceAsStream(resource)) {
-                if (is == null) {
-                    throw new AtiException(
-                        "Keystore not found on classpath: " + resource);
-                }
-                ks.load(is, pwChars);
-            }
-        } else {
-            try (InputStream is = Files.newInputStream(Path.of(keystorePath))) {
-                ks.load(is, pwChars);
-            }
-        }
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("identity", key, new char[0],
+            new java.security.cert.Certificate[]{cert});
 
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
             KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(ks, pwChars);
+        kmf.init(ks, new char[0]);
         return kmf.getKeyManagers();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static X509Certificate loadCertificate(String path)
+            throws Exception {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        try (InputStream is = openResource(path)) {
+            return (X509Certificate) cf.generateCertificate(is);
+        }
+    }
+
+    private static PrivateKey loadPrivateKey(String path)
+            throws Exception {
+        String pem;
+        try (InputStream is = openResource(path)) {
+            pem = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        String base64 = pem
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replaceAll("\\s+", "");
+        byte[] decoded = Base64.getDecoder().decode(base64);
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(decoded);
+        // Try EC first, then RSA
+        try {
+            return KeyFactory.getInstance("EC")
+                .generatePrivate(keySpec);
+        } catch (Exception e) {
+            return KeyFactory.getInstance("RSA")
+                .generatePrivate(keySpec);
+        }
+    }
+
+    private static void validateKeyPair(X509Certificate cert,
+            PrivateKey key) throws Exception {
+        byte[] testData = "ati-key-pair-validation".getBytes(
+            StandardCharsets.UTF_8);
+        String algorithm = key.getAlgorithm().equals("EC")
+            ? "SHA256withECDSA" : "SHA256withRSA";
+        java.security.Signature sig =
+            java.security.Signature.getInstance(algorithm);
+        sig.initSign(key);
+        sig.update(testData);
+        byte[] signature = sig.sign();
+        sig.initVerify(cert.getPublicKey());
+        sig.update(testData);
+        if (!sig.verify(signature)) {
+            throw new AtiException(
+                "Identity certificate and private key do not match");
+        }
+    }
+
+    private static InputStream openResource(String path)
+            throws Exception {
+        if (path.startsWith("classpath:")) {
+            String resource = path.substring("classpath:".length());
+            InputStream is = AtiVerifiedSslContextFactory.class
+                .getClassLoader().getResourceAsStream(resource);
+            if (is == null) {
+                throw new AtiException(
+                    "Resource not found on classpath: " + resource);
+            }
+            return is;
+        }
+        return Files.newInputStream(Path.of(path));
     }
 
     /**
