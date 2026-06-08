@@ -13,7 +13,6 @@ import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
 import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
-import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.MerkleProofVerifier;
@@ -33,7 +32,6 @@ class AtiClientAutoConfigurationTest {
                 AtiVerifiedClient.class);
             assertThat(context).hasSingleBean(
                 AtiTransparencyClient.class);
-            assertThat(context).hasSingleBean(RootKeyManager.class);
             assertThat(context).hasSingleBean(TlSealVerifier.class);
             assertThat(context).hasSingleBean(
                 MerkleProofVerifier.class);

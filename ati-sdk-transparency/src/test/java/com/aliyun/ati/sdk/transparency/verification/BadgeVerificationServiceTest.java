@@ -1,47 +1,60 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
-import java.security.PublicKey;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.spec.ECGenParameterSpec;
+import java.util.Base64;
 
 import com.aliyun.ati.sdk.exception.AtiException;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
-import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLogResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class BadgeVerificationServiceTest {
 
+    private static String testPublicKeyPem;
+
     private AtiTransparencyClient transparencyClient;
-    private RootKeyManager rootKeyManager;
     private TlSealVerifier sealVerifier;
     private MerkleProofVerifier merkleVerifier;
     private BadgeVerificationService service;
 
+    @BeforeAll
+    static void generateKeys() throws Exception {
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("EC");
+        kpg.initialize(new ECGenParameterSpec("secp256r1"));
+        KeyPair kp = kpg.generateKeyPair();
+        String b64 = Base64.getEncoder().encodeToString(
+            kp.getPublic().getEncoded());
+        testPublicKeyPem = "-----BEGIN PUBLIC KEY-----\\n"
+            + b64 + "\\n-----END PUBLIC KEY-----";
+    }
+
     @BeforeEach
     void setUp() {
         transparencyClient = mock(AtiTransparencyClient.class);
-        rootKeyManager = mock(RootKeyManager.class);
         sealVerifier = mock(TlSealVerifier.class);
         merkleVerifier = mock(MerkleProofVerifier.class);
         service = new BadgeVerificationService(
-            transparencyClient, rootKeyManager, sealVerifier, merkleVerifier);
+            transparencyClient, sealVerifier, merkleVerifier);
     }
 
     @Test
     void shouldReturnVerifiedForActiveAgent() throws Exception {
         TransparencyLogResponse response = buildResponse("ACTIVE");
-        PublicKey tlKey = mock(PublicKey.class);
 
         when(transparencyClient.getLatestLog("test-agent")).thenReturn(response);
-        when(rootKeyManager.getPublicKey("key-001")).thenReturn(tlKey);
-        when(sealVerifier.verify(eq(response), eq(tlKey))).thenReturn(true);
+        when(sealVerifier.verify(eq(response), any())).thenReturn(true);
         when(merkleVerifier.verify(response.getMerkleProof())).thenReturn(true);
 
         ServerVerificationResult result = service.verifyServer("test-agent");
@@ -67,11 +80,9 @@ class BadgeVerificationServiceTest {
     @Test
     void shouldReturnSealInvalidWhenSealFails() throws Exception {
         TransparencyLogResponse response = buildResponse("ACTIVE");
-        PublicKey tlKey = mock(PublicKey.class);
 
         when(transparencyClient.getLatestLog("test-agent")).thenReturn(response);
-        when(rootKeyManager.getPublicKey("key-001")).thenReturn(tlKey);
-        when(sealVerifier.verify(eq(response), eq(tlKey))).thenReturn(false);
+        when(sealVerifier.verify(eq(response), any())).thenReturn(false);
 
         ServerVerificationResult result = service.verifyServer("test-agent");
 
@@ -82,11 +93,9 @@ class BadgeVerificationServiceTest {
     @Test
     void shouldReturnMerkleInvalidWhenMerkleFails() throws Exception {
         TransparencyLogResponse response = buildResponse("ACTIVE");
-        PublicKey tlKey = mock(PublicKey.class);
 
         when(transparencyClient.getLatestLog("test-agent")).thenReturn(response);
-        when(rootKeyManager.getPublicKey("key-001")).thenReturn(tlKey);
-        when(sealVerifier.verify(eq(response), eq(tlKey))).thenReturn(true);
+        when(sealVerifier.verify(eq(response), any())).thenReturn(true);
         when(merkleVerifier.verify(response.getMerkleProof())).thenReturn(false);
 
         ServerVerificationResult result = service.verifyServer("test-agent");
@@ -109,11 +118,9 @@ class BadgeVerificationServiceTest {
     @Test
     void shouldVerifyClientWithIdentityFingerprint() throws Exception {
         TransparencyLogResponse response = buildResponse("ACTIVE");
-        PublicKey tlKey = mock(PublicKey.class);
 
         when(transparencyClient.getLatestLog("test-agent")).thenReturn(response);
-        when(rootKeyManager.getPublicKey("key-001")).thenReturn(tlKey);
-        when(sealVerifier.verify(eq(response), eq(tlKey))).thenReturn(true);
+        when(sealVerifier.verify(eq(response), any())).thenReturn(true);
         when(merkleVerifier.verify(response.getMerkleProof())).thenReturn(true);
 
         ClientVerificationResult result = service.verifyClient("test-agent");
@@ -139,7 +146,8 @@ class BadgeVerificationServiceTest {
                 },
                 "seal": {
                     "keyId": "key-001",
-                    "signature": "sig-base64"
+                    "signature": "sig-base64",
+                    "publicKey": "%s"
                 },
                 "merkleProof": {
                     "leafHash": "abc",
@@ -149,7 +157,7 @@ class BadgeVerificationServiceTest {
                     "rootHash": "abc"
                 }
             }
-            """.formatted(status);
+            """.formatted(status, testPublicKeyPem);
         return new ObjectMapper().readValue(json, TransparencyLogResponse.class);
     }
 }

@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Configuration;
 
 import com.aliyun.ati.sdk.agent.server.ClientRequestVerifier;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
-import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.MerkleProofVerifier;
@@ -43,12 +42,6 @@ public class AtiServerAutoConfiguration {
     }
 
     @Bean
-    public RootKeyManager rootKeyManager(
-            AtiTransparencyClient transparencyClient) {
-        return new RootKeyManager(transparencyClient);
-    }
-
-    @Bean
     public TlSealVerifier tlSealVerifier() {
         return new TlSealVerifier();
     }
@@ -61,11 +54,10 @@ public class AtiServerAutoConfiguration {
     @Bean
     public BadgeVerificationService badgeVerificationService(
             AtiTransparencyClient client,
-            RootKeyManager rootKeyManager,
             TlSealVerifier sealVerifier,
             MerkleProofVerifier merkleVerifier) {
         return new BadgeVerificationService(
-            client, rootKeyManager, sealVerifier, merkleVerifier);
+            client, sealVerifier, merkleVerifier);
     }
 
     @Bean

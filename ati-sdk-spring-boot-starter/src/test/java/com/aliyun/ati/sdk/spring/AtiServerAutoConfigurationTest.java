@@ -9,7 +9,6 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.agent.server.ClientRequestVerifier;
 import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
-import com.aliyun.ati.sdk.transparency.RootKeyManager;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.MerkleProofVerifier;
@@ -31,8 +30,6 @@ class AtiServerAutoConfigurationTest {
                     ClientRequestVerifier.class);
                 assertThat(context).hasSingleBean(
                     AtiTransparencyClient.class);
-                assertThat(context).hasSingleBean(
-                    RootKeyManager.class);
                 assertThat(context).hasSingleBean(
                     TlSealVerifier.class);
                 assertThat(context).hasSingleBean(
