@@ -11,46 +11,28 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
-import java.util.Objects;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 
 import com.aliyun.ati.sdk.exception.AtiException;
 
 /**
- * Factory for creating {@link SSLContext} with IDCA-rooted trust and
+ * Factory for creating {@link SSLContext} with standard PKI trust and
  * ATI certificate capture.
  *
  * <p>The SSLContext created by this factory:</p>
  * <ol>
- *   <li>Validates the server certificate against the ATI private CA
- *       (IDCA) chain via the provided {@link X509TrustManager}</li>
+ *   <li>Validates the server certificate against the system CA trust
+ *       store (public CA — standard HTTPS)</li>
  *   <li>Captures the server certificate for post-handshake DANE/Badge
  *       verification via {@link CertificateCapturingTrustManager}</li>
- *   <li>Optionally includes a client identity certificate for mTLS</li>
+ *   <li>Optionally includes an IDCA identity certificate for mTLS</li>
  * </ol>
- *
- * <h2>Usage</h2>
- * <pre>{@code
- * X509TrustManager idcaTm = idcaChainVerifier.createTrustManager();
- * AtiVerifiedSslContextFactory.Result result =
- *     AtiVerifiedSslContextFactory.create(idcaTm, null, null);
- * SSLContext sslContext = result.getSslContext();
- * CertificateCapturingTrustManager tm = result.getTrustManager();
- *
- * HttpClient httpClient = HttpClient.newBuilder()
- *     .sslContext(sslContext)
- *     .build();
- *
- * // After TLS handshake, retrieve captured certificate
- * X509Certificate serverCert = tm.getLastCapturedServerCert();
- * }</pre>
- *
- * @see CertificateCapturingTrustManager
  */
 public final class AtiVerifiedSslContextFactory {
 
@@ -59,28 +41,18 @@ public final class AtiVerifiedSslContextFactory {
     }
 
     /**
-     * Creates an SSLContext with IDCA-rooted trust, certificate capture,
-     * and optional mTLS.
+     * Creates an SSLContext with system CA trust, certificate capture,
+     * and optional mTLS identity certificate.
      *
-     * @param idcaTrustManager   the IDCA trust manager for validating server
-     *                           certificates against the ATI private CA chain
-     * @param certificatePath    path to a PEM-encoded X.509 identity
-     *                           certificate (prefix with {@code classpath:}
-     *                           for classpath resources), or {@code null}
-     *                           for server-only authentication
+     * @param certificatePath    path to a PEM-encoded IDCA identity
+     *                           certificate for mTLS, or {@code null}
      * @param privateKeyPath     path to a PEM-encoded PKCS8 private key
      *                           matching the certificate, or {@code null}
      * @return a {@link Result} containing the SSLContext and capturing
      *         trust manager
-     * @throws NullPointerException if idcaTrustManager is null
-     * @throws AtiException if certificatePath is set without privateKeyPath
-     *                      or vice versa, or if SSL context creation fails
      */
-    public static Result create(X509TrustManager idcaTrustManager,
-                                String certificatePath,
+    public static Result create(String certificatePath,
                                 String privateKeyPath) {
-        Objects.requireNonNull(idcaTrustManager,
-            "idcaTrustManager must not be null");
 
         if (certificatePath != null && privateKeyPath == null) {
             throw new AtiException(
@@ -92,11 +64,10 @@ public final class AtiVerifiedSslContextFactory {
         }
 
         try {
-            // Wrap IDCA trust manager with capturing trust manager
+            X509TrustManager systemTm = getSystemTrustManager();
             CertificateCapturingTrustManager capturingTm =
-                new CertificateCapturingTrustManager(idcaTrustManager);
+                new CertificateCapturingTrustManager(systemTm);
 
-            // Load client identity for mTLS if provided
             KeyManager[] keyManagers = null;
             if (certificatePath != null) {
                 keyManagers = loadKeyManagers(
@@ -114,6 +85,20 @@ public final class AtiVerifiedSslContextFactory {
             throw new AtiException(
                 "Failed to create SSL context", e);
         }
+    }
+
+    private static X509TrustManager getSystemTrustManager()
+            throws Exception {
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init((KeyStore) null);
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+                return (X509TrustManager) tm;
+            }
+        }
+        throw new AtiException(
+            "No X509TrustManager found in system trust store");
     }
 
     private static KeyManager[] loadKeyManagers(

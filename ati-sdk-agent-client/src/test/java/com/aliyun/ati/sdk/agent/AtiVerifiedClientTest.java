@@ -1,7 +1,6 @@
 package com.aliyun.ati.sdk.agent;
 
 import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
-import com.aliyun.ati.sdk.agent.verification.IdcaChainVerifier;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.discovery.AtiName;
 
@@ -15,17 +14,9 @@ class AtiVerifiedClientTest {
 
     @Test
     void shouldBuildWithRequiredDependencies() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-        IdcaChainVerifier idcaChainVerifier =
-            mock(IdcaChainVerifier.class);
-
         AtiVerifiedClient client = AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .idcaChainVerifier(idcaChainVerifier)
+            .discoveryClient(mock(AtiDiscoveryClient.class))
+            .connectionVerifier(mock(DefaultConnectionVerifier.class))
             .build();
 
         assertThat(client).isNotNull();
@@ -33,17 +24,9 @@ class AtiVerifiedClientTest {
 
     @Test
     void shouldRejectNullName() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-        IdcaChainVerifier idcaChainVerifier =
-            mock(IdcaChainVerifier.class);
-
         AtiVerifiedClient client = AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .idcaChainVerifier(idcaChainVerifier)
+            .discoveryClient(mock(AtiDiscoveryClient.class))
+            .connectionVerifier(mock(DefaultConnectionVerifier.class))
             .build();
 
         assertThatThrownBy(() -> client.connect(null))
@@ -53,17 +36,9 @@ class AtiVerifiedClientTest {
 
     @Test
     void shouldRejectNullOptions() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-        IdcaChainVerifier idcaChainVerifier =
-            mock(IdcaChainVerifier.class);
-
         AtiVerifiedClient client = AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .idcaChainVerifier(idcaChainVerifier)
+            .discoveryClient(mock(AtiDiscoveryClient.class))
+            .connectionVerifier(mock(DefaultConnectionVerifier.class))
             .build();
 
         AtiName name = AtiName.parse("ati://v1.agent.example.com");
@@ -74,33 +49,10 @@ class AtiVerifiedClientTest {
     }
 
     @Test
-    void shouldRejectMissingIdcaChainVerifier() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-
-        assertThatThrownBy(() -> AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .build())
-            .isInstanceOf(NullPointerException.class)
-            .hasMessageContaining("idcaChainVerifier");
-    }
-
-    @Test
     void shouldAcceptIdentityCertAndKeyPaths() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-        IdcaChainVerifier idcaChainVerifier =
-            mock(IdcaChainVerifier.class);
-
         AtiVerifiedClient client = AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .idcaChainVerifier(idcaChainVerifier)
+            .discoveryClient(mock(AtiDiscoveryClient.class))
+            .connectionVerifier(mock(DefaultConnectionVerifier.class))
             .identityCertificatePath("/path/to/cert.pem")
             .identityPrivateKeyPath("/path/to/key.pem")
             .build();
@@ -110,17 +62,9 @@ class AtiVerifiedClientTest {
 
     @Test
     void shouldBuildWithoutIdentityCertPaths() {
-        AtiDiscoveryClient discoveryClient =
-            mock(AtiDiscoveryClient.class);
-        DefaultConnectionVerifier connectionVerifier =
-            mock(DefaultConnectionVerifier.class);
-        IdcaChainVerifier idcaChainVerifier =
-            mock(IdcaChainVerifier.class);
-
         AtiVerifiedClient client = AtiVerifiedClient.builder()
-            .discoveryClient(discoveryClient)
-            .connectionVerifier(connectionVerifier)
-            .idcaChainVerifier(idcaChainVerifier)
+            .discoveryClient(mock(AtiDiscoveryClient.class))
+            .connectionVerifier(mock(DefaultConnectionVerifier.class))
             .build();
 
         assertThat(client).isNotNull();
