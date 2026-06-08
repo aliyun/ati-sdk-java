@@ -2,8 +2,12 @@ package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.server.Ssl;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
+import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -74,5 +78,26 @@ public class AtiServerAutoConfiguration {
     public ClientRequestVerifier clientRequestVerifier(
             CachingBadgeVerificationService service) {
         return new ClientRequestVerifier(service);
+    }
+
+    @Bean
+    @ConditionalOnClass(ConfigurableServletWebServerFactory.class)
+    public WebServerFactoryCustomizer<ConfigurableServletWebServerFactory>
+            atiServerSslCustomizer(AtiSdkProperties props) {
+        return factory -> {
+            AtiSdkProperties.Server serverProps = props.getServer();
+            if (serverProps.getCertificate() == null) {
+                return;
+            }
+            Ssl ssl = new Ssl();
+            ssl.setCertificate(serverProps.getCertificate());
+            ssl.setCertificatePrivateKey(serverProps.getPrivateKey());
+            if (props.getIdca().getTrustCertificate() != null) {
+                ssl.setTrustCertificate(
+                    props.getIdca().getTrustCertificate());
+                ssl.setClientAuth(Ssl.ClientAuth.NEED);
+            }
+            factory.setSsl(ssl);
+        };
     }
 }

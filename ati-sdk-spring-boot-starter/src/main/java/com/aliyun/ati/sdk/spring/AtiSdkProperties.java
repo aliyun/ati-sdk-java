@@ -132,9 +132,28 @@ public class AtiSdkProperties {
     }
 
     /**
-     * Server-side configuration.
+     * Server-side TLS certificate configuration (public CA, PEM format).
      */
     public static class Server {
+
+        private String certificate;
+        private String privateKey;
+
+        public String getCertificate() {
+            return certificate;
+        }
+
+        public void setCertificate(String certificate) {
+            this.certificate = certificate;
+        }
+
+        public String getPrivateKey() {
+            return privateKey;
+        }
+
+        public void setPrivateKey(String privateKey) {
+            this.privateKey = privateKey;
+        }
     }
 
     /**
