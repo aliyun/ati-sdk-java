@@ -33,6 +33,55 @@ public final class BadgeVerifier {
     }
 
     /**
+     * Pre-verifies by querying the Transparency Log for the agent's badge.
+     * Does not compare against any certificate.
+     *
+     * @param agentId the agent identifier
+     * @return the TL verification result
+     */
+    public ServerVerificationResult preVerify(String agentId) {
+        Objects.requireNonNull(agentId, "agentId must not be null");
+        return badgeService.verifyServer(agentId);
+    }
+
+    /**
+     * Post-verifies the server certificate fingerprint against a
+     * previously fetched TL result.
+     *
+     * @param serverCert the server certificate from the TLS handshake
+     * @param tlResult   the TL result from {@link #preVerify(String)}
+     * @return the verification result
+     */
+    public VerificationResult postVerify(
+            X509Certificate serverCert,
+            ServerVerificationResult tlResult) {
+        Objects.requireNonNull(serverCert,
+            "serverCert must not be null");
+        Objects.requireNonNull(tlResult,
+            "tlResult must not be null");
+
+        if (tlResult.getStatus() != VerificationStatus.VERIFIED) {
+            return VerificationResult.failure(
+                VerificationResult.Type.BADGE,
+                VerificationResult.Status.ERROR,
+                tlResult.getStatus().name());
+        }
+
+        String actual = CertUtils.sha256Fingerprint(serverCert);
+        String expected = tlResult.getServerCertFingerprint();
+
+        if (CertUtils.fingerprintMatches(actual, expected)) {
+            return VerificationResult.success(
+                VerificationResult.Type.BADGE);
+        }
+
+        return VerificationResult.failure(
+            VerificationResult.Type.BADGE,
+            VerificationResult.Status.MISMATCH,
+            "Certificate fingerprint mismatch");
+    }
+
+    /**
      * Verifies the server certificate against the Transparency Log badge.
      *
      * @param agentId    the agent identifier

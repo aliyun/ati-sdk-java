@@ -113,6 +113,101 @@ class BadgeVerifierTest {
             .hasMessageContaining("serverCert");
     }
 
+    // --- preVerify tests ---
+
+    @Test
+    void shouldReturnTlResultOnPreVerify() {
+        ServerVerificationResult expected =
+            ServerVerificationResult.verified("SHA-256:abc", AGENT_ID);
+        when(badgeService.verifyServer(AGENT_ID)).thenReturn(expected);
+
+        ServerVerificationResult result =
+            verifier.preVerify(AGENT_ID);
+
+        assertThat(result).isSameAs(expected);
+    }
+
+    @Test
+    void shouldRejectNullAgentIdForPreVerify() {
+        assertThatThrownBy(() -> verifier.preVerify(null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("agentId");
+    }
+
+    // --- postVerify tests ---
+
+    @Test
+    void shouldReturnSuccessOnPostVerifyMatch()
+            throws CertificateEncodingException {
+        String expectedFingerprint =
+            CertUtils.sha256Fingerprint(mockCertWithEncoded(CERT_BYTES));
+        ServerVerificationResult tlResult =
+            ServerVerificationResult.verified(
+                expectedFingerprint, AGENT_ID);
+
+        X509Certificate serverCert = mockCertWithEncoded(CERT_BYTES);
+        VerificationResult result =
+            verifier.postVerify(serverCert, tlResult);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getType())
+            .isEqualTo(VerificationResult.Type.BADGE);
+    }
+
+    @Test
+    void shouldReturnMismatchOnPostVerifyDifferentFingerprint()
+            throws CertificateEncodingException {
+        String differentFingerprint = "SHA-256:0000000000000000"
+            + "0000000000000000000000000000000000000000000000000000000000000000";
+        ServerVerificationResult tlResult =
+            ServerVerificationResult.verified(
+                differentFingerprint, AGENT_ID);
+
+        X509Certificate serverCert = mockCertWithEncoded(CERT_BYTES);
+        VerificationResult result =
+            verifier.postVerify(serverCert, tlResult);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getStatus())
+            .isEqualTo(VerificationResult.Status.MISMATCH);
+    }
+
+    @Test
+    void shouldReturnErrorOnPostVerifyWhenNotVerified() {
+        ServerVerificationResult tlResult =
+            ServerVerificationResult.failed(
+                VerificationStatus.AGENT_REVOKED, AGENT_ID);
+
+        X509Certificate cert = mock(X509Certificate.class);
+        VerificationResult result =
+            verifier.postVerify(cert, tlResult);
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getStatus())
+            .isEqualTo(VerificationResult.Status.ERROR);
+    }
+
+    @Test
+    void shouldRejectNullCertForPostVerify() {
+        ServerVerificationResult tlResult =
+            ServerVerificationResult.verified("SHA-256:abc", AGENT_ID);
+
+        assertThatThrownBy(
+                () -> verifier.postVerify(null, tlResult))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("serverCert");
+    }
+
+    @Test
+    void shouldRejectNullTlResultForPostVerify() {
+        X509Certificate cert = mock(X509Certificate.class);
+
+        assertThatThrownBy(
+                () -> verifier.postVerify(cert, null))
+            .isInstanceOf(NullPointerException.class)
+            .hasMessageContaining("tlResult");
+    }
+
     private static X509Certificate mockCertWithEncoded(byte[] encoded)
             throws CertificateEncodingException {
         X509Certificate cert = mock(X509Certificate.class);

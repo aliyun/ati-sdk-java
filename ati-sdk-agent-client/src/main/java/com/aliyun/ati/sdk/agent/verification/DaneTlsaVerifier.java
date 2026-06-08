@@ -4,6 +4,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 import com.aliyun.ati.sdk.crypto.CertUtils;
@@ -34,6 +37,112 @@ public final class DaneTlsaVerifier {
     public DaneTlsaVerifier(Duration timeout) {
         this.timeout = Objects.requireNonNull(timeout,
             "timeout must not be null");
+    }
+
+    /**
+     * A TLSA expectation parsed from a DNS TLSA record.
+     *
+     * @param selector     the TLSA selector (0 = full cert, 1 = SPKI)
+     * @param matchingType the matching type (0 = exact, 1 = SHA-256, 2 = SHA-512)
+     * @param expectedData the expected certificate association data
+     */
+    public record TlsaExpectation(int selector, int matchingType,
+                                  byte[] expectedData) {}
+
+    /**
+     * Queries DNS for TLSA records and returns the expectations
+     * without comparing against any certificate.
+     *
+     * @param host the host to look up
+     * @param port the port (used to form the TLSA name)
+     * @return a list of TLSA expectations, or an empty list if none found
+     */
+    public List<TlsaExpectation> getTlsaExpectations(String host,
+                                                     int port) {
+        Objects.requireNonNull(host, "host must not be null");
+
+        String tlsaName = "_" + port + "._tcp." + host;
+        LOG.debug("Looking up TLSA expectations: {}", tlsaName);
+
+        try {
+            Lookup lookup = new Lookup(tlsaName, Type.TLSA);
+            SimpleResolver resolver = new SimpleResolver();
+            resolver.setTimeout(timeout);
+            lookup.setResolver(resolver);
+            Record[] records = lookup.run();
+
+            if (records == null || records.length == 0) {
+                LOG.debug("No TLSA record found for {}", tlsaName);
+                return Collections.emptyList();
+            }
+
+            List<TlsaExpectation> expectations = new ArrayList<>();
+            for (Record record : records) {
+                if (!(record instanceof TLSARecord tlsa)) {
+                    continue;
+                }
+                if (tlsa.getCertificateUsage() == USAGE_DANE_EE) {
+                    expectations.add(new TlsaExpectation(
+                        tlsa.getSelector(),
+                        tlsa.getMatchingType(),
+                        tlsa.getCertificateAssociationData()));
+                }
+            }
+            return Collections.unmodifiableList(expectations);
+        } catch (Exception e) {
+            LOG.error("TLSA lookup failed for {}", tlsaName, e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Compares a server certificate against previously fetched TLSA
+     * expectations.
+     *
+     * @param serverCert   the server certificate from the TLS handshake
+     * @param expectations the TLSA expectations from
+     *                     {@link #getTlsaExpectations(String, int)}
+     * @return the verification result
+     */
+    public VerificationResult postVerify(
+            X509Certificate serverCert,
+            List<TlsaExpectation> expectations) {
+        Objects.requireNonNull(serverCert,
+            "serverCert must not be null");
+        Objects.requireNonNull(expectations,
+            "expectations must not be null");
+
+        if (expectations.isEmpty()) {
+            return VerificationResult.failure(
+                VerificationResult.Type.DANE,
+                VerificationResult.Status.NOT_FOUND,
+                "No TLSA expectations available");
+        }
+
+        for (TlsaExpectation exp : expectations) {
+            if (exp.selector() == SELECTOR_SPKI
+                    && exp.matchingType() == MATCHING_SHA256) {
+                byte[] spki =
+                    serverCert.getPublicKey().getEncoded();
+                String actualHash = CertUtils.sha256Hex(spki);
+                String expectedHash =
+                    bytesToHex(exp.expectedData());
+
+                if (MessageDigest.isEqual(
+                        actualHash.getBytes(StandardCharsets.UTF_8),
+                        expectedHash.getBytes(
+                            StandardCharsets.UTF_8))) {
+                    LOG.debug("DANE post-verify succeeded");
+                    return VerificationResult.success(
+                        VerificationResult.Type.DANE);
+                }
+            }
+        }
+
+        return VerificationResult.failure(
+            VerificationResult.Type.DANE,
+            VerificationResult.Status.MISMATCH,
+            "TLSA fingerprint mismatch");
     }
 
     public VerificationResult verify(String host, int port,
