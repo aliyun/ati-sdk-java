@@ -2,6 +2,8 @@ package com.aliyun.ati.sdk.discovery;
 
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 import org.slf4j.Logger;
@@ -15,8 +17,12 @@ import org.xbill.DNS.Type;
 /**
  * DNS-based implementation of {@link AtiDiscoveryClient}.
  *
- * <p>Queries {@code _ati-badge.{host}} TXT records using dnsjava, parses the result
- * with {@link AtiBadgeRecord}, and builds an {@link AtiAgentDescriptor}.
+ * <p>Queries {@code _ati-badge.{host}} TXT records using dnsjava, parses all
+ * records with {@link AtiBadgeRecord}, and matches the version from the
+ * {@link AtiName} to build an {@link AtiAgentDescriptor}.
+ *
+ * <p>When multiple TXT records exist (multi-version), the record whose
+ * {@code version} field matches the requested version is selected.
  */
 public final class DnsAtiDiscoveryClient implements AtiDiscoveryClient {
 
@@ -25,18 +31,10 @@ public final class DnsAtiDiscoveryClient implements AtiDiscoveryClient {
 
     private final Duration timeout;
 
-    /**
-     * Creates a client with the default timeout of 5 seconds.
-     */
     public DnsAtiDiscoveryClient() {
         this(DEFAULT_TIMEOUT);
     }
 
-    /**
-     * Creates a client with a custom timeout.
-     *
-     * @param timeout the DNS lookup timeout
-     */
     public DnsAtiDiscoveryClient(Duration timeout) {
         this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
     }
@@ -50,18 +48,48 @@ public final class DnsAtiDiscoveryClient implements AtiDiscoveryClient {
         String badgeUrl = null;
         String agentId = null;
 
-        String badgeTxt = lookupTxt("_ati-badge." + host);
-        if (badgeTxt != null) {
-            AtiBadgeRecord badge = AtiBadgeRecord.parse(badgeTxt);
-            badgeUrl = badge.getUrl();
-            agentId = badge.getAgentId();
+        List<String> txtRecords = lookupAllTxt("_ati-badge." + host);
+        AtiBadgeRecord matched = matchVersion(txtRecords, version);
+        if (matched != null) {
+            badgeUrl = matched.getUrl();
+            agentId = matched.getAgentId();
         }
 
         return new AtiAgentDescriptor(host, version, badgeUrl, agentId);
     }
 
+    private AtiBadgeRecord matchVersion(List<String> txtRecords, String version) {
+        AtiBadgeRecord fallback = null;
+        for (String txt : txtRecords) {
+            try {
+                AtiBadgeRecord badge = AtiBadgeRecord.parse(txt);
+                String badgeVersion = badge.getVersion();
+                if (versionsMatch(badgeVersion, version)) {
+                    return badge;
+                }
+                if (fallback == null) {
+                    fallback = badge;
+                }
+            } catch (Exception e) {
+                LOG.debug("Skipping unparseable badge record: {}", e.getMessage());
+            }
+        }
+        if (fallback != null) {
+            LOG.debug("No exact version match for '{}', using first available: '{}'",
+                version, fallback.getVersion());
+        }
+        return fallback;
+    }
+
+    private static boolean versionsMatch(String badgeVersion, String requestedVersion) {
+        // badge version may have "v" prefix (e.g. "v1.0.0"), AtiName version does not (e.g. "1.0.0")
+        String normalized = badgeVersion.startsWith("v") ? badgeVersion.substring(1) : badgeVersion;
+        return normalized.equals(requestedVersion);
+    }
+
     @SuppressWarnings("unchecked")
-    private String lookupTxt(String name) {
+    private List<String> lookupAllTxt(String name) {
+        List<String> results = new ArrayList<>();
         try {
             Lookup lookup = new Lookup(name, Type.TXT);
             SimpleResolver resolver = new SimpleResolver();
@@ -70,16 +98,19 @@ public final class DnsAtiDiscoveryClient implements AtiDiscoveryClient {
             Record[] records = lookup.run();
             if (records == null || records.length == 0) {
                 LOG.debug("No TXT record found for {}", name);
-                return null;
+                return results;
             }
-            TXTRecord txt = (TXTRecord) records[0];
-            return String.join("", txt.getStrings());
+            for (Record record : records) {
+                if (record instanceof TXTRecord txt) {
+                    results.add(String.join("", txt.getStrings()));
+                }
+            }
+            LOG.debug("Found {} TXT record(s) for {}", results.size(), name);
         } catch (UnknownHostException e) {
             LOG.warn("DNS resolver host not found for {}: {}", name, e.getMessage());
-            return null;
         } catch (Exception e) {
             LOG.warn("DNS lookup failed for {}: {}", name, e.getMessage());
-            return null;
         }
+        return results;
     }
 }
