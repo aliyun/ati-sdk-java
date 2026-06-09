@@ -10,17 +10,31 @@ import java.net.http.HttpResponse;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.MessageDigest;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.List;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+
+import com.aliyun.ati.sdk.agent.http.CertificateCapturingTrustManager;
+import com.aliyun.ati.sdk.agent.verification.BadgeVerifier;
+import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
+import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
+import com.aliyun.ati.sdk.agent.verification.VerificationResult;
+import com.aliyun.ati.sdk.crypto.CertUtils;
+import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
+import com.aliyun.ati.sdk.transparency.verification.ServerVerificationResult;
+import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
 
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
@@ -42,6 +56,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 /**
  * Integration test validating the full mTLS connection flow between two ATI agents.
@@ -183,6 +198,147 @@ class AgentMtlsIntegrationTest {
         // Should fail because server doesn't trust this CA
         assertThatThrownBy(() -> httpClient.send(request, HttpResponse.BodyHandlers.ofString()))
             .isInstanceOf(Exception.class);
+    }
+
+    @Test
+    void shouldCompleteFullVerificationWithDaneAndBadge() throws Exception {
+        // Step 1: Build client SSLContext with CertificateCapturingTrustManager
+        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        trustStore.load(null, null);
+        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+        X509TrustManager baseTm = null;
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+                baseTm = (X509TrustManager) tm;
+                break;
+            }
+        }
+        CertificateCapturingTrustManager capturingTm =
+            new CertificateCapturingTrustManager(baseTm);
+
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(null, null);
+        keyStore.setKeyEntry("identity", identityKeyPair.getPrivate(),
+            new char[0], new Certificate[]{identityCert});
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, new char[0]);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(kmf.getKeyManagers(),
+            new TrustManager[]{capturingTm}, null);
+
+        HttpClient httpClient = HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .build();
+
+        // Step 2: Pre-verify — compute expected DANE + Badge values
+        // DANE expectation: SPKI SHA-256 of server cert
+        byte[] spki = serverCert.getPublicKey().getEncoded();
+        byte[] spkiHash = MessageDigest.getInstance("SHA-256").digest(spki);
+        DaneTlsaVerifier.TlsaExpectation daneExpectation =
+            new DaneTlsaVerifier.TlsaExpectation(1, 1, spkiHash);
+
+        // Badge expectation: full cert SHA-256 fingerprint
+        String serverFingerprint = CertUtils.sha256Fingerprint(serverCert);
+        ServerVerificationResult badgeTlResult =
+            ServerVerificationResult.verified(serverFingerprint, "test-agent");
+
+        AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
+            "localhost", "1", null, "test-agent");
+        PreVerificationResult preResult = new PreVerificationResult(
+            descriptor, VerificationPolicy.GOLD,
+            List.of(daneExpectation), badgeTlResult);
+
+        // Step 3: Send business request → triggers TLS handshake
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
+            .GET()
+            .build();
+        HttpResponse<String> response = httpClient.send(request,
+            HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).isEqualTo(200);
+
+        // Step 4: Post-verify — compare captured cert vs expectations
+        X509Certificate capturedCert =
+            capturingTm.getLastCapturedServerCert();
+        assertThat(capturedCert).isNotNull();
+
+        // DANE post-verify
+        DaneTlsaVerifier daneVerifier = new DaneTlsaVerifier();
+        VerificationResult daneResult = daneVerifier.postVerify(
+            capturedCert, List.of(daneExpectation));
+        assertThat(daneResult.isSuccess()).isTrue();
+        assertThat(daneResult.getType())
+            .isEqualTo(VerificationResult.Type.DANE);
+
+        // Badge post-verify
+        BadgeVerifier badgeVerifier = new BadgeVerifier(
+            mock(CachingBadgeVerificationService.class));
+        VerificationResult badgeResult = badgeVerifier.postVerify(
+            capturedCert, badgeTlResult);
+        assertThat(badgeResult.isSuccess()).isTrue();
+        assertThat(badgeResult.getType())
+            .isEqualTo(VerificationResult.Type.BADGE);
+    }
+
+    @Test
+    void shouldFailDaneWhenFingerprintMismatch() throws Exception {
+        // Same mTLS setup
+        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        trustStore.load(null, null);
+        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+        X509TrustManager baseTm = null;
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+                baseTm = (X509TrustManager) tm;
+                break;
+            }
+        }
+        CertificateCapturingTrustManager capturingTm =
+            new CertificateCapturingTrustManager(baseTm);
+
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(null, null);
+        keyStore.setKeyEntry("identity", identityKeyPair.getPrivate(),
+            new char[0], new Certificate[]{identityCert});
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, new char[0]);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(kmf.getKeyManagers(),
+            new TrustManager[]{capturingTm}, null);
+
+        HttpClient httpClient = HttpClient.newBuilder()
+            .sslContext(sslContext).build();
+
+        // Send request to trigger handshake
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
+            .GET().build();
+        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        X509Certificate capturedCert =
+            capturingTm.getLastCapturedServerCert();
+
+        // DANE with wrong expected fingerprint
+        byte[] wrongHash = new byte[32];
+        DaneTlsaVerifier.TlsaExpectation wrongExpectation =
+            new DaneTlsaVerifier.TlsaExpectation(1, 1, wrongHash);
+
+        DaneTlsaVerifier daneVerifier = new DaneTlsaVerifier();
+        VerificationResult daneResult = daneVerifier.postVerify(
+            capturedCert, List.of(wrongExpectation));
+        assertThat(daneResult.isSuccess()).isFalse();
+        assertThat(daneResult.getStatus())
+            .isEqualTo(VerificationResult.Status.MISMATCH);
     }
 
     // --- Certificate generation helpers (using BouncyCastle) ---
