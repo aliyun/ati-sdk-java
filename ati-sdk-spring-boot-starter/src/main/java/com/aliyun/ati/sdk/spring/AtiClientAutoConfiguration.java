@@ -121,13 +121,12 @@ public class AtiClientAutoConfiguration {
     }
 
     private static VerificationPolicy parsePolicy(String name) {
-        return switch (name.toUpperCase()) {
-            case "BRONZE" -> VerificationPolicy.BRONZE;
-            case "SILVER" -> VerificationPolicy.SILVER;
-            case "GOLD" -> VerificationPolicy.GOLD;
-            default -> throw new IllegalArgumentException(
+        try {
+            return VerificationPolicy.valueOf(name.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
                 "Unknown verification policy: " + name
                     + ". Expected: BRONZE, SILVER, or GOLD");
-        };
+        }
     }
 }
