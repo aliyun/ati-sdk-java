@@ -109,7 +109,7 @@ public final class AtiVerifiedClient {
         // Step 2: Pre-verify (DNS + TL queries, no TLS handshake)
         PreVerificationResult preResult =
             connectionVerifier.preVerify(
-                descriptor, options.getPolicy());
+                descriptor, options.getPolicy(), options.getPort());
 
         // Step 3: Create SSL context
         AtiVerifiedSslContextFactory.Result sslResult =

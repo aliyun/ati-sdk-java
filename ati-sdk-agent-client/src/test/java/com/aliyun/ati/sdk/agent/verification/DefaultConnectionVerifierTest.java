@@ -43,7 +43,7 @@ class DefaultConnectionVerifierTest {
             "example.com", "v1", null, "agent-001");
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.BRONZE);
+            verifier.preVerify(descriptor, VerificationPolicy.BRONZE, 443);
 
         assertThat(result.getDaneExpectations()).isEmpty();
         assertThat(result.getBadgeResult()).isNull();
@@ -62,7 +62,7 @@ class DefaultConnectionVerifierTest {
             .thenReturn(expectations);
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.SILVER);
+            verifier.preVerify(descriptor, VerificationPolicy.SILVER, 443);
 
         assertThat(result.getDaneExpectations()).hasSize(1);
         assertThat(result.getBadgeResult()).isNull();
@@ -84,7 +84,7 @@ class DefaultConnectionVerifierTest {
         when(badgeVerifier.preVerify("agent-001")).thenReturn(badgeResult);
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.GOLD);
+            verifier.preVerify(descriptor, VerificationPolicy.GOLD, 443);
 
         assertThat(result.getDaneExpectations()).hasSize(1);
         assertThat(result.getBadgeResult()).isSameAs(badgeResult);
@@ -100,7 +100,7 @@ class DefaultConnectionVerifierTest {
             .thenReturn(Collections.emptyList());
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.GOLD);
+            verifier.preVerify(descriptor, VerificationPolicy.GOLD, 443);
 
         assertThat(result.getBadgeResult()).isNull();
         verify(badgeVerifier, never()).preVerify(anyString());
@@ -115,7 +115,7 @@ class DefaultConnectionVerifierTest {
             .thenThrow(new RuntimeException("DNS failure"));
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.SILVER);
+            verifier.preVerify(descriptor, VerificationPolicy.SILVER, 443);
 
         assertThat(result.getDaneExpectations()).isEmpty();
     }
@@ -131,7 +131,7 @@ class DefaultConnectionVerifierTest {
             .thenThrow(new RuntimeException("TL failure"));
 
         PreVerificationResult result =
-            verifier.preVerify(descriptor, VerificationPolicy.GOLD);
+            verifier.preVerify(descriptor, VerificationPolicy.GOLD, 443);
 
         assertThat(result.getBadgeResult()).isNull();
     }

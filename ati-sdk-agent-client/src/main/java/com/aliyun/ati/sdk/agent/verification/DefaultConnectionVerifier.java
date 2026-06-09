@@ -43,7 +43,8 @@ public final class DefaultConnectionVerifier {
      */
     public PreVerificationResult preVerify(
             AtiAgentDescriptor descriptor,
-            VerificationPolicy policy) {
+            VerificationPolicy policy,
+            int port) {
         Objects.requireNonNull(descriptor, "descriptor must not be null");
         Objects.requireNonNull(policy, "policy must not be null");
 
@@ -53,7 +54,7 @@ public final class DefaultConnectionVerifier {
         if (policy.ordinal() >= VerificationPolicy.SILVER.ordinal()) {
             try {
                 daneExpectations = daneVerifier.getTlsaExpectations(
-                    descriptor.getAgentHost(), 443);
+                    descriptor.getAgentHost(), port);
             } catch (Exception e) {
                 LOG.warn("DANE pre-verify failed: {}", e.getMessage());
             }
