@@ -1,6 +1,7 @@
 package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -38,9 +39,13 @@ public class AtiServerAutoConfiguration {
     @ConditionalOnMissingBean
     public AtiTransparencyClient atiTransparencyClient(
             AtiSdkProperties props) {
+        Duration connectTimeout = Duration.parse(
+            "PT" + props.getClient().getConnectTimeout());
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(connectTimeout)
+            .build();
         return new AtiTransparencyClient(
-            props.getTransparency().getBaseUrl(),
-            HttpClient.newHttpClient());
+            props.getTransparency().getBaseUrl(), httpClient);
     }
 
     @Bean
