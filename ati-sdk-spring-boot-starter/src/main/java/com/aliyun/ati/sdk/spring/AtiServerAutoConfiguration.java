@@ -4,6 +4,7 @@ import java.net.http.HttpClient;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
@@ -34,6 +35,7 @@ import com.aliyun.ati.sdk.transparency.verification.TlSealVerifier;
 public class AtiServerAutoConfiguration {
 
     @Bean
+    @ConditionalOnMissingBean
     public AtiTransparencyClient atiTransparencyClient(
             AtiSdkProperties props) {
         return new AtiTransparencyClient(
@@ -42,16 +44,19 @@ public class AtiServerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public TlSealVerifier tlSealVerifier() {
         return new TlSealVerifier();
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public MerkleProofVerifier merkleProofVerifier() {
         return new MerkleProofVerifier();
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public BadgeVerificationService badgeVerificationService(
             AtiTransparencyClient client,
             TlSealVerifier sealVerifier,
@@ -61,6 +66,7 @@ public class AtiServerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean
     public CachingBadgeVerificationService cachingBadgeVerificationService(
             BadgeVerificationService service) {
         return new CachingBadgeVerificationService(service);
