@@ -9,12 +9,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import com.aliyun.ati.sdk.transparency.model.TransparencyLogResponse;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
+import org.erdtman.jcs.JsonCanonicalizer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -72,7 +69,6 @@ class TlSealVerifierTest {
     }
 
     private String buildSignedResponse(String status) throws Exception {
-        // Build the content portion matching what the verifier will construct
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("status", status);
         content.put("schemaVersion", "ATI-TL-V1");
@@ -84,22 +80,22 @@ class TlSealVerifierTest {
         payload.put("certificates", certs);
         content.put("payload", payload);
 
-        // JCS-canonicalize with same settings as the verifier
-        ObjectMapper jcsMapper = JsonMapper.builder()
-            .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
-            .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-            .build();
-        jcsMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-        byte[] canonicalBytes = jcsMapper.writeValueAsBytes(content);
+        Map<String, Object> evidenceRef = new LinkedHashMap<>();
+        evidenceRef.put("evidenceId", "ev-001");
+        evidenceRef.put("evidenceUri", "https://example.com/evidence");
+        content.put("evidenceRef", evidenceRef);
 
-        // Sign
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(content);
+        JsonCanonicalizer canonicalizer = new JsonCanonicalizer(json);
+        byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
+
         Signature sig = Signature.getInstance("SHA256withECDSA");
         sig.initSign(keyPair.getPrivate());
         sig.update(canonicalBytes);
         byte[] signatureBytes = sig.sign();
         String signatureBase64 = Base64.getEncoder().encodeToString(signatureBytes);
 
-        // Build full JSON response
         return """
             {
                 "status": "%s",
@@ -109,6 +105,10 @@ class TlSealVerifierTest {
                     "certificates": {
                         "serverCertFingerprint": "SHA-256:abc123"
                     }
+                },
+                "evidenceRef": {
+                    "evidenceId": "ev-001",
+                    "evidenceUri": "https://example.com/evidence"
                 },
                 "seal": {
                     "canonicalization": "RFC8785-JCS",

@@ -7,6 +7,7 @@ dependencies {
     implementation("com.github.ben-manes.caffeine:caffeine:$caffeineVersion")
     implementation("com.fasterxml.jackson.core:jackson-databind:${project.property("jacksonVersion")}")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:${project.property("jacksonVersion")}")
+    implementation("io.github.erdtman:java-json-canonicalization:1.1")
     implementation("org.slf4j:slf4j-api:${project.property("slf4jVersion")}")
 
     testImplementation("org.junit.jupiter:junit-jupiter:${project.property("junitVersion")}")

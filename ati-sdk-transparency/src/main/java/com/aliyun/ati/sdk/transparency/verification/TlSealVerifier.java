@@ -9,11 +9,9 @@ import java.util.Objects;
 
 import com.aliyun.ati.sdk.transparency.model.TransparencyLogResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.json.JsonMapper;
 
+import org.erdtman.jcs.JsonCanonicalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,14 +30,11 @@ public final class TlSealVerifier {
 
     private static final Logger LOG = LoggerFactory.getLogger(TlSealVerifier.class);
 
-    private final ObjectMapper jcsMapper;
+    private final ObjectMapper objectMapper;
 
     public TlSealVerifier() {
-        this.jcsMapper = JsonMapper.builder()
-            .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
-            .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-            .build();
-        this.jcsMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        this.objectMapper = new ObjectMapper();
+        this.objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
     }
 
     /**
@@ -54,21 +49,19 @@ public final class TlSealVerifier {
         Objects.requireNonNull(tlPublicKey, "tlPublicKey must not be null");
 
         try {
-            // Build the content to verify (exclude seal and merkleProof)
             Map<String, Object> content = new LinkedHashMap<>();
             content.put("status", response.getStatus());
             content.put("schemaVersion", response.getSchemaVersion());
             content.put("payload", response.getPayload());
             content.put("evidenceRef", response.getEvidenceRef());
 
-            // JCS-canonicalize
-            byte[] canonicalBytes = jcsMapper.writeValueAsBytes(content);
+            String json = objectMapper.writeValueAsString(content);
+            JsonCanonicalizer canonicalizer = new JsonCanonicalizer(json);
+            byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
 
-            // Decode signature from base64 DER
             String signatureBase64 = response.getSeal().getSignature();
             byte[] signatureBytes = Base64.getDecoder().decode(signatureBase64);
 
-            // Verify ECDSA signature
             Signature sig = Signature.getInstance("SHA256withECDSA");
             sig.initVerify(tlPublicKey);
             sig.update(canonicalBytes);
