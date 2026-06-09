@@ -11,13 +11,17 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.MessageDigest;
+import java.security.Signature;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Base64;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
@@ -33,8 +37,18 @@ import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
 import com.aliyun.ati.sdk.agent.verification.VerificationResult;
 import com.aliyun.ati.sdk.crypto.CertUtils;
 import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
-import com.aliyun.ati.sdk.transparency.verification.ServerVerificationResult;
+import com.aliyun.ati.sdk.transparency.AtiTransparencyClient;
+import com.aliyun.ati.sdk.transparency.model.TransparencyLogResponse;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.MerkleProofVerifier;
+import com.aliyun.ati.sdk.transparency.verification.ServerVerificationResult;
+import com.aliyun.ati.sdk.transparency.verification.TlSealVerifier;
+import com.aliyun.ati.sdk.transparency.verification.VerificationStatus;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.erdtman.jcs.JsonCanonicalizer;
 
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsParameters;
@@ -57,18 +71,12 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Integration test validating the full mTLS connection flow between two ATI agents.
- *
- * <p>Uses the dual-cert model:
- * <ul>
- *   <li>"Public CA" chain: self-signed root -> server cert (for mock server TLS)</li>
- *   <li>IDCA chain: self-signed root -> identity cert (for mTLS client auth)</li>
- * </ul>
- *
- * <p>The mock HTTPS server requires client authentication ({@code needClientAuth=true}),
- * trusting only identity certs signed by the IDCA root.
+ * Uses the dual-cert model: "Public CA" chain for server TLS, IDCA chain for mTLS client auth.
+ * The mock HTTPS server requires client authentication ({@code needClientAuth=true}).
  */
 class AgentMtlsIntegrationTest {
 
@@ -76,12 +84,11 @@ class AgentMtlsIntegrationTest {
     private static X509Certificate publicCaRootCert;
     private static KeyPair serverKeyPair;
     private static X509Certificate serverCert;
-
     private static KeyPair idcaKeyPair;
     private static X509Certificate idcaRootCert;
     private static KeyPair identityKeyPair;
     private static X509Certificate identityCert;
-
+    private static KeyPair tlKeyPair;
     private static HttpsServer httpsServer;
     private static int serverPort;
 
@@ -100,200 +107,209 @@ class AgentMtlsIntegrationTest {
 
     @Test
     void shouldCompleteMtlsHandshake() throws Exception {
-        // Build client SSLContext:
-        // TrustManager: trust the self-signed "public CA" root
-        // KeyManager: identity cert + key (IDCA signed)
-        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(null, null);
-        keyStore.setKeyEntry("identity", identityKeyPair.getPrivate(), new char[0],
-            new Certificate[]{identityCert});
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, new char[0]);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
         HttpClient httpClient = HttpClient.newBuilder()
-            .sslContext(sslContext)
+            .sslContext(buildMtlsSslContext(
+                identityKeyPair, identityCert, publicCaRootCert))
             .build();
-
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
-            .GET()
-            .build();
-
-        HttpResponse<String> response = httpClient.send(request,
-            HttpResponse.BodyHandlers.ofString());
-
+        HttpResponse<String> response = sendHello(httpClient);
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("ok");
     }
 
     @Test
     void shouldRejectClientWithoutIdentityCert() throws Exception {
-        // Client without identity cert (no KeyManager)
-        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-
+        KeyStore ts = KeyStore.getInstance(KeyStore.getDefaultType());
+        ts.load(null, null);
+        ts.setCertificateEntry("public-ca", publicCaRootCert);
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(ts);
         SSLContext sslContext = SSLContext.getInstance("TLS");
         sslContext.init(null, tmf.getTrustManagers(), null);
-
-        HttpClient httpClient = HttpClient.newBuilder()
-            .sslContext(sslContext)
-            .build();
-
+        HttpClient httpClient = HttpClient.newBuilder().sslContext(sslContext).build();
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
-            .GET()
-            .build();
-
-        // Should fail because server requires client cert (needClientAuth)
+            .GET().build();
         assertThatThrownBy(() -> httpClient.send(request, HttpResponse.BodyHandlers.ofString()))
             .isInstanceOf(Exception.class);
     }
 
     @Test
     void shouldRejectClientWithWrongCaCert() throws Exception {
-        // Client with identity cert signed by a different (wrong) CA
         KeyPair wrongCaKeyPair = generateEcKeyPair();
         X509Certificate wrongCaRoot = generateSelfSignedCa(wrongCaKeyPair, "CN=Wrong CA");
-        KeyPair wrongIdentityKeyPair = generateEcKeyPair();
-        X509Certificate wrongIdentityCert = generateLeafCert(
-            wrongIdentityKeyPair, wrongCaKeyPair, wrongCaRoot, "CN=wrong-agent");
-
-        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(null, null);
-        keyStore.setKeyEntry("identity", wrongIdentityKeyPair.getPrivate(), new char[0],
-            new Certificate[]{wrongIdentityCert});
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, new char[0]);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
+        KeyPair wrongIdKp = generateEcKeyPair();
+        X509Certificate wrongIdCert = generateLeafCert(
+            wrongIdKp, wrongCaKeyPair, wrongCaRoot, "CN=wrong-agent");
         HttpClient httpClient = HttpClient.newBuilder()
-            .sslContext(sslContext)
+            .sslContext(buildMtlsSslContext(wrongIdKp, wrongIdCert, publicCaRootCert))
             .build();
-
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
-            .GET()
-            .build();
-
-        // Should fail because server doesn't trust this CA
+            .GET().build();
         assertThatThrownBy(() -> httpClient.send(request, HttpResponse.BodyHandlers.ofString()))
             .isInstanceOf(Exception.class);
     }
 
     @Test
     void shouldCompleteFullVerificationWithDaneAndBadge() throws Exception {
-        // Step 1: Build client SSLContext with CertificateCapturingTrustManager
-        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-            TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
-        X509TrustManager baseTm = null;
-        for (TrustManager tm : tmf.getTrustManagers()) {
-            if (tm instanceof X509TrustManager) {
-                baseTm = (X509TrustManager) tm;
-                break;
-            }
-        }
-        CertificateCapturingTrustManager capturingTm =
-            new CertificateCapturingTrustManager(baseTm);
+        CertificateCapturingTrustManager capturingTm = buildCapturingTrustManager();
+        HttpClient httpClient = buildCapturingHttpClient(capturingTm);
 
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(null, null);
-        keyStore.setKeyEntry("identity", identityKeyPair.getPrivate(),
-            new char[0], new Certificate[]{identityCert});
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
-            KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, new char[0]);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(),
-            new TrustManager[]{capturingTm}, null);
-
-        HttpClient httpClient = HttpClient.newBuilder()
-            .sslContext(sslContext)
-            .build();
-
-        // Step 2: Pre-verify — compute expected DANE + Badge values
-        // DANE expectation: SPKI SHA-256 of server cert
-        byte[] spki = serverCert.getPublicKey().getEncoded();
-        byte[] spkiHash = MessageDigest.getInstance("SHA-256").digest(spki);
+        byte[] spkiHash = MessageDigest.getInstance("SHA-256")
+            .digest(serverCert.getPublicKey().getEncoded());
         DaneTlsaVerifier.TlsaExpectation daneExpectation =
             new DaneTlsaVerifier.TlsaExpectation(1, 1, spkiHash);
-
-        // Badge expectation: full cert SHA-256 fingerprint
         String serverFingerprint = CertUtils.sha256Fingerprint(serverCert);
         ServerVerificationResult badgeTlResult =
             ServerVerificationResult.verified(serverFingerprint, "test-agent");
-
         AtiAgentDescriptor descriptor = new AtiAgentDescriptor(
             "localhost", "1", null, "test-agent");
         PreVerificationResult preResult = new PreVerificationResult(
             descriptor, VerificationPolicy.GOLD,
             List.of(daneExpectation), badgeTlResult);
 
-        // Step 3: Send business request → triggers TLS handshake
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
-            .GET()
-            .build();
-        HttpResponse<String> response = httpClient.send(request,
-            HttpResponse.BodyHandlers.ofString());
-        assertThat(response.statusCode()).isEqualTo(200);
-
-        // Step 4: Post-verify — compare captured cert vs expectations
-        X509Certificate capturedCert =
-            capturingTm.getLastCapturedServerCert();
+        assertThat(sendHello(httpClient).statusCode()).isEqualTo(200);
+        X509Certificate capturedCert = capturingTm.getLastCapturedServerCert();
         assertThat(capturedCert).isNotNull();
 
-        // DANE post-verify
         DaneTlsaVerifier daneVerifier = new DaneTlsaVerifier();
         VerificationResult daneResult = daneVerifier.postVerify(
             capturedCert, List.of(daneExpectation));
         assertThat(daneResult.isSuccess()).isTrue();
-        assertThat(daneResult.getType())
-            .isEqualTo(VerificationResult.Type.DANE);
+        assertThat(daneResult.getType()).isEqualTo(VerificationResult.Type.DANE);
 
-        // Badge post-verify
         BadgeVerifier badgeVerifier = new BadgeVerifier(
             mock(CachingBadgeVerificationService.class));
         VerificationResult badgeResult = badgeVerifier.postVerify(
             capturedCert, badgeTlResult);
         assertThat(badgeResult.isSuccess()).isTrue();
-        assertThat(badgeResult.getType())
-            .isEqualTo(VerificationResult.Type.BADGE);
+        assertThat(badgeResult.getType()).isEqualTo(VerificationResult.Type.BADGE);
     }
 
     @Test
     void shouldFailDaneWhenFingerprintMismatch() throws Exception {
-        // Same mTLS setup
-        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        trustStore.load(null, null);
-        trustStore.setCertificateEntry("public-ca", publicCaRootCert);
+        CertificateCapturingTrustManager capturingTm = buildCapturingTrustManager();
+        HttpClient httpClient = buildCapturingHttpClient(capturingTm);
+        sendHello(httpClient);
+
+        DaneTlsaVerifier.TlsaExpectation wrongExpectation =
+            new DaneTlsaVerifier.TlsaExpectation(1, 1, new byte[32]);
+        VerificationResult daneResult = new DaneTlsaVerifier().postVerify(
+            capturingTm.getLastCapturedServerCert(), List.of(wrongExpectation));
+        assertThat(daneResult.isSuccess()).isFalse();
+        assertThat(daneResult.getStatus()).isEqualTo(VerificationResult.Status.MISMATCH);
+    }
+
+    @Test
+    void shouldCompleteFullBadgeWithSealAndMerkle() throws Exception {
+        CertificateCapturingTrustManager capturingTm = buildCapturingTrustManager();
+        HttpClient httpClient = buildCapturingHttpClient(capturingTm);
+        assertThat(sendHello(httpClient).statusCode()).isEqualTo(200);
+
+        X509Certificate capturedCert = capturingTm.getLastCapturedServerCert();
+        assertThat(capturedCert).isNotNull();
+        String expectedFingerprint = CertUtils.sha256Fingerprint(capturedCert);
+
+        // Build content map for seal signing (must match TlSealVerifier field order)
+        Map<String, Object> certsMap = new LinkedHashMap<>();
+        certsMap.put("serverCertFingerprint", expectedFingerprint);
+        Map<String, Object> payloadMap = new LinkedHashMap<>();
+        payloadMap.put("agentId", "test-agent");
+        payloadMap.put("agentHost", "agent.example.com");
+        payloadMap.put("certificates", certsMap);
+        Map<String, Object> evidenceRefMap = new LinkedHashMap<>();
+        evidenceRefMap.put("evidenceId", "ev-001");
+        evidenceRefMap.put("evidenceUri", "https://example.com/evidence");
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("status", "ACTIVE");
+        content.put("schemaVersion", "ATI-TL-V1");
+        content.put("payload", payloadMap);
+        content.put("evidenceRef", evidenceRefMap);
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        byte[] canonicalBytes = new JsonCanonicalizer(
+            mapper.writeValueAsString(content)).getEncodedUTF8();
+
+        // Sign with TL key pair
+        Signature sig = Signature.getInstance("SHA256withECDSA");
+        sig.initSign(tlKeyPair.getPrivate());
+        sig.update(canonicalBytes);
+        String sealSignature = Base64.getEncoder().encodeToString(sig.sign());
+        String tlPubPem = "-----BEGIN PUBLIC KEY-----\\n"
+            + Base64.getEncoder().encodeToString(tlKeyPair.getPublic().getEncoded())
+            + "\\n-----END PUBLIC KEY-----";
+
+        // Merkle proof: single-leaf tree (leafHash == rootHash, empty path)
+        String leafHash = bytesToHex(
+            MessageDigest.getInstance("SHA-256").digest(canonicalBytes));
+
+        String responseJson = """
+            {"status":"ACTIVE","schemaVersion":"ATI-TL-V1",\
+            "payload":{"agentId":"test-agent","agentHost":"agent.example.com",\
+            "certificates":{"serverCertFingerprint":"%s"}},\
+            "evidenceRef":{"evidenceId":"ev-001",\
+            "evidenceUri":"https://example.com/evidence"},\
+            "seal":{"canonicalization":"RFC8785-JCS","digestAlgorithm":"SHA-256",\
+            "signatureAlgorithm":"SHA-256withECDSA","signatureEncoding":"DER_BASE64",\
+            "keyId":"tl-key-001","signature":"%s","publicKey":"%s"},\
+            "merkleProof":{"leafHash":"%s","leafIndex":0,"treeSize":1,\
+            "treeVersion":1,"path":[],"rootHash":"%s"}}
+            """.formatted(expectedFingerprint, sealSignature, tlPubPem,
+                leafHash, leafHash);
+
+        TransparencyLogResponse tlResponse = mapper.readValue(
+            responseJson, TransparencyLogResponse.class);
+
+        AtiTransparencyClient mockTlClient = mock(AtiTransparencyClient.class);
+        when(mockTlClient.getLatestLog("test-agent")).thenReturn(tlResponse);
+
+        BadgeVerificationService badgeService = new BadgeVerificationService(
+            mockTlClient, new TlSealVerifier(), new MerkleProofVerifier());
+        ServerVerificationResult result = badgeService.verifyServer("test-agent");
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.getServerCertFingerprint()).isEqualTo(expectedFingerprint);
+        assertThat(result.getAgentId()).isEqualTo("test-agent");
+    }
+
+    // --- Helpers ---
+
+    private static HttpResponse<String> sendHello(HttpClient client) throws Exception {
+        return client.send(HttpRequest.newBuilder()
+            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
+            .GET().build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static SSLContext buildMtlsSslContext(
+            KeyPair clientKp, X509Certificate clientCert,
+            X509Certificate trustedCa) throws Exception {
+        KeyStore ts = KeyStore.getInstance(KeyStore.getDefaultType());
+        ts.load(null, null);
+        ts.setCertificateEntry("ca", trustedCa);
         TrustManagerFactory tmf = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm());
-        tmf.init(trustStore);
+        tmf.init(ts);
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("id", clientKp.getPrivate(), new char[0],
+            new Certificate[]{clientCert});
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(ks, new char[0]);
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+        return ctx;
+    }
+
+    private static CertificateCapturingTrustManager buildCapturingTrustManager()
+            throws Exception {
+        KeyStore ts = KeyStore.getInstance(KeyStore.getDefaultType());
+        ts.load(null, null);
+        ts.setCertificateEntry("public-ca", publicCaRootCert);
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(ts);
         X509TrustManager baseTm = null;
         for (TrustManager tm : tmf.getTrustManagers()) {
             if (tm instanceof X509TrustManager) {
@@ -301,94 +317,74 @@ class AgentMtlsIntegrationTest {
                 break;
             }
         }
-        CertificateCapturingTrustManager capturingTm =
-            new CertificateCapturingTrustManager(baseTm);
+        return new CertificateCapturingTrustManager(baseTm);
+    }
 
-        KeyStore keyStore = KeyStore.getInstance("PKCS12");
-        keyStore.load(null, null);
-        keyStore.setKeyEntry("identity", identityKeyPair.getPrivate(),
+    private static HttpClient buildCapturingHttpClient(
+            CertificateCapturingTrustManager capturingTm) throws Exception {
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        ks.load(null, null);
+        ks.setKeyEntry("id", identityKeyPair.getPrivate(),
             new char[0], new Certificate[]{identityCert});
         KeyManagerFactory kmf = KeyManagerFactory.getInstance(
             KeyManagerFactory.getDefaultAlgorithm());
-        kmf.init(keyStore, new char[0]);
-
-        SSLContext sslContext = SSLContext.getInstance("TLS");
-        sslContext.init(kmf.getKeyManagers(),
-            new TrustManager[]{capturingTm}, null);
-
-        HttpClient httpClient = HttpClient.newBuilder()
-            .sslContext(sslContext).build();
-
-        // Send request to trigger handshake
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("https://localhost:" + serverPort + "/api/hello"))
-            .GET().build();
-        httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        X509Certificate capturedCert =
-            capturingTm.getLastCapturedServerCert();
-
-        // DANE with wrong expected fingerprint
-        byte[] wrongHash = new byte[32];
-        DaneTlsaVerifier.TlsaExpectation wrongExpectation =
-            new DaneTlsaVerifier.TlsaExpectation(1, 1, wrongHash);
-
-        DaneTlsaVerifier daneVerifier = new DaneTlsaVerifier();
-        VerificationResult daneResult = daneVerifier.postVerify(
-            capturedCert, List.of(wrongExpectation));
-        assertThat(daneResult.isSuccess()).isFalse();
-        assertThat(daneResult.getStatus())
-            .isEqualTo(VerificationResult.Status.MISMATCH);
+        kmf.init(ks, new char[0]);
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(kmf.getKeyManagers(), new TrustManager[]{capturingTm}, null);
+        return HttpClient.newBuilder().sslContext(ctx).build();
     }
 
-    // --- Certificate generation helpers (using BouncyCastle) ---
+    private static String bytesToHex(byte[] bytes) {
+        char[] hex = new char[bytes.length * 2];
+        for (int i = 0; i < bytes.length; i++) {
+            hex[i * 2] = "0123456789abcdef".charAt((bytes[i] >> 4) & 0x0F);
+            hex[i * 2 + 1] = "0123456789abcdef".charAt(bytes[i] & 0x0F);
+        }
+        return new String(hex);
+    }
+
+    // --- Certificate generation helpers ---
 
     private static void generateCertificates() throws Exception {
-        // Public CA chain (for server TLS)
         publicCaKeyPair = generateEcKeyPair();
         publicCaRootCert = generateSelfSignedCa(publicCaKeyPair, "CN=Test Public CA");
         serverKeyPair = generateEcKeyPair();
-        serverCert = generateLeafCert(serverKeyPair, publicCaKeyPair, publicCaRootCert, "CN=localhost");
-
-        // IDCA chain (for mTLS identity)
+        serverCert = generateLeafCert(
+            serverKeyPair, publicCaKeyPair, publicCaRootCert, "CN=localhost");
         idcaKeyPair = generateEcKeyPair();
         idcaRootCert = generateSelfSignedCa(idcaKeyPair, "CN=Test IDCA");
         identityKeyPair = generateEcKeyPair();
-        identityCert = generateLeafCert(identityKeyPair, idcaKeyPair, idcaRootCert, "CN=test-agent");
+        identityCert = generateLeafCert(
+            identityKeyPair, idcaKeyPair, idcaRootCert, "CN=test-agent");
+        tlKeyPair = generateEcKeyPair();
     }
 
     private static void startMockServer() throws Exception {
         httpsServer = HttpsServer.create(new InetSocketAddress(0), 0);
         serverPort = httpsServer.getAddress().getPort();
-
-        // Server SSLContext:
-        // KeyManager: server cert (public CA signed)
-        // TrustManager: IDCA root (verify client identity certs)
         KeyStore serverKs = KeyStore.getInstance("PKCS12");
         serverKs.load(null, null);
         serverKs.setKeyEntry("server", serverKeyPair.getPrivate(), new char[0],
             new Certificate[]{serverCert, publicCaRootCert});
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(
+            KeyManagerFactory.getDefaultAlgorithm());
         kmf.init(serverKs, new char[0]);
-
         KeyStore trustKs = KeyStore.getInstance(KeyStore.getDefaultType());
         trustKs.load(null, null);
         trustKs.setCertificateEntry("idca-root", idcaRootCert);
-        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(
+            TrustManagerFactory.getDefaultAlgorithm());
         tmf.init(trustKs);
-
-        SSLContext serverSslContext = SSLContext.getInstance("TLS");
-        serverSslContext.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
-        httpsServer.setHttpsConfigurator(new HttpsConfigurator(serverSslContext) {
+        SSLContext serverCtx = SSLContext.getInstance("TLS");
+        serverCtx.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+        httpsServer.setHttpsConfigurator(new HttpsConfigurator(serverCtx) {
             @Override
             public void configure(HttpsParameters params) {
-                SSLParameters sslParams = getSSLContext().getDefaultSSLParameters();
-                sslParams.setNeedClientAuth(true);
-                params.setSSLParameters(sslParams);
+                SSLParameters p = getSSLContext().getDefaultSSLParameters();
+                p.setNeedClientAuth(true);
+                params.setSSLParameters(p);
             }
         });
-
         httpsServer.createContext("/api/hello", exchange -> {
             String body = "{\"status\":\"ok\"}";
             exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -397,7 +393,6 @@ class AgentMtlsIntegrationTest {
                 os.write(body.getBytes());
             }
         });
-
         httpsServer.setExecutor(null);
         httpsServer.start();
     }
