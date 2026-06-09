@@ -1,6 +1,7 @@
 package com.aliyun.ati.sdk.spring;
 
 import java.net.http.HttpClient;
+import java.time.Duration;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -10,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.agent.verification.BadgeVerifier;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
@@ -38,9 +40,13 @@ public class AtiClientAutoConfiguration {
     @Bean
     public AtiTransparencyClient atiTransparencyClient(
             AtiSdkProperties props) {
+        Duration connectTimeout = Duration.parse(
+            "PT" + props.getClient().getConnectTimeout());
+        HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(connectTimeout)
+            .build();
         return new AtiTransparencyClient(
-            props.getTransparency().getBaseUrl(),
-            HttpClient.newHttpClient());
+            props.getTransparency().getBaseUrl(), httpClient);
     }
 
     @Bean
@@ -69,8 +75,10 @@ public class AtiClientAutoConfiguration {
     }
 
     @Bean
-    public AtiDiscoveryClient atiDiscoveryClient() {
-        return new DnsAtiDiscoveryClient();
+    public AtiDiscoveryClient atiDiscoveryClient(AtiSdkProperties props) {
+        Duration dnsTimeout = Duration.parse(
+            "PT" + props.getClient().getDnsTimeout());
+        return new DnsAtiDiscoveryClient(dnsTimeout);
     }
 
     @Bean
@@ -108,6 +116,18 @@ public class AtiClientAutoConfiguration {
             .connectionVerifier(verifier)
             .identityCertificatePath(props.getIdentity().getCertificate())
             .identityPrivateKeyPath(props.getIdentity().getPrivateKey())
+            .defaultPolicy(parsePolicy(props.getVerification().getPolicy()))
             .build();
+    }
+
+    private static VerificationPolicy parsePolicy(String name) {
+        return switch (name.toUpperCase()) {
+            case "BRONZE" -> VerificationPolicy.BRONZE;
+            case "SILVER" -> VerificationPolicy.SILVER;
+            case "GOLD" -> VerificationPolicy.GOLD;
+            default -> throw new IllegalArgumentException(
+                "Unknown verification policy: " + name
+                    + ". Expected: BRONZE, SILVER, or GOLD");
+        };
     }
 }

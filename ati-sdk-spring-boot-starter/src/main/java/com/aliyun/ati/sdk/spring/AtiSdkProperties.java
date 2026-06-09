@@ -95,7 +95,7 @@ public class AtiSdkProperties {
      */
     public static class Verification {
 
-        private String policy = "DANE_AND_BADGE";
+        private String policy = "GOLD";
 
         public String getPolicy() {
             return policy;

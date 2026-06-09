@@ -51,6 +51,7 @@ public final class AtiVerifiedClient {
     private final DefaultConnectionVerifier connectionVerifier;
     private final String identityCertificatePath;
     private final String identityPrivateKeyPath;
+    private final VerificationPolicy defaultPolicy;
 
     private AtiVerifiedClient(Builder builder) {
         this.discoveryClient = Objects.requireNonNull(
@@ -61,17 +62,19 @@ public final class AtiVerifiedClient {
             "connectionVerifier must not be null");
         this.identityCertificatePath = builder.identityCertificatePath;
         this.identityPrivateKeyPath = builder.identityPrivateKeyPath;
+        this.defaultPolicy = builder.defaultPolicy;
     }
 
     /**
-     * Connects to an ATI agent using default options.
+     * Connects to an ATI agent using the default policy.
      *
      * @param name the ATI name to connect to
      * @return the pre-verified connection
      * @throws AtiException if discovery or pre-verification fails
      */
     public AtiConnection connect(AtiName name) {
-        return connect(name, ConnectOptions.builder().build());
+        return connect(name, ConnectOptions.builder()
+            .policy(defaultPolicy).build());
     }
 
     /**
@@ -142,6 +145,7 @@ public final class AtiVerifiedClient {
         private DefaultConnectionVerifier connectionVerifier;
         private String identityCertificatePath;
         private String identityPrivateKeyPath;
+        private VerificationPolicy defaultPolicy = VerificationPolicy.GOLD;
 
         private Builder() {
         }
@@ -201,6 +205,18 @@ public final class AtiVerifiedClient {
         public Builder identityPrivateKeyPath(
                 String identityPrivateKeyPath) {
             this.identityPrivateKeyPath = identityPrivateKeyPath;
+            return this;
+        }
+
+        /**
+         * Sets the default verification policy used by {@link #connect(AtiName)}.
+         *
+         * @param defaultPolicy the default policy (default: GOLD)
+         * @return this builder
+         */
+        public Builder defaultPolicy(VerificationPolicy defaultPolicy) {
+            this.defaultPolicy = Objects.requireNonNull(defaultPolicy,
+                "defaultPolicy must not be null");
             return this;
         }
 
