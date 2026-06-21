@@ -34,17 +34,6 @@ import java.util.Objects;
  *         .build());
  * }</pre>
  *
- * <h3>Custom Verification</h3>
- * <pre>{@code
- * AgentConnection conn = client.connect("target.example.com",
- *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.custom()
- *             .dane(VerificationMode.ADVISORY)
- *             .badge(VerificationMode.REQUIRED)
- *             .build())
- *         .build());
- * }</pre>
- *
  * <h3>With mTLS Client Certificate</h3>
  * <pre>{@code
  * AgentConnection conn = client.connect("target.example.com",
@@ -56,7 +45,6 @@ import java.util.Objects;
  * }</pre>
  *
  * @see VerificationPolicy
- * @see VerificationMode
  * @see AtiClient#connect(String, ConnectOptions)
  */
 public final class ConnectOptions {
@@ -93,7 +81,7 @@ public final class ConnectOptions {
     }
 
     /**
-     * Returns default connect options (PKI only, no additional verification).
+     * Returns default connect options (Badge verification).
      *
      * @return default options
      */
@@ -104,10 +92,10 @@ public final class ConnectOptions {
     /**
      * Returns the verification policy.
      *
-     * @return the verification policy, or PKI_ONLY if not set
+     * @return the verification policy, or BADGE_REQUIRED if not set
      */
     public VerificationPolicy getVerificationPolicy() {
-        return verificationPolicy != null ? verificationPolicy : VerificationPolicy.PKI_ONLY;
+        return verificationPolicy != null ? verificationPolicy : VerificationPolicy.BADGE_REQUIRED;
     }
 
     /**
@@ -223,7 +211,6 @@ public final class ConnectOptions {
          * @return this builder
          * @see VerificationPolicy#BADGE_REQUIRED
          * @see VerificationPolicy#DANE_AND_BADGE
-         * @see VerificationPolicy#custom()
          */
         public Builder verificationPolicy(VerificationPolicy policy) {
             this.verificationPolicy = Objects.requireNonNull(policy, "Verification policy cannot be null");

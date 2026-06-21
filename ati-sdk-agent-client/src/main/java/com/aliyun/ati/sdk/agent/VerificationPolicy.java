@@ -1,56 +1,31 @@
 package com.aliyun.ati.sdk.agent;
 
-import java.util.Objects;
-
 /**
- * Configures which verification methods to use when connecting to an agent.
+ * Progressive verification policy for agent connections.
  *
- * <p>Each verification type can be independently configured:</p>
+ * <p>Each level includes all verifications from the previous level:</p>
  * <ul>
- *   <li><b>DANE</b>: DNS-based Authentication of Named Entities (TLSA records)</li>
- *   <li><b>Badge</b>: ATI transparency log verification (proof of registration)</li>
- *   <li><b>SCITT</b>: Cryptographic proof via HTTP headers (receipts and status tokens)</li>
+ *   <li>{@link #PKI_ONLY} - Standard TLS PKI verification only</li>
+ *   <li>{@link #BADGE_REQUIRED} - PKI + Badge (transparency log seal, Merkle proof, fingerprint)</li>
+ *   <li>{@link #DANE_AND_BADGE} - PKI + Badge + DANE (requires DNSSEC infrastructure)</li>
  * </ul>
  *
- * <h2>Using Presets</h2>
- * <p>For common scenarios, use the predefined policies:</p>
+ * <h2>Usage</h2>
  * <pre>{@code
- * // Badge verification only (recommended for most cases)
+ * // Badge verification (recommended default)
  * ConnectOptions.builder()
  *     .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
  *     .build();
  *
- * // SCITT verification with badge fallback
+ * // Maximum verification with DANE
  * ConnectOptions.builder()
- *     .verificationPolicy(VerificationPolicy.SCITT_ENHANCED)
- *     .build();
- *
- * </pre>
- *
- * <h2>Custom Configuration</h2>
- * <p>For advanced scenarios, use the builder:</p>
- * <pre>{@code
- * ConnectOptions.builder()
- *     .verificationPolicy(VerificationPolicy.custom()
- *         .dane(VerificationMode.ADVISORY)    // Try DANE, log on failure
- *         .badge(VerificationMode.REQUIRED)   // Must verify badge
- *         .scitt(VerificationMode.ADVISORY)   // Try SCITT, fall back to badge
- *         .build())
+ *     .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
  *     .build();
  * }</pre>
  *
- * @param daneMode the DANE verification mode
- * @param badgeMode the Badge verification mode
- * @param scittMode the SCITT verification mode
- * @see VerificationMode
  * @see ConnectOptions.Builder#verificationPolicy(VerificationPolicy)
  */
-public record VerificationPolicy(
-    VerificationMode daneMode,
-    VerificationMode badgeMode,
-    VerificationMode scittMode
-) {
-    // ==================== Predefined Policies ====================
+public enum VerificationPolicy {
 
     /**
      * Standard PKI trust only - no additional verification.
@@ -58,240 +33,50 @@ public record VerificationPolicy(
      * <p>Uses the JVM's default trust store to validate certificates against
      * well-known Certificate Authorities. This is the minimum security level.</p>
      */
-    public static final VerificationPolicy PKI_ONLY = new VerificationPolicy(
-        VerificationMode.DISABLED,
-        VerificationMode.DISABLED,
-        VerificationMode.DISABLED
-    );
+    PKI_ONLY,
 
     /**
-     * Badge verification required via ATI transparency log.
+     * PKI + Badge verification via ATI transparency log.
      *
      * <p>Verifies that the server is a registered ATI agent by checking the
-     * transparency log. This is the recommended default for most use cases
-     * as it provides strong identity assurance without requiring DNSSEC.</p>
+     * transparency log (proof of registration with Merkle proof and certificate
+     * fingerprint matching). This is the recommended default for most use cases.</p>
      */
-    public static final VerificationPolicy BADGE_REQUIRED = new VerificationPolicy(
-        VerificationMode.DISABLED,
-        VerificationMode.REQUIRED,
-        VerificationMode.DISABLED
-    );
+    BADGE_REQUIRED,
 
     /**
-     * DANE verification in advisory mode (logs warnings on failure).
+     * PKI + Badge + DANE verification.
      *
-     * <p>Attempts DANE/TLSA verification but allows connections even if
-     * verification fails. Useful for monitoring DANE deployment status.</p>
+     * <p>Combines badge verification with DNS-based Authentication of Named Entities
+     * (DNSSEC-secured TLSA records). Requires both DNSSEC infrastructure and ATI
+     * registration. Use this for maximum assurance.</p>
      */
-    public static final VerificationPolicy DANE_ADVISORY = new VerificationPolicy(
-        VerificationMode.ADVISORY,
-        VerificationMode.DISABLED,
-        VerificationMode.DISABLED
-    );
+    DANE_AND_BADGE;
 
     /**
-     * DANE verification required.
+     * Returns true if any verification beyond PKI is enabled.
      *
-     * <p>Requires DNSSEC-secured TLSA records to match the server certificate.
-     * Use this when connecting to agents with DNSSEC-enabled infrastructure.</p>
-     */
-    public static final VerificationPolicy DANE_REQUIRED = new VerificationPolicy(
-        VerificationMode.REQUIRED,
-        VerificationMode.DISABLED,
-        VerificationMode.DISABLED
-    );
-
-    /**
-     * Both DANE and Badge verification required.
-     *
-     * <p>Combines DNS-based verification with transparency log verification
-     * for maximum assurance. Requires both DNSSEC infrastructure and ANS
-     * registration.</p>
-     */
-    public static final VerificationPolicy DANE_AND_BADGE = new VerificationPolicy(
-        VerificationMode.REQUIRED,
-        VerificationMode.REQUIRED,
-        VerificationMode.DISABLED
-    );
-
-    /**
-     * SCITT verification with badge fallback.
-     *
-     * <p>Uses SCITT artifacts (receipts and status tokens) delivered via HTTP headers
-     * for verification when available. Falls back to badge verification if SCITT headers
-     * are not present. This is the recommended migration path from badge-based verification.</p>
-     *
-     * <p><b>Behavior:</b></p>
-     * <ul>
-     *   <li>SCITT headers present and valid → SCITT verification used</li>
-     *   <li>SCITT headers present but invalid → Connection rejected</li>
-     *   <li>SCITT headers absent → Badge verification required as fallback</li>
-     * </ul>
-     */
-    public static final VerificationPolicy SCITT_ENHANCED = new VerificationPolicy(
-        VerificationMode.DISABLED,
-        VerificationMode.REQUIRED,
-        VerificationMode.FALLBACK_ALLOWED
-    );
-
-    /**
-     * SCITT verification required, no fallback.
-     *
-     * <p><b>Recommended for production.</b> Requires SCITT artifacts for verification
-     * with no badge fallback. This prevents downgrade attacks where an attacker
-     * strips SCITT headers to force badge-based verification.</p>
-     */
-    public static final VerificationPolicy SCITT_REQUIRED = new VerificationPolicy(
-        VerificationMode.DISABLED,
-        VerificationMode.DISABLED,
-        VerificationMode.REQUIRED
-    );
-
-    // ==================== Compact Constructor ====================
-
-    /**
-     * Validates that all modes are non-null.
-     */
-    public VerificationPolicy {
-        Objects.requireNonNull(daneMode, "daneMode cannot be null");
-        Objects.requireNonNull(badgeMode, "badgeMode cannot be null");
-        Objects.requireNonNull(scittMode, "scittMode cannot be null");
-    }
-
-    // ==================== Factory Methods ====================
-
-    /**
-     * Creates a builder for custom verification policies.
-     *
-     * @return a new builder with all verifications disabled by default
-     */
-    public static Builder custom() {
-        return new Builder();
-    }
-
-    // ==================== Utility Methods ====================
-
-    /**
-     * Checks if any verification is enabled.
-     *
-     * @return true if at least one verification mode is not DISABLED
+     * @return true if this policy requires Badge or DANE verification
      */
     public boolean hasAnyVerification() {
-        return daneMode != VerificationMode.DISABLED
-            || badgeMode != VerificationMode.DISABLED
-            || scittMode != VerificationMode.DISABLED;
+        return this != PKI_ONLY;
     }
 
     /**
-     * Checks if SCITT verification is enabled.
+     * Returns true if badge verification is enabled.
      *
-     * @return true if SCITT mode is not DISABLED
+     * @return true if this policy is BADGE_REQUIRED or higher
      */
-    public boolean hasScittVerification() {
-        return scittMode != VerificationMode.DISABLED;
+    public boolean hasBadgeVerification() {
+        return this.ordinal() >= BADGE_REQUIRED.ordinal();
     }
 
     /**
-     * Returns true if this policy allows falling back to badge verification
-     * when SCITT headers are not present.
+     * Returns true if DANE verification is enabled.
      *
-     * <p>Fallback is allowed when SCITT mode is {@link VerificationMode#FALLBACK_ALLOWED}.
-     * This matches {@link #SCITT_ENHANCED} - the migration scenario.</p>
-     *
-     * @return true if badge fallback is allowed when SCITT headers are missing
+     * @return true if this policy is DANE_AND_BADGE
      */
-    public boolean allowsScittFallbackToBadge() {
-        return scittMode == VerificationMode.FALLBACK_ALLOWED;
-    }
-
-    /**
-     * Returns true if SCITT verification failure with present headers
-     * should reject the connection (regardless of fallback settings).
-     *
-     * <p>When SCITT headers are present but invalid, we always reject
-     * to prevent garbage header attacks. This is true for both REQUIRED
-     * and ADVISORY modes when headers exist.</p>
-     *
-     * @return true if invalid SCITT headers should cause rejection
-     */
-    public boolean rejectsInvalidScittHeaders() {
-        return scittMode != VerificationMode.DISABLED;
-    }
-
-    @Override
-    public String toString() {
-        return "VerificationPolicy{dane=" + daneMode +
-            ", badge=" + badgeMode +
-            ", scitt=" + scittMode + "}";
-    }
-
-    // ==================== Builder ====================
-
-    /**
-     * Builder for creating custom verification policies.
-     *
-     * <p>All verification modes default to {@link VerificationMode#DISABLED}.</p>
-     */
-    public static final class Builder {
-        private VerificationMode daneMode = VerificationMode.DISABLED;
-        private VerificationMode badgeMode = VerificationMode.DISABLED;
-        private VerificationMode scittMode = VerificationMode.DISABLED;
-
-        private Builder() {
-        }
-
-        /**
-         * Sets the DANE verification mode.
-         *
-         * <p>DANE (DNS-based Authentication of Named Entities) uses DNSSEC-secured
-         * TLSA records to verify the server certificate matches what's published
-         * in DNS.</p>
-         *
-         * @param mode the verification mode
-         * @return this builder
-         */
-        public Builder dane(VerificationMode mode) {
-            this.daneMode = Objects.requireNonNull(mode, "mode cannot be null");
-            return this;
-        }
-
-        /**
-         * Sets the Badge verification mode.
-         *
-         * <p>Badge verification checks the ATI transparency log to confirm
-         * the agent is registered and the certificate fingerprint matches the
-         * registration (the "badge" or proof of registration).</p>
-         *
-         * @param mode the verification mode
-         * @return this builder
-         */
-        public Builder badge(VerificationMode mode) {
-            this.badgeMode = Objects.requireNonNull(mode, "mode cannot be null");
-            return this;
-        }
-
-        /**
-         * Sets the SCITT verification mode.
-         *
-         * <p>SCITT (Supply Chain Integrity, Transparency, and Trust) verification
-         * uses cryptographic receipts and status tokens delivered via HTTP headers.
-         * This eliminates the need for live transparency log queries.</p>
-         *
-         * @param mode the verification mode
-         * @return this builder
-         */
-        public Builder scitt(VerificationMode mode) {
-            this.scittMode = Objects.requireNonNull(mode, "mode cannot be null");
-            return this;
-        }
-
-        /**
-         * Builds the verification policy.
-         *
-         * @return the configured policy
-         */
-        public VerificationPolicy build() {
-            return new VerificationPolicy(daneMode, badgeMode, scittMode);
-        }
+    public boolean hasDaneVerification() {
+        return this == DANE_AND_BADGE;
     }
 }

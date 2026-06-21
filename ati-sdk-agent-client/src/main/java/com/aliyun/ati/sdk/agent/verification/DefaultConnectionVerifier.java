@@ -1,6 +1,5 @@
 package com.aliyun.ati.sdk.agent.verification;
 
-import com.aliyun.ati.sdk.agent.VerificationMode;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.scitt.ScittPreVerifyResult;
@@ -111,11 +110,11 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
             ServerVerifier badgeServiceOverride) {
         Builder builder = builder();
 
-        if (policy.daneMode() != VerificationMode.DISABLED && daneVerifier != null) {
+        if (policy.hasDaneVerification() && daneVerifier != null) {
             builder.daneVerifier(new DaneVerifier(daneVerifier));
         }
 
-        if (policy.badgeMode() != VerificationMode.DISABLED) {
+        if (policy.hasBadgeVerification()) {
             ServerVerifier badgeService;
             if (badgeServiceOverride != null) {
                 badgeService = badgeServiceOverride;
@@ -129,11 +128,7 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
             builder.badgeVerifier(new BadgeVerifier(badgeService));
         }
 
-        if (policy.scittMode() != VerificationMode.DISABLED && transparencyClient != null) {
-            builder.scittVerifier(ScittVerifierAdapter.builder()
-                .transparencyClient(transparencyClient)
-                .build());
-        }
+        // SCITT is not enabled by any simplified policy value - skip SCITT verifier setup
 
         return builder.build();
     }
@@ -280,170 +275,74 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
 
     @Override
     public VerificationResult combine(List<VerificationResult> results, VerificationPolicy policy) {
-        CombineStrategy strategy = determineCombineStrategy(results, policy);
+        LOGGER.debug("Combining {} verification results with policy {}", results.size(), policy);
 
-        LOGGER.debug("Combining results with strategy: {}", strategy.name());
-
-        // Check for failures based on policy and strategy
-        VerificationResult failure = checkForFailures(results, policy, strategy);
+        // Check for failures - all enabled verifications are REQUIRED in progressive model
+        VerificationResult failure = checkForFailures(results, policy);
         if (failure != null) {
             return failure;
         }
 
         // All required verifications passed - return the best success result
-        return selectSuccessResult(results, strategy);
+        return selectSuccessResult(results);
     }
 
     /**
-     * Determines the combine strategy based on results and policy.
+     * Checks all results for failures based on policy.
      *
-     * <p>Uses {@link VerificationPolicy#allowsScittFallbackToBadge()} as the single source
-     * of truth for fallback policy. Runtime conditions (SCITT missing, badge succeeded)
-     * are checked only when the policy permits fallback.</p>
-     *
-     * @see VerificationPolicy#allowsScittFallbackToBadge()
-     */
-    private CombineStrategy determineCombineStrategy(List<VerificationResult> results,
-                                                      VerificationPolicy policy) {
-        // Check policy-level fallback permission first
-        if (!policy.allowsScittFallbackToBadge()) {
-            return CombineStrategy.STANDARD;
-        }
-
-        // Policy allows fallback - check runtime conditions
-        Optional<VerificationResult> scittResult = findResultByType(results,
-            VerificationResult.VerificationType.SCITT);
-        Optional<VerificationResult> badgeResult = findResultByType(results,
-            VerificationResult.VerificationType.BADGE);
-
-        boolean scittMissing = scittResult.map(VerificationResult::isNotFound).orElse(false);
-        boolean badgeSucceeded = badgeResult.map(VerificationResult::isSuccess).orElse(false);
-
-        if (scittMissing && badgeSucceeded) {
-            LOGGER.info("SCITT headers not present, falling back to badge verification for audit trail");
-            return CombineStrategy.SCITT_FALLBACK_TO_BADGE;
-        }
-
-        return CombineStrategy.STANDARD;
-    }
-
-    /**
-     * Checks all results for failures based on policy and strategy.
+     * <p>In the progressive model, all enabled verifications are REQUIRED.
+     * Any failure or NOT_FOUND for an enabled verification type causes overall failure.</p>
      *
      * @return the first failure result, or null if no failures
      */
     private VerificationResult checkForFailures(List<VerificationResult> results,
-                                                 VerificationPolicy policy,
-                                                 CombineStrategy strategy) {
+                                                 VerificationPolicy policy) {
         for (VerificationResult result : results) {
-            VerificationMode mode = getModeForType(result.type(), policy);
-
-            // Skip SCITT NOT_FOUND when using fallback strategy
-            if (strategy.shouldSkipScittNotFound()
-                && result.type() == VerificationResult.VerificationType.SCITT
-                && result.isNotFound()) {
+            // Check if this verification type is enabled in the policy
+            boolean isEnabled = isVerificationEnabled(result.type(), policy);
+            if (!isEnabled) {
                 continue;
             }
 
-            // Check explicit failures (MISMATCH, ERROR)
-            // FALLBACK_ALLOWED is strict for actual failures -- fallback only applies to NOT_FOUND
-            boolean isStrict = mode == VerificationMode.REQUIRED
-                || mode == VerificationMode.FALLBACK_ALLOWED;
-            if (result.shouldFail() && isStrict) {
-                LOGGER.warn("Verification failed ({}): {}", mode, result);
+            // All enabled verifications are REQUIRED - any failure is fatal
+            if (result.shouldFail()) {
+                LOGGER.warn("Verification failed (REQUIRED): {}", result);
                 return result;
-            } else if (result.shouldFail()) {
-                LOGGER.warn("Verification issue (ADVISORY): {}", result);
             }
 
-            // Check NOT_FOUND - failure when REQUIRED, warning when ADVISORY
-            if (result.isNotFound() && mode == VerificationMode.REQUIRED) {
+            // NOT_FOUND for an enabled verification type is also a failure
+            if (result.isNotFound()) {
                 LOGGER.warn("Verification not found but REQUIRED: {}", result);
                 return VerificationResult.error(
                     result.type(),
                     "No " + result.type().name().toLowerCase()
-                        + " record/registration found for verification (REQUIRED mode)");
-            } else if (result.isNotFound() && mode == VerificationMode.ADVISORY) {
-                LOGGER.warn("Verification not found (ADVISORY - continuing): {}", result);
+                        + " record/registration found for verification (REQUIRED)");
             }
         }
         return null;
     }
 
     /**
-     * Selects the best success result based on priority: SCITT > Badge > DANE.
+     * Returns whether a verification type is enabled in the given policy.
      */
-    private VerificationResult selectSuccessResult(List<VerificationResult> results,
-                                                    CombineStrategy strategy) {
-        // Priority order: SCITT > Badge > DANE
-        return findSuccessByType(results, VerificationResult.VerificationType.SCITT)
-            .or(() -> findSuccessByType(results, VerificationResult.VerificationType.BADGE)
-                .map(badge -> annotateFallbackIfNeeded(badge, strategy)))
+    private boolean isVerificationEnabled(VerificationResult.VerificationType type,
+                                           VerificationPolicy policy) {
+        return switch (type) {
+            case DANE -> policy.hasDaneVerification();
+            case BADGE -> policy.hasBadgeVerification();
+            case SCITT -> false; // SCITT is not exposed in simplified policy
+            case PKI_ONLY -> false;
+        };
+    }
+
+    /**
+     * Selects the best success result based on priority: Badge > DANE.
+     */
+    private VerificationResult selectSuccessResult(List<VerificationResult> results) {
+        return findSuccessByType(results, VerificationResult.VerificationType.BADGE)
             .or(() -> findSuccessByType(results, VerificationResult.VerificationType.DANE))
             .orElseGet(() -> VerificationResult.skipped(
                 "No verification performed (no records/registrations found)"));
-    }
-
-    /**
-     * Annotates a badge result as a SCITT fallback if that strategy is in use.
-     */
-    private VerificationResult annotateFallbackIfNeeded(VerificationResult badge, CombineStrategy strategy) {
-        if (strategy == CombineStrategy.SCITT_FALLBACK_TO_BADGE) {
-            return VerificationResult.success(
-                badge.type(),
-                badge.actualFingerprint(),
-                badge.reason() + " (SCITT fallback)");
-        }
-        return badge;
-    }
-
-    /**
-     * Strategy for combining verification results.
-     *
-     * <p>This enum encapsulates the different behaviors needed when combining
-     * multiple verification results into a final decision.</p>
-     */
-    private enum CombineStrategy {
-        /**
-         * Standard combining - each verification is evaluated independently
-         * according to its mode (REQUIRED, ADVISORY, DISABLED).
-         */
-        STANDARD {
-            @Override
-            boolean shouldSkipScittNotFound() {
-                return false;
-            }
-        },
-
-        /**
-         * SCITT fallback to Badge - when SCITT headers are missing but badge
-         * verification succeeded, allow the badge result to satisfy the policy.
-         *
-         * <p>This strategy is used exclusively with {@link VerificationPolicy#SCITT_ENHANCED}
-         * (scitt=REQUIRED, badge=ADVISORY) to support migration scenarios where
-         * servers may not yet provide SCITT headers.</p>
-         */
-        SCITT_FALLBACK_TO_BADGE {
-            @Override
-            boolean shouldSkipScittNotFound() {
-                return true;
-            }
-        };
-
-        /**
-         * Whether to skip SCITT NOT_FOUND results during failure checking.
-         */
-        abstract boolean shouldSkipScittNotFound();
-    }
-
-    /**
-     * Finds a verification result by type.
-     */
-    private Optional<VerificationResult> findResultByType(List<VerificationResult> results,
-                                                           VerificationResult.VerificationType type) {
-        return results.stream()
-            .filter(r -> r.type() == type)
-            .findFirst();
     }
 
     /**
@@ -454,15 +353,6 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
         return results.stream()
             .filter(r -> r.type() == type && r.isSuccess())
             .findFirst();
-    }
-
-    private VerificationMode getModeForType(VerificationResult.VerificationType type, VerificationPolicy policy) {
-        return switch (type) {
-            case DANE -> policy.daneMode();
-            case BADGE -> policy.badgeMode();
-            case SCITT -> policy.scittMode();
-            case PKI_ONLY -> VerificationMode.DISABLED;
-        };
     }
 
     /**

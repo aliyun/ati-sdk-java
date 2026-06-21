@@ -1,7 +1,6 @@
 package com.aliyun.ati.sdk.agent.http;
 
 import com.aliyun.ati.sdk.agent.ConnectOptions;
-import com.aliyun.ati.sdk.agent.VerificationMode;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.agent.exception.AgentConnectionException;
 import com.aliyun.ati.sdk.agent.verification.ConnectionVerifier;
@@ -153,7 +152,7 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
      */
     private ServerVerifier getOrCreateVerificationService(ConnectOptions options,
                                                            VerificationPolicy policy) {
-        if (policy.badgeMode() == VerificationMode.DISABLED) {
+        if (!policy.hasBadgeVerification()) {
             return null;
         }
 

@@ -43,7 +43,6 @@ import java.util.Objects;
  * </ul>
  *
  * @see VerificationPolicy
- * @see VerificationMode
  * @see ConnectOptions
  */
 public final class AtiClient {

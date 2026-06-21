@@ -8,7 +8,6 @@ import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultDaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
 import com.aliyun.ati.sdk.agent.exception.ClientConfigurationException;
-import com.aliyun.ati.sdk.agent.exception.ScittVerificationException;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.scitt.DefaultScittHeaderProvider;
 import com.aliyun.ati.sdk.transparency.scitt.ScittParseException;
@@ -25,28 +24,24 @@ import javax.net.ssl.SSLContext;
 import java.io.FileInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.CompletionException;
 
 /**
  * High-level client for ANS-verified connections.
  *
- * <p>Supports all verification policies:</p>
+ * <p>Supports progressive verification policies:</p>
  * <ul>
- *   <li><b>DANE</b>: DNS-based Authentication of Named Entities (TLSA records)</li>
- *   <li><b>Badge</b>: ATI transparency log verification (proof of registration)</li>
- *   <li><b>SCITT</b>: Cryptographic proof via HTTP headers (receipts + status tokens)</li>
+ *   <li><b>PKI_ONLY</b>: Standard TLS PKI verification</li>
+ *   <li><b>BADGE_REQUIRED</b>: PKI + ATI transparency log verification</li>
+ *   <li><b>DANE_AND_BADGE</b>: PKI + Badge + DANE (DNSSEC)</li>
  * </ul>
  *
  * <h2>Usage with MCP SDK</h2>
@@ -54,17 +49,13 @@ import java.util.concurrent.CompletionException;
  * AtiVerifiedClient atiClient = AtiVerifiedClient.builder()
  *     .agentId("my-agent-id")
  *     .keyStorePath("/path/to/client.p12", "password")
- *     .policy(VerificationPolicy.SCITT_REQUIRED)  // or SCITT_ENHANCED, etc.
+ *     .policy(VerificationPolicy.BADGE_REQUIRED)
  *     .build();
  *
  * AtiConnection connection = atiClient.connect(serverUrl);
  *
- * // Fetch SCITT headers (blocking in example code is fine during setup)
- * Map<String, String> scittHeaders = atiClient.scittHeadersAsync().join();
- *
  * HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(serverUrl)
  *     .customizeClient(b -> b.sslContext(atiClient.sslContext()))
- *     .customizeRequest(b -> scittHeaders.forEach(b::header))
  *     .build();
  *
  * McpSyncClient mcpClient = McpClient.sync(transport).build();
@@ -141,11 +132,10 @@ public class AtiVerifiedClient implements AutoCloseable {
             })
             .build();
 
-        // If SCITT is disabled or no agentId, cache permanently-empty headers
-        if (!policy.hasScittVerification() || agentId == null || agentId.isBlank()) {
-            scittHeaderCache.put(CACHE_KEY,
-                new CachedScittHeaders(Map.of(), Instant.MAX));
-        }
+        // If SCITT is not exposed in simplified policy or no agentId, cache permanently-empty headers
+        // SCITT is not enabled by any simplified policy value
+        scittHeaderCache.put(CACHE_KEY,
+            new CachedScittHeaders(Map.of(), Instant.MAX));
 
         // Create shared HttpClient once at construction time
         // HttpClient is designed to be long-lived and maintains its own connection pool
@@ -283,7 +273,6 @@ public class AtiVerifiedClient implements AutoCloseable {
      *
      * <p>Based on the policy, this may:</p>
      * <ul>
-     *   <li>Send preflight HEAD request to capture SCITT headers (if SCITT enabled)</li>
      *   <li>Lookup DANE/TLSA DNS records (if DANE enabled)</li>
      *   <li>Query transparency log for badge (if Badge enabled)</li>
      * </ul>
@@ -306,7 +295,6 @@ public class AtiVerifiedClient implements AutoCloseable {
      *
      * <p>Based on the policy, this may:</p>
      * <ul>
-     *   <li>Send preflight HEAD request to capture SCITT headers (if SCITT enabled)</li>
      *   <li>Lookup DANE/TLSA DNS records (if DANE enabled)</li>
      *   <li>Query transparency log for badge (if Badge enabled)</li>
      * </ul>
@@ -337,42 +325,12 @@ public class AtiVerifiedClient implements AutoCloseable {
         CompletableFuture<PreVerificationResult> daneAndBadgeFuture =
             connectionVerifier.preVerify(hostname, port);
 
-        // Start SCITT preflight asynchronously (if enabled) so it runs in parallel with DANE/Badge
-        CompletableFuture<ScittPreVerifyResult> scittFuture;
-        if (policy.hasScittVerification()) {
-            scittFuture = sendPreflightAsync(uri)
-                .thenCompose(connectionVerifier::scittPreVerify)
-                .exceptionally(e -> {
-                    Throwable cause = e instanceof CompletionException && e.getCause() != null
-                        ? e.getCause() : e;
-                    LOGGER.warn("SCITT preflight failed: {}", cause.getMessage());
-                    return ScittPreVerifyResult.parseError("Preflight failed: " + cause.getMessage());
-                });
-        } else {
-            scittFuture = CompletableFuture.completedFuture(ScittPreVerifyResult.notPresent());
-        }
+        // SCITT is not enabled in simplified policy - always skip preflight
+        CompletableFuture<ScittPreVerifyResult> scittFuture =
+            CompletableFuture.completedFuture(ScittPreVerifyResult.notPresent());
 
         // Non-blocking: combine both futures using thenCombine
         return daneAndBadgeFuture.thenCombine(scittFuture, (preResult, scittPreResult) -> {
-            // Fail-fast based on policy and SCITT result
-            // This prevents accidental unverified connections
-            boolean scittVerified = scittPreResult.expectation().isVerified();
-
-            assertScittResult(scittPreResult, scittVerified);
-
-            if (policy.hasScittVerification() && !scittVerified) {
-                if (policy.allowsScittFallbackToBadge() && !scittPreResult.isPresent()) {
-                    // Allow fallback - badge verification will happen in post-verify
-                    LOGGER.debug("SCITT headers not present, will fall back to badge verification");
-                } else {
-                    String reason = scittPreResult.expectation().failureReason();
-                    ScittVerificationException.FailureType failureType = mapToFailureType(
-                        scittPreResult.expectation().status());
-                    throw new ScittVerificationException(
-                        "SCITT verification required but failed: " + reason, failureType);
-                }
-            }
-
             PreVerificationResult combinedResult = preResult.withScittResult(scittPreResult);
             LOGGER.debug("Pre-verification complete: {}", combinedResult);
             return new AtiConnection(hostname, combinedResult, connectionVerifier, policy,
@@ -388,65 +346,6 @@ public class AtiVerifiedClient implements AutoCloseable {
                     }
                 });
         });
-    }
-
-    private void assertScittResult(ScittPreVerifyResult scittPreResult, boolean scittVerified) {
-        // Reject invalid SCITT headers regardless of mode (prevents garbage header attacks)
-        if (policy.rejectsInvalidScittHeaders() && scittPreResult.isPresent() && !scittVerified) {
-            String reason = scittPreResult.expectation().failureReason();
-            ScittVerificationException.FailureType failureType = mapToFailureType(
-                scittPreResult.expectation().status());
-            throw new ScittVerificationException(
-                "SCITT headers present but verification failed: " + reason, failureType);
-        }
-    }
-
-    /**
-     * Sends a preflight HEAD request asynchronously to capture server's SCITT headers.
-     * Uses HttpClient.sendAsync for non-blocking I/O, enabling parallelism with DANE/Badge.
-     * First fetches our SCITT headers (if not already cached) to include in the request.
-     */
-    private CompletableFuture<Map<String, String>> sendPreflightAsync(URI uri) {
-        LOGGER.debug("Sending async preflight request to {}", uri);
-
-        // First get our SCITT headers (lazy fetch if needed), then send the request
-        return fetchScittHeadersAsync().thenCompose(outgoingHeaders -> {
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(uri)
-                .timeout(Duration.ofSeconds(10))
-                .method("HEAD", HttpRequest.BodyPublishers.noBody());
-            outgoingHeaders.forEach(requestBuilder::header);
-
-            return httpClient.sendAsync(requestBuilder.build(), HttpResponse.BodyHandlers.discarding())
-                .thenApply(response -> {
-                    Map<String, String> headers = new HashMap<>();
-                    response.headers().map().forEach((k, v) -> {
-                        if (!v.isEmpty()) {
-                            headers.put(k.toLowerCase(), v.get(0));
-                        }
-                    });
-                    LOGGER.debug("Preflight response: {} with {} headers",
-                        response.statusCode(), headers.size());
-                    return headers;
-                });
-        });
-    }
-
-    /**
-     * Maps ScittExpectation.Status to ScittVerificationException.FailureType.
-     */
-    private static ScittVerificationException.FailureType mapToFailureType(
-            com.aliyun.ati.sdk.transparency.scitt.ScittExpectation.Status status) {
-        return switch (status) {
-            case NOT_PRESENT -> ScittVerificationException.FailureType.HEADERS_NOT_PRESENT;
-            case PARSE_ERROR -> ScittVerificationException.FailureType.PARSE_ERROR;
-            case INVALID_RECEIPT, INVALID_TOKEN -> ScittVerificationException.FailureType.INVALID_SIGNATURE;
-            case TOKEN_EXPIRED -> ScittVerificationException.FailureType.TOKEN_EXPIRED;
-            case KEY_NOT_FOUND -> ScittVerificationException.FailureType.KEY_NOT_FOUND;
-            case AGENT_REVOKED -> ScittVerificationException.FailureType.AGENT_REVOKED;
-            case AGENT_INACTIVE -> ScittVerificationException.FailureType.AGENT_INACTIVE;
-            case VERIFIED -> ScittVerificationException.FailureType.VERIFICATION_ERROR; // Should not happen
-        };
     }
 
     @Override
@@ -478,7 +377,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         private char[] keyPassword;
         private String keyStorePath;
         private TransparencyClient transparencyClient;
-        private VerificationPolicy policy = VerificationPolicy.SCITT_REQUIRED;
+        private VerificationPolicy policy = VerificationPolicy.BADGE_REQUIRED;
         private Duration connectTimeout = Duration.ofSeconds(30);
         private SSLContext sslContext;
         private CertificateCapturingTrustManager trustManager;
@@ -535,7 +434,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         /**
          * Sets the verification policy.
          *
-         * @param policy the verification policy (default: SCITT_REQUIRED)
+         * @param policy the verification policy (default: BADGE_REQUIRED)
          * @return this builder
          */
         public Builder policy(VerificationPolicy policy) {

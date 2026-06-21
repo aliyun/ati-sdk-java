@@ -33,7 +33,7 @@ import java.util.concurrent.CompletableFuture;
  * Map<String, String> headers = extractHeaders(request);
  *
  * ClientRequestVerificationResult result = verifier
- *     .verify(clientCert, headers, VerificationPolicy.SCITT_REQUIRED)
+ *     .verify(clientCert, headers, VerificationPolicy.BADGE_REQUIRED)
  *     .join();
  *
  * if (!result.verified()) {
@@ -72,7 +72,7 @@ public interface ClientRequestVerifier {
     );
 
     /**
-     * Verifies an incoming client request using the default SCITT_REQUIRED policy.
+     * Verifies an incoming client request using the default BADGE_REQUIRED policy.
      *
      * @param clientCert the client's X.509 certificate from mTLS handshake
      * @param requestHeaders the HTTP request headers (keys must be lowercase)
@@ -82,6 +82,6 @@ public interface ClientRequestVerifier {
     default CompletableFuture<ClientRequestVerificationResult> verify(
             X509Certificate clientCert,
             Map<String, String> requestHeaders) {
-        return verify(clientCert, requestHeaders, VerificationPolicy.SCITT_REQUIRED);
+        return verify(clientCert, requestHeaders, VerificationPolicy.BADGE_REQUIRED);
     }
 }

@@ -3,7 +3,6 @@ package com.aliyun.ati.sdk.agent.server;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
-import com.aliyun.ati.sdk.agent.VerificationMode;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.concurrent.AtiExecutors;
 import com.aliyun.ati.sdk.crypto.CertificateUtils;
@@ -215,21 +214,14 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
             artifactsOpt = headerProvider.extractArtifacts(requestHeaders);
         } catch (Exception e) {
             LOGGER.warn("Failed to extract SCITT artifacts: {}", e.getMessage());
-            String message = policy.scittMode() == VerificationMode.REQUIRED
-                ? "Failed to parse SCITT headers: " + e.getMessage()
-                : "SCITT headers invalid (advisory mode)";
-            return ArtifactExtractionResult.failure(failureResult(message, clientCert, policy, startNanos));
+            return ArtifactExtractionResult.failure(failureResult(
+                "Failed to parse SCITT headers: " + e.getMessage(), clientCert, policy, startNanos));
         }
 
         // Step 3: Handle missing SCITT artifacts
         if (artifactsOpt.isEmpty() || !artifactsOpt.get().isPresent()) {
-            String message = policy.scittMode() == VerificationMode.REQUIRED
-                ? "SCITT headers required but not present"
-                : "SCITT headers not present";
-            if (policy.scittMode() != VerificationMode.REQUIRED) {
-                LOGGER.debug("SCITT headers not present, mode={}", policy.scittMode());
-            }
-            return ArtifactExtractionResult.failure(failureResult(message, clientCert, policy, startNanos));
+            return ArtifactExtractionResult.failure(failureResult(
+                "SCITT headers required but not present", clientCert, policy, startNanos));
         }
 
         return ArtifactExtractionResult.success(artifactsOpt.get());
@@ -289,7 +281,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
         if (statusToken == null) {
             errors.add("Status token is required but not present");
         }
-        if (receipt == null && policy.scittMode() == VerificationMode.REQUIRED) {
+        if (receipt == null) {
             errors.add("Receipt is required but not present");
         }
         if (!errors.isEmpty()) {

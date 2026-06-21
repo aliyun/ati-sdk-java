@@ -1,6 +1,5 @@
 package com.aliyun.ati.sdk.agent.http;
 
-import com.aliyun.ati.sdk.agent.VerificationMode;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.agent.exception.VerificationException;
 import com.aliyun.ati.sdk.agent.verification.ConnectionVerifier;
@@ -59,7 +58,7 @@ import java.util.concurrent.TimeUnit;
  * AtiHttpClient client = AtiHttpClient.builder()
  *     .delegate(httpClient)
  *     .connectionVerifier(verifier)
- *     .verificationPolicy(VerificationPolicy.DANE_REQUIRED)
+ *     .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
  *     .build();
  *
  * HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -212,7 +211,7 @@ public class AtiHttpClient {
      * @throws VerificationException if badge pre-verification failed and badge is REQUIRED
      */
     private void checkBadgePreVerification(PreVerificationResult preResult, String hostname) {
-        if (preResult.badgePreVerifyFailed() && policy.badgeMode() == VerificationMode.REQUIRED) {
+        if (preResult.badgePreVerifyFailed() && policy.hasBadgeVerification()) {
             LOGGER.error("Badge pre-verification failed for {} and is REQUIRED: {}",
                 hostname, preResult.badgeFailureReason());
             throw new VerificationException(
