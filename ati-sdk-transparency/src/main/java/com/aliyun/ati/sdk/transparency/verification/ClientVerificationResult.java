@@ -1,79 +1,184 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
+import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
+
 import java.util.Objects;
 
 /**
- * Immutable result of a client-side badge verification.
+ * Result of verifying a client certificate against the ATI transparency log.
  *
- * <p>Contains the verification status, the identity certificate fingerprint
- * (only set when {@link VerificationStatus#VERIFIED}), agent host, and agent ID.
+ * <p>This is used when a server wants to verify that a client connecting via
+ * mTLS is a registered ATI agent with a valid identity certificate.</p>
  */
 public final class ClientVerificationResult {
 
     private final VerificationStatus status;
-    private final String identityCertFingerprint;
-    private final String agentHost;
-    private final String agentId;
+    private final TransparencyLog registration;
+    private final String expectedIdentityCertFingerprint;
+    private final String expectedAtiName;
+    private final String expectedAgentHost;
+    private final String warningMessage;
 
-    private ClientVerificationResult(VerificationStatus status,
-                                     String identityCertFingerprint,
-                                     String agentHost,
-                                     String agentId) {
-        this.status = Objects.requireNonNull(status, "status must not be null");
-        this.identityCertFingerprint = identityCertFingerprint;
-        this.agentHost = agentHost;
-        this.agentId = agentId;
+    private ClientVerificationResult(Builder builder) {
+        this.status = Objects.requireNonNull(builder.status, "status is required");
+        this.registration = builder.registration;
+        this.expectedIdentityCertFingerprint = builder.expectedIdentityCertFingerprint;
+        this.expectedAtiName = builder.expectedAtiName;
+        this.expectedAgentHost = builder.expectedAgentHost;
+        this.warningMessage = builder.warningMessage;
     }
 
     /**
-     * Creates a verified result with an identity certificate fingerprint.
+     * Returns the verification status.
      *
-     * @param identityCertFingerprint the SHA-256 fingerprint of the identity certificate
-     * @param agentHost               the agent host name
-     * @param agentId                 the agent identifier
-     * @return a verified result
+     * @return the status
      */
-    public static ClientVerificationResult verified(String identityCertFingerprint,
-                                                     String agentHost,
-                                                     String agentId) {
-        return new ClientVerificationResult(
-            VerificationStatus.VERIFIED, identityCertFingerprint, agentHost, agentId);
-    }
-
-    /**
-     * Creates a failed result with the given status.
-     *
-     * @param status  the failure reason
-     * @param agentId the agent identifier (may be null)
-     * @return a failed result
-     */
-    public static ClientVerificationResult failed(VerificationStatus status, String agentId) {
-        return new ClientVerificationResult(status, null, null, agentId);
-    }
-
     public VerificationStatus getStatus() {
         return status;
     }
 
-    public String getIdentityCertFingerprint() {
-        return identityCertFingerprint;
+    /**
+     * Returns the transparency log registration, if found.
+     *
+     * @return the registration, or null if not found
+     */
+    public TransparencyLog getRegistration() {
+        return registration;
     }
 
-    public String getAgentHost() {
-        return agentHost;
+    /**
+     * Returns the expected identity certificate fingerprint from the registration.
+     *
+     * <p>Use this to verify the client's certificate matches what's in the
+     * transparency log.</p>
+     *
+     * @return the expected fingerprint, or null if not available
+     */
+    public String getExpectedIdentityCertFingerprint() {
+        return expectedIdentityCertFingerprint;
     }
 
-    public String getAgentId() {
-        return agentId;
+    /**
+     * Returns the expected ANS name from the registration.
+     *
+     * <p>Use this to verify the client's certificate URI SAN matches the
+     * registration.</p>
+     *
+     * @return the expected ANS name, or null if not available
+     */
+    public String getExpectedAtiName() {
+        return expectedAtiName;
+    }
+
+    /**
+     * Returns the expected agent host from the registration.
+     *
+     * <p>Use this to verify the client's certificate CN matches what's in the
+     * transparency log.</p>
+     *
+     * @return the expected agent host, or null if not available
+     */
+    public String getExpectedAgentHost() {
+        return expectedAgentHost;
+    }
+
+    /**
+     * Returns a warning message if any issues were detected during verification.
+     *
+     * @return the warning message, or null if no warnings
+     */
+    public String getWarningMessage() {
+        return warningMessage;
+    }
+
+    /**
+     * Returns true if the verification was successful.
+     *
+     * <p>A verification is considered successful if the status is VERIFIED
+     * or DEPRECATED_OK.</p>
+     *
+     * @return true if verification succeeded
+     */
+    public boolean isSuccess() {
+        return status == VerificationStatus.VERIFIED
+            || status == VerificationStatus.DEPRECATED_OK;
+    }
+
+    /**
+     * Returns true if the client is not an ATI agent (no ra-badge record).
+     *
+     * @return true if not an ATI agent
+     */
+    public boolean isNotAtiAgent() {
+        return status == VerificationStatus.NOT_ATI_AGENT;
+    }
+
+    /**
+     * Creates a new builder.
+     *
+     * @return a new builder
+     */
+    public static Builder builder() {
+        return new Builder();
     }
 
     @Override
     public String toString() {
         return "ClientVerificationResult{"
             + "status=" + status
-            + ", identityCertFingerprint='" + identityCertFingerprint + '\''
-            + ", agentHost='" + agentHost + '\''
-            + ", agentId='" + agentId + '\''
+            + ", expectedIdentityCertFingerprint='" + expectedIdentityCertFingerprint + '\''
+            + ", expectedAtiName='" + expectedAtiName + '\''
+            + ", expectedAgentHost='" + expectedAgentHost + '\''
+            + ", warningMessage='" + warningMessage + '\''
             + '}';
+    }
+
+    /**
+     * Builder for ClientVerificationResult.
+     */
+    public static final class Builder {
+        private VerificationStatus status;
+        private TransparencyLog registration;
+        private String expectedIdentityCertFingerprint;
+        private String expectedAtiName;
+        private String expectedAgentHost;
+        private String warningMessage;
+
+        private Builder() {
+        }
+
+        public Builder status(VerificationStatus status) {
+            this.status = status;
+            return this;
+        }
+
+        public Builder registration(TransparencyLog registration) {
+            this.registration = registration;
+            return this;
+        }
+
+        public Builder expectedIdentityCertFingerprint(String fingerprint) {
+            this.expectedIdentityCertFingerprint = fingerprint;
+            return this;
+        }
+
+        public Builder expectedAtiName(String atiName) {
+            this.expectedAtiName = atiName;
+            return this;
+        }
+
+        public Builder expectedAgentHost(String agentHost) {
+            this.expectedAgentHost = agentHost;
+            return this;
+        }
+
+        public Builder warningMessage(String message) {
+            this.warningMessage = message;
+            return this;
+        }
+
+        public ClientVerificationResult build() {
+            return new ClientVerificationResult(this);
+        }
     }
 }

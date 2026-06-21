@@ -1,101 +1,185 @@
 package com.aliyun.ati.sdk.agent;
 
-import java.net.http.HttpClient;
-import java.security.cert.X509Certificate;
-import java.util.List;
-import java.util.Objects;
-
-import com.aliyun.ati.sdk.agent.http.CertificateCapturingTrustManager;
-import com.aliyun.ati.sdk.agent.verification.DefaultConnectionVerifier;
+import com.aliyun.ati.sdk.agent.http.CapturedCertificateProvider;
+import com.aliyun.ati.sdk.agent.verification.ConnectionVerifier;
 import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
 import com.aliyun.ati.sdk.agent.verification.VerificationResult;
-import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
-import com.aliyun.ati.sdk.exception.AtiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.security.cert.X509Certificate;
+import java.util.List;
 
 /**
- * Holds a pre-verified connection to an ATI agent.
+ * Represents a connection to an ANS-verified server.
  *
- * <p>Contains the {@link HttpClient} configured with the SSL context,
- * the {@link AtiAgentDescriptor} from discovery, and the pre-verification
- * state from DNS/TL queries.</p>
+ * <p>Created by {@link AtiVerifiedClient#connect(String)}, this class holds
+ * pre-verification results and provides post-verification after TLS handshake.</p>
  *
- * <p>After sending a request (which triggers the TLS handshake), call
- * {@link #verify()} to compare the captured server certificate against
- * the pre-fetched expectations.</p>
+ * <p>Based on the policy, verification may include DANE, Badge, and/or SCITT.
+ * The {@link #verifyServer()} method combines all results according to the policy.</p>
+ *
+ * <h2>Usage</h2>
+ * <pre>{@code
+ * AtiVerifiedClient atiClient = AtiVerifiedClient.builder()
+ *     .agentId("my-agent-id")
+ *     .keyStorePath("/path/to/client.p12", "password")
+ *     .build();
+ *
+ * try (AtiConnection connection = atiClient.connect(serverUrl)) {
+ *     // Use MCP SDK to establish connection...
+ *     mcpClient.initialize();
+ *
+ *     // Post-verify the server certificate
+ *     VerificationResult result = connection.verifyServer();
+ *     if (!result.isSuccess()) {
+ *         throw new SecurityException("Verification failed: " + result.reason());
+ *     }
+ * }
+ * }</pre>
  */
-public final class AtiConnection {
+public class AtiConnection implements AutoCloseable {
 
-    private final HttpClient httpClient;
-    private final AtiAgentDescriptor descriptor;
+    private static final Logger LOGGER = LoggerFactory.getLogger(AtiConnection.class);
+
+    private final String hostname;
     private final PreVerificationResult preResult;
-    private final DefaultConnectionVerifier connectionVerifier;
-    private final CertificateCapturingTrustManager trustManager;
+    private final ConnectionVerifier verifier;
+    private final VerificationPolicy policy;
+    private final CapturedCertificateProvider certProvider;
 
     /**
-     * Creates a new ATI connection with pre-verification state.
+     * Creates a new AtiConnection.
      *
-     * @param httpClient          the HTTP client with SSL context
-     * @param descriptor          the discovered agent descriptor
-     * @param preResult           the pre-verification result
-     * @param connectionVerifier  the connection verifier for post-verify
-     * @param trustManager        the trust manager capturing server certs
+     * <p>This constructor is package-private; use {@link AtiVerifiedClient#connect(String)}
+     * to create connections.</p>
+     *
+     * @param hostname the hostname being connected to
+     * @param preResult the pre-verification result
+     * @param verifier the connection verifier
+     * @param policy the verification policy
+     * @param certProvider the provider for captured server certificates
      */
-    public AtiConnection(HttpClient httpClient,
-                         AtiAgentDescriptor descriptor,
-                         PreVerificationResult preResult,
-                         DefaultConnectionVerifier connectionVerifier,
-                         CertificateCapturingTrustManager trustManager) {
-        this.httpClient = Objects.requireNonNull(httpClient,
-            "httpClient must not be null");
-        this.descriptor = Objects.requireNonNull(descriptor,
-            "descriptor must not be null");
-        this.preResult = Objects.requireNonNull(preResult,
-            "preResult must not be null");
-        this.connectionVerifier = Objects.requireNonNull(
-            connectionVerifier,
-            "connectionVerifier must not be null");
-        this.trustManager = Objects.requireNonNull(trustManager,
-            "trustManager must not be null");
+    AtiConnection(String hostname, PreVerificationResult preResult,
+                  ConnectionVerifier verifier, VerificationPolicy policy,
+                  CapturedCertificateProvider certProvider) {
+        this.hostname = hostname;
+        this.preResult = preResult;
+        this.verifier = verifier;
+        this.policy = policy;
+        this.certProvider = certProvider;
     }
 
     /**
-     * Post-verifies the server certificate captured during the TLS
-     * handshake against the pre-fetched DANE and Badge expectations.
+     * Returns the hostname being connected to.
      *
-     * <p>Must be called after at least one request has been sent
-     * through the {@link #getHttpClient()} so that the server
-     * certificate is available.</p>
-     *
-     * @return an unmodifiable list of verification results
-     * @throws AtiException if no server certificate has been captured
-     *                      yet, or if a REQUIRED verification fails
+     * @return the hostname
      */
-    public List<VerificationResult> verify() {
-        X509Certificate serverCert =
-            trustManager.getLastCapturedServerCert();
-        if (serverCert == null) {
-            throw new AtiException(
-                "No server certificate captured yet. "
-                    + "Send a request first.");
+    public String hostname() {
+        return hostname;
+    }
+
+    /**
+     * Returns the combined pre-verification result.
+     *
+     * @return the pre-verification result
+     */
+    public PreVerificationResult preVerifyResult() {
+        return preResult;
+    }
+
+    /**
+     * Returns whether SCITT artifacts were present in server response.
+     *
+     * @return true if SCITT artifacts are available
+     */
+    public boolean hasScittArtifacts() {
+        return preResult.hasScittExpectation();
+    }
+
+    /**
+     * Returns whether Badge registration was found.
+     *
+     * @return true if badge fingerprints are available
+     */
+    public boolean hasBadgeRegistration() {
+        return preResult.hasBadgeExpectation();
+    }
+
+    /**
+     * Returns whether DANE/TLSA records were found.
+     *
+     * @return true if DANE expectations are available
+     */
+    public boolean hasDaneRecords() {
+        return preResult.hasDaneExpectation();
+    }
+
+    /**
+     * Verifies the server certificate after TLS handshake.
+     *
+     * <p>Runs all enabled post-verifications (DANE, Badge, SCITT) and combines
+     * results according to the policy. Returns SUCCESS if all REQUIRED verifications
+     * pass, logs warnings for ADVISORY failures.</p>
+     *
+     * @return the combined verification result
+     * @throws SecurityException if no server certificate was captured
+     */
+    public VerificationResult verifyServer() {
+        X509Certificate[] certs = certProvider.getCapturedCertificates(hostname);
+        if (certs == null || certs.length == 0) {
+            throw new SecurityException("No server certificate captured for " + hostname);
         }
-        return connectionVerifier.postVerify(serverCert, preResult);
+        return verifyServer(certs[0]);
     }
 
     /**
-     * Returns the HTTP client configured with the SSL context.
+     * Verifies using an explicitly provided certificate.
      *
-     * @return the HTTP client
+     * @param serverCert the server's certificate
+     * @return the combined verification result
      */
-    public HttpClient getHttpClient() {
-        return httpClient;
+    public VerificationResult verifyServer(X509Certificate serverCert) {
+        LOGGER.debug("Post-verifying server certificate for {}", hostname);
+
+        List<VerificationResult> results = verifier.postVerify(hostname, serverCert, preResult);
+        VerificationResult combined = verifier.combine(results, policy);
+
+        LOGGER.debug("Combined verification result for {}: {} ({})",
+            hostname, combined.status(), combined.type());
+
+        return combined;
     }
 
     /**
-     * Returns the discovered agent descriptor.
+     * Returns individual verification results without combining.
      *
-     * @return the agent descriptor
+     * <p>Useful for debugging or detailed logging.</p>
+     *
+     * @param serverCert the server's certificate
+     * @return list of individual verification results
      */
-    public AtiAgentDescriptor getDescriptor() {
-        return descriptor;
+    public List<VerificationResult> verifyServerDetailed(X509Certificate serverCert) {
+        return verifier.postVerify(hostname, serverCert, preResult);
+    }
+
+    /**
+     * Returns individual verification results without combining, using captured certificate.
+     *
+     * @return list of individual verification results
+     * @throws SecurityException if no server certificate was captured
+     */
+    public List<VerificationResult> verifyServerDetailed() {
+        X509Certificate[] certs = certProvider.getCapturedCertificates(hostname);
+        if (certs == null || certs.length == 0) {
+            throw new SecurityException("No server certificate captured for " + hostname);
+        }
+        return verifyServerDetailed(certs[0]);
+    }
+
+    @Override
+    public void close() {
+        certProvider.clearCapturedCertificates(hostname);
+        LOGGER.debug("Cleared captured certificates for {}", hostname);
     }
 }

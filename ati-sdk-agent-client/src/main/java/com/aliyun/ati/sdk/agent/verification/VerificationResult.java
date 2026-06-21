@@ -1,59 +1,171 @@
 package com.aliyun.ati.sdk.agent.verification;
 
-import java.util.Objects;
+import com.aliyun.ati.sdk.crypto.CertificateUtils;
 
-public final class VerificationResult {
+/**
+ * Result of a verification operation (DANE or Badge).
+ *
+ * <p>This record provides a structured way to return verification results
+ * without throwing exceptions, enabling verification to happen outside
+ * the TLS handshake.</p>
+ *
+ * @param status the verification status
+ * @param type the type of verification that was performed
+ * @param reason explanation for the result (failure reason or success details)
+ * @param actualFingerprint the fingerprint of the certificate that was verified
+ * @param expectedFingerprint the fingerprint that was expected (from DANE or transparency log)
+ */
+public record VerificationResult(
+    Status status,
+    VerificationType type,
+    String reason,
+    String actualFingerprint,
+    String expectedFingerprint
+) {
 
-    public enum Type {
-        DANE,
-        BADGE
-    }
-
+    /**
+     * Verification status.
+     */
     public enum Status {
+        /** Verification succeeded - fingerprints match */
         SUCCESS,
+        /** Verification failed - fingerprints do not match */
         MISMATCH,
+        /** Verification skipped - no record/registration found (advisory mode) */
         NOT_FOUND,
+        /** Verification error - unable to perform verification */
         ERROR
     }
 
-    private final Type type;
-    private final Status status;
-    private final String detail;
-
-    private VerificationResult(Type type, Status status, String detail) {
-        this.type = Objects.requireNonNull(type);
-        this.status = Objects.requireNonNull(status);
-        this.detail = detail;
+    /**
+     * Type of verification.
+     */
+    public enum VerificationType {
+        /** DANE/TLSA DNS record verification */
+        DANE,
+        /** ATI transparency log badge verification (proof of registration) */
+        BADGE,
+        /** SCITT verification via HTTP headers (receipt + status token) */
+        SCITT,
+        /** PKI-only verification (no additional ATI verification performed) */
+        PKI_ONLY
     }
 
-    public static VerificationResult success(Type type) {
-        return new VerificationResult(type, Status.SUCCESS, null);
+    /**
+     * Creates a successful verification result.
+     *
+     * @param type the verification type
+     * @param fingerprint the matching fingerprint
+     * @return a success result
+     */
+    public static VerificationResult success(VerificationType type, String fingerprint) {
+        return new VerificationResult(Status.SUCCESS, type, "Verification successful", fingerprint, fingerprint);
     }
 
-    public static VerificationResult failure(Type type, Status status,
-                                             String detail) {
-        return new VerificationResult(type, status, detail);
+    /**
+     * Creates a successful verification result with details.
+     *
+     * @param type the verification type
+     * @param fingerprint the matching fingerprint
+     * @param reason additional details about the success
+     * @return a success result
+     */
+    public static VerificationResult success(VerificationType type, String fingerprint, String reason) {
+        return new VerificationResult(Status.SUCCESS, type, reason, fingerprint, fingerprint);
     }
 
-    public Type getType() {
-        return type;
+    /**
+     * Creates a mismatch verification result.
+     *
+     * @param type the verification type
+     * @param actual the actual certificate fingerprint
+     * @param expected the expected fingerprint
+     * @return a mismatch result
+     */
+    public static VerificationResult mismatch(VerificationType type, String actual, String expected) {
+        String reason = String.format("Certificate fingerprint mismatch: expected %s, got %s",
+            CertificateUtils.truncateFingerprint(expected), CertificateUtils.truncateFingerprint(actual));
+        return new VerificationResult(Status.MISMATCH, type, reason, actual, expected);
     }
 
-    public Status getStatus() {
-        return status;
+    /**
+     * Creates a not-found verification result.
+     *
+     * @param type the verification type
+     * @param reason explanation of what was not found
+     * @return a not-found result
+     */
+    public static VerificationResult notFound(VerificationType type, String reason) {
+        return new VerificationResult(Status.NOT_FOUND, type, reason, null, null);
     }
 
-    public String getDetail() {
-        return detail;
+    /**
+     * Creates an error verification result.
+     *
+     * @param type the verification type
+     * @param reason the error description
+     * @return an error result
+     */
+    public static VerificationResult error(VerificationType type, String reason) {
+        return new VerificationResult(Status.ERROR, type, reason, null, null);
     }
 
+    /**
+     * Creates an error verification result from an exception.
+     *
+     * @param type the verification type
+     * @param cause the exception that caused the error
+     * @return an error result
+     */
+    public static VerificationResult error(VerificationType type, Throwable cause) {
+        String reason = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+        return new VerificationResult(Status.ERROR, type, reason, null, null);
+    }
+
+    /**
+     * Creates a result indicating no additional verification was performed.
+     *
+     * <p>This is used when only PKI/TLS validation occurred (no DANE or Badge
+     * verification). This is semantically clearer than returning a SUCCESS with null
+     * fingerprints for a verification type that wasn't actually checked.</p>
+     *
+     * @param reason explanation of why verification was skipped
+     * @return a not-found result with PKI_ONLY type
+     */
+    public static VerificationResult skipped(String reason) {
+        return new VerificationResult(Status.NOT_FOUND, VerificationType.PKI_ONLY, reason, null, null);
+    }
+
+    /**
+     * Returns true if verification was successful.
+     *
+     * @return true if status is SUCCESS
+     */
     public boolean isSuccess() {
         return status == Status.SUCCESS;
     }
 
+    /**
+     * Returns true if verification failed and should block the connection.
+     *
+     * @return true if status is MISMATCH or ERROR
+     */
+    public boolean shouldFail() {
+        return status == Status.MISMATCH || status == Status.ERROR;
+    }
+
+    /**
+     * Returns true if verification found no record but didn't fail.
+     *
+     * @return true if status is NOT_FOUND
+     */
+    public boolean isNotFound() {
+        return status == Status.NOT_FOUND;
+    }
+
     @Override
     public String toString() {
-        return type + ":" + status
-            + (detail != null ? " (" + detail + ")" : "");
+        return String.format("VerificationResult{type=%s, status=%s, reason='%s'}",
+            type, status, reason);
     }
 }

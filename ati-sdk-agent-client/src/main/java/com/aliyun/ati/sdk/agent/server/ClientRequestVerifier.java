@@ -1,69 +1,87 @@
 package com.aliyun.ati.sdk.agent.server;
 
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+
 import java.security.cert.X509Certificate;
-import java.util.Objects;
-
-import com.aliyun.ati.sdk.crypto.CertUtils;
-import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
-import com.aliyun.ati.sdk.transparency.verification.ClientVerificationResult;
-import com.aliyun.ati.sdk.transparency.verification.VerificationStatus;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Verifies inbound client mTLS certificates against the TL registry.
+ * Server-side verifier for incoming client requests.
  *
- * <p>Used by an ATI Server to validate that a connecting client's certificate
- * fingerprint matches the expected identity certificate fingerprint recorded
- * in the Transparency Log. The {@code agentId} is passed explicitly; the
- * caller (e.g. a servlet filter or interceptor) is responsible for extracting
- * it from a request header, SAN, or CN.
+ * <p>This interface provides a high-level API for MCP servers (and other server
+ * implementations) to verify that incoming client requests are from legitimate
+ * ATI-registered agents.</p>
+ *
+ * <p>Verification involves:</p>
+ * <ol>
+ *   <li>Extracting SCITT artifacts (receipt and status token) from request headers</li>
+ *   <li>Verifying the cryptographic signatures on the artifacts</li>
+ *   <li>Checking the status token hasn't expired</li>
+ *   <li>Matching the client's mTLS certificate fingerprint against the
+ *       {@code validIdentityCertFingerprints} in the status token</li>
+ * </ol>
+ *
+ * <h2>Usage Example</h2>
+ * <pre>{@code
+ * ClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
+ *     .scittVerifier(scittVerifierAdapter)
+ *     .build();
+ *
+ * // In request handler
+ * X509Certificate clientCert = (X509Certificate) sslSession.getPeerCertificates()[0];
+ * Map<String, String> headers = extractHeaders(request);
+ *
+ * ClientRequestVerificationResult result = verifier
+ *     .verify(clientCert, headers, VerificationPolicy.SCITT_REQUIRED)
+ *     .join();
+ *
+ * if (!result.verified()) {
+ *     return Response.status(403)
+ *         .entity("Client verification failed: " + result.errors())
+ *         .build();
+ * }
+ *
+ * // Proceed with verified agent identity
+ * String agentId = result.agentId();
+ * }</pre>
+ *
+ * @see DefaultClientRequestVerifier
+ * @see ClientRequestVerificationResult
  */
-public final class ClientRequestVerifier {
-
-    private static final Logger LOG = LoggerFactory.getLogger(ClientRequestVerifier.class);
-
-    private final CachingBadgeVerificationService badgeService;
+public interface ClientRequestVerifier {
 
     /**
-     * Creates a verifier with badge verification.
+     * Verifies an incoming client request.
      *
-     * @param badgeService the badge verification service (required)
+     * <p>This method extracts SCITT artifacts from the request headers, verifies
+     * their signatures, and matches the client certificate fingerprint against
+     * the status token's identity certificate fingerprints.</p>
+     *
+     * @param clientCert the client's X.509 certificate from mTLS handshake
+     * @param requestHeaders the HTTP request headers (must include SCITT headers).
+     *        Header keys must be lowercase (e.g., {@code x-scitt-receipt}, {@code x-ans-status-token}).
+     * @param policy the verification policy to apply
+     * @return a future that completes with the verification result
+     * @throws NullPointerException if any parameter is null
      */
-    public ClientRequestVerifier(CachingBadgeVerificationService badgeService) {
-        this.badgeService = Objects.requireNonNull(badgeService, "badgeService must not be null");
-    }
+    CompletableFuture<ClientRequestVerificationResult> verify(
+        X509Certificate clientCert,
+        Map<String, String> requestHeaders,
+        VerificationPolicy policy
+    );
 
     /**
-     * Verifies a client certificate against the TL registry.
+     * Verifies an incoming client request using the default SCITT_REQUIRED policy.
      *
-     * @param clientCert the client's X.509 certificate from the mTLS handshake
-     * @param agentId    the agent identifier (extracted by the caller)
-     * @return verification result indicating success or the reason for failure
+     * @param clientCert the client's X.509 certificate from mTLS handshake
+     * @param requestHeaders the HTTP request headers (keys must be lowercase)
+     * @return a future that completes with the verification result
+     * @throws NullPointerException if any parameter is null
      */
-    public ClientVerificationResult verify(X509Certificate clientCert, String agentId) {
-        Objects.requireNonNull(clientCert, "clientCert must not be null");
-        Objects.requireNonNull(agentId, "agentId must not be null");
-
-        LOG.debug("Verifying client certificate for agent: {}", agentId);
-
-        ClientVerificationResult tlResult = badgeService.verifyClient(agentId);
-        if (tlResult.getStatus() != VerificationStatus.VERIFIED) {
-            LOG.warn("Client verification failed for agent {}: {}", agentId, tlResult.getStatus());
-            return tlResult;
-        }
-
-        String actualFingerprint = CertUtils.sha256Fingerprint(clientCert);
-        String expectedFingerprint = tlResult.getIdentityCertFingerprint();
-
-        if (CertUtils.fingerprintMatches(actualFingerprint, expectedFingerprint)) {
-            LOG.debug("Client certificate verified for agent {}", agentId);
-            return tlResult;
-        }
-
-        LOG.warn("Client cert fingerprint mismatch for agent {}: expected={}, actual={}",
-            agentId, expectedFingerprint, actualFingerprint);
-        return ClientVerificationResult.failed(VerificationStatus.FINGERPRINT_MISMATCH, agentId);
+    default CompletableFuture<ClientRequestVerificationResult> verify(
+            X509Certificate clientCert,
+            Map<String, String> requestHeaders) {
+        return verify(clientCert, requestHeaders, VerificationPolicy.SCITT_REQUIRED);
     }
 }

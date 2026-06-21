@@ -1,48 +1,73 @@
 package com.aliyun.ati.sdk.agent.http;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.aliyun.ati.sdk.crypto.CertificateUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.X509ExtendedTrustManager;
+import javax.net.ssl.X509TrustManager;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.time.Duration;
+import java.util.HexFormat;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.X509ExtendedTrustManager;
-import javax.net.ssl.X509TrustManager;
 
 /**
  * A TrustManager that captures server certificates during TLS handshake.
  *
- * <p>This TrustManager performs standard PKI validation (delegating to the
+ * <p>This TrustManager performs only standard PKI validation (delegating to the
  * underlying trust manager), while capturing the server certificate chain for
- * post-handshake DANE/Badge verification.</p>
+ * post-handshake verification.</p>
  *
- * <p>Certificates are stored in a {@link ConcurrentHashMap} keyed by the
- * leaf certificate's subject DN. This class extends
- * {@link X509ExtendedTrustManager} (not just {@link X509TrustManager})
- * because {@code java.net.http.HttpClient} requires an extended trust
- * manager.</p>
+ * <p>Certificates are stored in a bounded cache keyed by a composite
+ * key of hostname and session identifier, ensuring thread-safety for concurrent
+ * requests to the same host.</p>
  *
  * <h2>Usage</h2>
  * <pre>{@code
+ * // Create capturing trust manager
  * X509TrustManager systemTm = getSystemTrustManager();
- * CertificateCapturingTrustManager capturingTm =
- *     new CertificateCapturingTrustManager(systemTm);
+ * CertificateCapturingTrustManager capturingTm = new CertificateCapturingTrustManager(systemTm);
  *
+ * // Use in SSLContext
  * SSLContext sslContext = SSLContext.getInstance("TLS");
- * sslContext.init(null, new TrustManager[]{capturingTm}, null);
+ * sslContext.init(keyManagers, new TrustManager[]{capturingTm}, null);
  *
- * // After TLS handshake, retrieve captured certificate
- * X509Certificate serverCert = capturingTm.getLastCapturedServerCert();
+ * // After TLS handshake
+ * X509Certificate[] certs = capturingTm.getInstanceCapturedCertificates("example.com");
+ * // ... perform DANE/Badge verification with certs[0] ...
+ * capturingTm.clearInstanceCapturedCertificates("example.com");
  * }</pre>
+ *
+ * <h2>Thread Safety</h2>
+ * <p>This implementation is thread-safe. Certificates are stored in a per-instance bounded
+ * cache keyed by hostname + session ID, with a maximum of 10,000 entries and a 5-minute TTL.
+ * Always call {@link #clearInstanceCapturedCertificates(String)} after retrieving the
+ * certificates to prevent unnecessary retention within the TTL window.</p>
  */
-public final class CertificateCapturingTrustManager extends X509ExtendedTrustManager {
+public class CertificateCapturingTrustManager extends X509ExtendedTrustManager
+        implements CapturedCertificateProvider {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CertificateCapturingTrustManager.class);
 
     private final X509TrustManager delegate;
-    private final ConcurrentMap<String, X509Certificate[]> capturedCerts =
-        new ConcurrentHashMap<>();
+
+    /**
+     * Instance-level cache for captured certificates, isolated per trust manager instance.
+     * Prevents cross-client contamination when multiple clients operate concurrently.
+     */
+    private final Cache<String, X509Certificate[]> instanceCertificates = Caffeine.newBuilder()
+        .maximumSize(10_000)
+        .expireAfterWrite(Duration.ofMinutes(5))
+        .build();
 
     /**
      * Creates a certificate-capturing trust manager.
@@ -50,73 +75,189 @@ public final class CertificateCapturingTrustManager extends X509ExtendedTrustMan
      * @param delegate the underlying trust manager for PKI validation
      */
     public CertificateCapturingTrustManager(X509TrustManager delegate) {
-        this.delegate = Objects.requireNonNull(delegate, "delegate must not be null");
+        this.delegate = Objects.requireNonNull(delegate, "Delegate trust manager cannot be null");
+    }
+
+    /**
+     * Returns the captured certificate chain from this instance's cache.
+     *
+     * <p>Prefer this method over the static {@link #getCapturedCertificates(String)}
+     * to avoid cross-client contamination.</p>
+     *
+     * @param hostname the hostname to get certificates for
+     * @return the captured certificate chain, or null if no handshake occurred
+     */
+    public X509Certificate[] getInstanceCapturedCertificates(String hostname) {
+        // Note on thread safety: the iterate-then-remove pattern is intentionally non-atomic.
+        // This is safe because: (1) composite keys (hostname:sessionId) prevent cross-hostname
+        // contamination, (2) the null check after remove handles concurrent removal gracefully
+        // by continuing iteration, and (3) same-hostname entries hold PKI-validated certificates
+        // from the same server, so a cross-session read is functionally identical.
+        String prefix = hostname + ":";
+        for (Map.Entry<String, X509Certificate[]> entry
+                : instanceCertificates.asMap().entrySet()) {
+            String key = entry.getKey();
+            if (key.startsWith(prefix) || key.equals(hostname)) {
+                X509Certificate[] certs = instanceCertificates.asMap().remove(key);
+                if (certs != null) {
+                    LOGGER.debug("Retrieved instance certificates for key: {}", key);
+                    return certs.clone();
+                }
+            }
+        }
+        X509Certificate[] certificates = instanceCertificates.asMap().remove(hostname);
+        return certificates != null ? certificates.clone() : null;
+    }
+
+    /**
+     * Clears the captured certificates for the specified hostname from this instance's cache.
+     *
+     * <p>Call this after processing the certificates to prevent memory leaks.
+     * This clears all entries matching the hostname (all session IDs).</p>
+     *
+     * @param hostname the hostname to clear certificates for
+     */
+    public void clearInstanceCapturedCertificates(String hostname) {
+        String prefix = hostname + ":";
+        Iterator<String> iterator = instanceCertificates.asMap().keySet().iterator();
+        int cleared = 0;
+        while (iterator.hasNext()) {
+            String key = iterator.next();
+            if (key.startsWith(prefix) || key.equals(hostname)) {
+                iterator.remove();
+                cleared++;
+            }
+        }
+        if (cleared > 0) {
+            LOGGER.debug("Cleared {} instance certificate(s) for {}", cleared, hostname);
+        }
+    }
+
+    /**
+     * Clears all captured certificates from this instance's cache.
+     *
+     * <p>Call this after processing the certificates to prevent memory leaks.</p>
+     */
+    public void clearInstanceCapturedCertificates() {
+        instanceCertificates.invalidateAll();
+    }
+
+    // ==================== CapturedCertificateProvider ====================
+
+    @Override
+    public X509Certificate[] getCapturedCertificates(String hostname) {
+        return getInstanceCapturedCertificates(hostname);
     }
 
     @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType)
-            throws CertificateException {
+    public void clearCapturedCertificates(String hostname) {
+        clearInstanceCapturedCertificates(hostname);
+    }
+
+    /**
+     * Creates a composite key from hostname and session ID.
+     */
+    private static String compositeKey(String hostname, String sessionId) {
+        return hostname + ":" + sessionId;
+    }
+
+    /**
+     * Extracts session ID from an SSLEngine, falling back to identity hash code if unavailable.
+     */
+    private static String extractSessionId(SSLEngine engine) {
+        if (engine == null) {
+            return "";
+        }
+        try {
+            SSLSession session = engine.getSession();
+            if (session != null) {
+                byte[] sessionId = session.getId();
+                if (sessionId != null && sessionId.length > 0) {
+                    return HexFormat.of().formatHex(sessionId);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.trace("Could not extract session ID from SSLEngine", e);
+        }
+        // Fall back to identity hash code for uniqueness
+        return "engine-" + System.identityHashCode(engine);
+    }
+
+    /**
+     * Extracts a unique identifier from a Socket for use as session ID.
+     */
+    private static String extractSessionId(Socket socket) {
+        if (socket == null) {
+            return "";
+        }
+        // Use local port as unique identifier (each connection has unique local port)
+        return "socket-" + socket.getLocalPort();
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+        // Perform PKI validation only
         delegate.checkServerTrusted(chain, authType);
-        captureCertificates(chain);
+
+        // Can't capture by hostname without SSLEngine - use certificate's CN
+        captureCertificatesBySubject(chain);
     }
 
     @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType,
-            Socket socket) throws CertificateException {
-        if (delegate instanceof X509ExtendedTrustManager) {
-            ((X509ExtendedTrustManager) delegate)
-                .checkServerTrusted(chain, authType, socket);
-        } else {
-            delegate.checkServerTrusted(chain, authType);
-        }
-        String hostname = extractHostname(socket);
-        if (hostname != null) {
-            captureCertificates(hostname, chain);
-        } else {
-            captureCertificates(chain);
-        }
-    }
-
-    @Override
-    public void checkServerTrusted(X509Certificate[] chain, String authType,
-            SSLEngine engine) throws CertificateException {
-        if (delegate instanceof X509ExtendedTrustManager) {
-            ((X509ExtendedTrustManager) delegate)
-                .checkServerTrusted(chain, authType, engine);
-        } else {
-            delegate.checkServerTrusted(chain, authType);
-        }
-        String hostname = (engine != null) ? engine.getPeerHost() : null;
-        if (hostname != null) {
-            captureCertificates(hostname, chain);
-        } else {
-            captureCertificates(chain);
-        }
-    }
-
-    @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType)
+    public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket)
             throws CertificateException {
+        // Perform PKI validation only
+        if (delegate instanceof X509ExtendedTrustManager) {
+            ((X509ExtendedTrustManager) delegate).checkServerTrusted(chain, authType, socket);
+        } else {
+            delegate.checkServerTrusted(chain, authType);
+        }
+
+        // Get hostname from socket
+        String hostname = null;
+        if (socket.getRemoteSocketAddress() instanceof InetSocketAddress addr) {
+            hostname = addr.getHostString();
+        }
+        String sessionId = extractSessionId(socket);
+        captureCertificates(hostname, sessionId, chain);
+    }
+
+    @Override
+    public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+            throws CertificateException {
+        // Perform PKI validation only
+        if (delegate instanceof X509ExtendedTrustManager) {
+            ((X509ExtendedTrustManager) delegate).checkServerTrusted(chain, authType, engine);
+        } else {
+            delegate.checkServerTrusted(chain, authType);
+        }
+
+        // Get hostname and session ID from SSLEngine
+        String hostname = engine.getPeerHost();
+        String sessionId = extractSessionId(engine);
+        captureCertificates(hostname, sessionId, chain);
+    }
+
+    @Override
+    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
         delegate.checkClientTrusted(chain, authType);
     }
 
     @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType,
-            Socket socket) throws CertificateException {
+    public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket)
+            throws CertificateException {
         if (delegate instanceof X509ExtendedTrustManager) {
-            ((X509ExtendedTrustManager) delegate)
-                .checkClientTrusted(chain, authType, socket);
+            ((X509ExtendedTrustManager) delegate).checkClientTrusted(chain, authType, socket);
         } else {
             delegate.checkClientTrusted(chain, authType);
         }
     }
 
     @Override
-    public void checkClientTrusted(X509Certificate[] chain, String authType,
-            SSLEngine engine) throws CertificateException {
+    public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
+            throws CertificateException {
         if (delegate instanceof X509ExtendedTrustManager) {
-            ((X509ExtendedTrustManager) delegate)
-                .checkClientTrusted(chain, authType, engine);
+            ((X509ExtendedTrustManager) delegate).checkClientTrusted(chain, authType, engine);
         } else {
             delegate.checkClientTrusted(chain, authType);
         }
@@ -128,66 +269,40 @@ public final class CertificateCapturingTrustManager extends X509ExtendedTrustMan
     }
 
     /**
-     * Returns the captured server certificate chain for the given key.
-     *
-     * <p>The key is typically the leaf certificate's subject DN
-     * ({@code X500Principal.getName()}) or the hostname used during
-     * the handshake.</p>
-     *
-     * @param key the subject DN or hostname key
-     * @return a defensive copy of the certificate chain, or {@code null}
-     *         if no chain was captured for the key
+     * Captures the certificate chain for the specified hostname and session ID.
+     * Stores only in the instance cache to prevent cross-client contamination.
      */
-    public X509Certificate[] getCapturedCerts(String key) {
-        X509Certificate[] certs = capturedCerts.get(key);
-        return certs != null ? certs.clone() : null;
-    }
-
-    /**
-     * Returns the last captured server certificate (leaf certificate).
-     *
-     * <p>Convenience method for simple single-connection use cases.
-     * Returns the first element of any captured chain.</p>
-     *
-     * @return the leaf certificate from the most recently captured chain,
-     *         or {@code null} if nothing has been captured
-     */
-    public X509Certificate getLastCapturedServerCert() {
-        return capturedCerts.values().stream()
-            .filter(chain -> chain.length > 0)
-            .map(chain -> chain[0])
-            .findFirst()
-            .orElse(null);
-    }
-
-    /**
-     * Captures the certificate chain using the leaf certificate's subject DN as
-     * the key.
-     */
-    private void captureCertificates(X509Certificate[] chain) {
+    private void captureCertificates(String hostname, String sessionId, X509Certificate[] chain) {
         if (chain != null && chain.length > 0) {
-            String key = chain[0].getSubjectX500Principal().getName();
-            capturedCerts.put(key, chain.clone());
+            if (hostname != null) {
+                String key = (sessionId != null && !sessionId.isEmpty())
+                    ? compositeKey(hostname, sessionId)
+                    : hostname;
+                X509Certificate[] cloned = chain.clone();
+                instanceCertificates.put(key, cloned);
+                LOGGER.debug("Captured {} certificate(s) for key: {}", chain.length, key);
+            } else {
+                // Fallback to subject-based capture
+                captureCertificatesBySubject(chain);
+            }
         }
     }
 
     /**
-     * Captures the certificate chain using the specified hostname as the key.
+     * Captures certificates using the certificate's FQDN as key.
+     * Prefers DNS SANs, falls back to CN. Used when hostname is not available.
      */
-    private void captureCertificates(String hostname, X509Certificate[] chain) {
+    private void captureCertificatesBySubject(X509Certificate[] chain) {
         if (chain != null && chain.length > 0) {
-            capturedCerts.put(hostname, chain.clone());
+            // Use CertificateUtils.extractFqdn which prefers SANs and uses robust CN parsing
+            CertificateUtils.extractFqdn(chain[0]).ifPresentOrElse(
+                fqdn -> {
+                    X509Certificate[] cloned = chain.clone();
+                    instanceCertificates.put(fqdn, cloned);
+                    LOGGER.debug("Captured {} certificate(s) by FQDN: {}", chain.length, fqdn);
+                },
+                () -> LOGGER.warn("Could not determine hostname for certificate capture")
+            );
         }
-    }
-
-    /**
-     * Extracts the hostname from a socket's remote address.
-     */
-    private static String extractHostname(Socket socket) {
-        if (socket != null
-                && socket.getRemoteSocketAddress() instanceof InetSocketAddress addr) {
-            return addr.getHostString();
-        }
-        return null;
     }
 }

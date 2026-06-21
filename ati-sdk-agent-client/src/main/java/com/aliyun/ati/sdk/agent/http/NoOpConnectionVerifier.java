@@ -1,0 +1,58 @@
+package com.aliyun.ati.sdk.agent.http;
+
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.verification.ConnectionVerifier;
+import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
+import com.aliyun.ati.sdk.agent.verification.VerificationResult;
+import com.aliyun.ati.sdk.transparency.scitt.ScittPreVerifyResult;
+
+import java.security.cert.X509Certificate;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+/**
+ * A no-op implementation of {@link ConnectionVerifier} that performs no verification.
+ *
+ * <p>This is useful for:</p>
+ * <ul>
+ *   <li>Testing with mock servers</li>
+ *   <li>PKI-only verification scenarios</li>
+ *   <li>Development environments</li>
+ * </ul>
+ *
+ * <p>All methods return successful/empty results without performing any actual verification.</p>
+ */
+public final class NoOpConnectionVerifier implements ConnectionVerifier {
+
+    /** Singleton instance for convenience. */
+    public static final NoOpConnectionVerifier INSTANCE = new NoOpConnectionVerifier();
+
+    /**
+     * Creates a new no-op connection verifier.
+     */
+    public NoOpConnectionVerifier() {
+    }
+
+    @Override
+    public CompletableFuture<PreVerificationResult> preVerify(String hostname, int port) {
+        return CompletableFuture.completedFuture(
+            PreVerificationResult.builder(hostname, port).build());
+    }
+
+    @Override
+    public List<VerificationResult> postVerify(String hostname, X509Certificate serverCert,
+                                                PreVerificationResult preResult) {
+        return List.of();
+    }
+
+    @Override
+    public VerificationResult combine(List<VerificationResult> results, VerificationPolicy policy) {
+        return VerificationResult.skipped("No additional verification performed (PKI only)");
+    }
+
+    @Override
+    public CompletableFuture<ScittPreVerifyResult> scittPreVerify(Map<String, String> responseHeaders) {
+        return CompletableFuture.completedFuture(ScittPreVerifyResult.notPresent());
+    }
+}

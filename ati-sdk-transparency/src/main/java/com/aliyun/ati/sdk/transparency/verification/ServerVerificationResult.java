@@ -1,67 +1,203 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
+import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 
 /**
- * Immutable result of a server-side badge verification.
+ * Result of verifying a server against the ATI transparency log.
  *
- * <p>Contains the verification status, the server certificate fingerprint
- * (only set when {@link VerificationStatus#VERIFIED}), and the agent ID.
+ * <p>This is used when a client wants to verify that a server it is connecting
+ * to is a registered ATI agent with a valid certificate.</p>
  */
 public final class ServerVerificationResult {
 
     private final VerificationStatus status;
-    private final String serverCertFingerprint;
-    private final String agentId;
+    private final TransparencyLog registration;
+    private final List<String> expectedServerCertFingerprints;
+    private final String expectedAgentHost;
+    private final String warningMessage;
 
-    private ServerVerificationResult(VerificationStatus status,
-                                     String serverCertFingerprint,
-                                     String agentId) {
-        this.status = Objects.requireNonNull(status, "status must not be null");
-        this.serverCertFingerprint = serverCertFingerprint;
-        this.agentId = agentId;
+    private ServerVerificationResult(Builder builder) {
+        this.status = Objects.requireNonNull(builder.status, "status is required");
+        this.registration = builder.registration;
+        this.expectedServerCertFingerprints = builder.expectedServerCertFingerprints != null
+            ? Collections.unmodifiableList(new ArrayList<>(builder.expectedServerCertFingerprints))
+            : Collections.emptyList();
+        this.expectedAgentHost = builder.expectedAgentHost;
+        this.warningMessage = builder.warningMessage;
     }
 
     /**
-     * Creates a verified result with a server certificate fingerprint.
+     * Returns the verification status.
      *
-     * @param serverCertFingerprint the SHA-256 fingerprint of the server certificate
-     * @param agentId               the agent identifier
-     * @return a verified result
+     * @return the status
      */
-    public static ServerVerificationResult verified(String serverCertFingerprint, String agentId) {
-        return new ServerVerificationResult(VerificationStatus.VERIFIED, serverCertFingerprint, agentId);
-    }
-
-    /**
-     * Creates a failed result with the given status.
-     *
-     * @param status  the failure reason
-     * @param agentId the agent identifier (may be null)
-     * @return a failed result
-     */
-    public static ServerVerificationResult failed(VerificationStatus status, String agentId) {
-        return new ServerVerificationResult(status, null, agentId);
-    }
-
     public VerificationStatus getStatus() {
         return status;
     }
 
-    public String getServerCertFingerprint() {
-        return serverCertFingerprint;
+    /**
+     * Returns the transparency log registration, if found.
+     *
+     * @return the registration, or null if not found
+     */
+    public TransparencyLog getRegistration() {
+        return registration;
     }
 
-    public String getAgentId() {
-        return agentId;
+    /**
+     * Returns the expected server certificate fingerprint from the registration.
+     *
+     * <p>Use this to verify the server's TLS certificate matches what's in the
+     * transparency log. If multiple registrations exist, returns the first fingerprint.</p>
+     *
+     * @return the expected fingerprint, or null if not available
+     * @see #getExpectedServerCertFingerprints()
+     */
+    public String getExpectedServerCertFingerprint() {
+        return expectedServerCertFingerprints.isEmpty() ? null : expectedServerCertFingerprints.get(0);
+    }
+
+    /**
+     * Returns all expected server certificate fingerprints from the registrations.
+     *
+     * <p>During version rotation, multiple badge records may exist with different
+     * fingerprints. Use this to verify the server's TLS certificate matches ANY
+     * of the registered fingerprints.</p>
+     *
+     * @return list of expected fingerprints (may be empty, never null)
+     */
+    public List<String> getExpectedServerCertFingerprints() {
+        return expectedServerCertFingerprints;
+    }
+
+    /**
+     * Returns the expected agent host from the registration.
+     *
+     * <p>Use this to verify the server's certificate CN matches what's in the
+     * transparency log.</p>
+     *
+     * @return the expected agent host, or null if not available
+     */
+    public String getExpectedAgentHost() {
+        return expectedAgentHost;
+    }
+
+    /**
+     * Returns a warning message if any issues were detected during verification.
+     *
+     * @return the warning message, or null if no warnings
+     */
+    public String getWarningMessage() {
+        return warningMessage;
+    }
+
+    /**
+     * Returns true if the verification was successful.
+     *
+     * <p>A verification is considered successful if the status is VERIFIED
+     * or DEPRECATED_OK.</p>
+     *
+     * @return true if verification succeeded
+     */
+    public boolean isSuccess() {
+        return status == VerificationStatus.VERIFIED
+            || status == VerificationStatus.DEPRECATED_OK;
+    }
+
+    /**
+     * Returns true if the host is not an ATI agent (no ra-badge record).
+     *
+     * @return true if not an ATI agent
+     */
+    public boolean isNotAtiAgent() {
+        return status == VerificationStatus.NOT_ATI_AGENT;
+    }
+
+    /**
+     * Creates a new builder.
+     *
+     * @return a new builder
+     */
+    public static Builder builder() {
+        return new Builder();
     }
 
     @Override
     public String toString() {
         return "ServerVerificationResult{"
             + "status=" + status
-            + ", serverCertFingerprint='" + serverCertFingerprint + '\''
-            + ", agentId='" + agentId + '\''
+            + ", expectedServerCertFingerprints=" + expectedServerCertFingerprints
+            + ", expectedAgentHost='" + expectedAgentHost + '\''
+            + ", warningMessage='" + warningMessage + '\''
             + '}';
+    }
+
+    /**
+     * Builder for ServerVerificationResult.
+     */
+    public static final class Builder {
+        private VerificationStatus status;
+        private TransparencyLog registration;
+        private List<String> expectedServerCertFingerprints;
+        private String expectedAgentHost;
+        private String warningMessage;
+
+        private Builder() {
+        }
+
+        public Builder status(VerificationStatus status) {
+            this.status = status;
+            return this;
+        }
+
+        public Builder registration(TransparencyLog registration) {
+            this.registration = registration;
+            return this;
+        }
+
+        /**
+         * Sets a single expected server certificate fingerprint.
+         *
+         * @param fingerprint the expected fingerprint
+         * @return this builder
+         */
+        public Builder expectedServerCertFingerprint(String fingerprint) {
+            if (fingerprint != null) {
+                this.expectedServerCertFingerprints = List.of(fingerprint);
+            }
+            return this;
+        }
+
+        /**
+         * Sets multiple expected server certificate fingerprints.
+         *
+         * <p>Use this during version rotation when multiple badge records exist.</p>
+         *
+         * @param fingerprints the expected fingerprints
+         * @return this builder
+         */
+        public Builder expectedServerCertFingerprints(List<String> fingerprints) {
+            this.expectedServerCertFingerprints = fingerprints;
+            return this;
+        }
+
+        public Builder expectedAgentHost(String agentHost) {
+            this.expectedAgentHost = agentHost;
+            return this;
+        }
+
+        public Builder warningMessage(String message) {
+            this.warningMessage = message;
+            return this;
+        }
+
+        public ServerVerificationResult build() {
+            return new ServerVerificationResult(this);
+        }
     }
 }

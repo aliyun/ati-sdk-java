@@ -1,31 +1,53 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
 /**
- * Outcome status of a badge verification operation.
+ * Status codes for agent verification results.
  */
 public enum VerificationStatus {
 
-    /** All checks passed. */
+    /**
+     * The agent is verified and has an ACTIVE registration.
+     */
     VERIFIED,
 
-    /** The agent ID was not found in the Transparency Log. */
+    /**
+     * The agent is verified but has a DEPRECATED registration.
+     * This is acceptable during version rotation grace periods.
+     */
+    DEPRECATED_OK,
+
+    /**
+     * The host does not have an ra-badge DNS record, indicating
+     * it is not an ATI-registered agent.
+     */
     NOT_ATI_AGENT,
 
-    /** The agent's registration record is invalid. */
+    /**
+     * The registration exists but has an invalid status
+     * (e.g., REVOKED, EXPIRED).
+     */
     REGISTRATION_INVALID,
 
-    /** The certificate fingerprint does not match the TL record. */
+    /**
+     * The certificate fingerprint does not match the one
+     * recorded in the transparency log.
+     */
     FINGERPRINT_MISMATCH,
 
-    /** The TL seal signature verification failed. */
-    SEAL_INVALID,
+    /**
+     * The ANS name in the certificate does not match the
+     * registration's ANS name.
+     */
+    ATI_NAME_MISMATCH,
 
-    /** The Merkle inclusion proof verification failed. */
-    MERKLE_PROOF_INVALID,
+    /**
+     * The certificate CN does not match the agent.host
+     * from the transparency log registration.
+     */
+    HOSTNAME_MISMATCH,
 
-    /** The agent has been revoked or is not in ACTIVE status. */
-    AGENT_REVOKED,
-
-    /** An error occurred while looking up the agent or its keys. */
+    /**
+     * Failed to look up the registration (network error, DNS error, etc.).
+     */
     LOOKUP_FAILED
 }
