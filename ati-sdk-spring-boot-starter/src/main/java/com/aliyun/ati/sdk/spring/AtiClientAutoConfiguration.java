@@ -1,0 +1,101 @@
+package com.aliyun.ati.sdk.spring;
+
+import com.aliyun.ati.sdk.agent.AtiClient;
+import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+
+import java.time.Duration;
+
+/**
+ * Spring Boot auto-configuration for ATI SDK client-side beans.
+ *
+ * <p>Activated when {@code ati.sdk.enabled=true} (default) and
+ * {@code ati.sdk.mode} is {@code client} or {@code both}.</p>
+ *
+ * <p>Creates {@link TransparencyClient} and {@link AtiClient} beans
+ * configured from {@code ati.sdk.*} application properties.</p>
+ */
+@AutoConfiguration
+@ConditionalOnProperty(prefix = "ati.sdk", name = "enabled", havingValue = "true", matchIfMissing = true)
+@EnableConfigurationProperties(AtiSdkProperties.class)
+public class AtiClientAutoConfiguration {
+
+    private static final Logger LOG = LoggerFactory.getLogger(AtiClientAutoConfiguration.class);
+
+    /**
+     * Creates a TransparencyClient bean from properties.
+     *
+     * @param properties the ATI SDK properties
+     * @return the transparency client
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public TransparencyClient transparencyClient(AtiSdkProperties properties) {
+        String baseUrl = properties.getTransparency().getBaseUrl();
+        LOG.info("Creating TransparencyClient with baseUrl={}", baseUrl);
+
+        TransparencyClient.Builder builder = TransparencyClient.builder()
+            .baseUrl(baseUrl);
+
+        String connectTimeout = properties.getClient().getConnectTimeout();
+        if (connectTimeout != null) {
+            builder.connectTimeout(parseDuration(connectTimeout));
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Creates an AtiClient bean for agent-to-agent communication.
+     *
+     * <p>Only created when mode is "client" or "both".</p>
+     *
+     * @param properties the ATI SDK properties
+     * @return the ATI client
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public AtiClient atiClient(AtiSdkProperties properties) {
+        if (!properties.isClientMode()) {
+            LOG.debug("Skipping AtiClient bean: mode={}", properties.getMode());
+            return null;
+        }
+
+        AtiClient.Builder builder = AtiClient.builder();
+
+        String connectTimeout = properties.getClient().getConnectTimeout();
+        if (connectTimeout != null) {
+            builder.connectTimeout(parseDuration(connectTimeout));
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Parses a duration string like "5s", "10s", "500ms".
+     */
+    private static Duration parseDuration(String value) {
+        if (value == null || value.isBlank()) {
+            return Duration.ofSeconds(10);
+        }
+        // Support simple formats: "5s", "10s", "500ms"
+        value = value.trim().toLowerCase();
+        if (value.endsWith("ms")) {
+            return Duration.ofMillis(
+                Long.parseLong(value.substring(0, value.length() - 2)));
+        } else if (value.endsWith("s")) {
+            return Duration.ofSeconds(
+                Long.parseLong(value.substring(0, value.length() - 1)));
+        } else if (value.endsWith("m")) {
+            return Duration.ofMinutes(
+                Long.parseLong(value.substring(0, value.length() - 1)));
+        }
+        return Duration.ofSeconds(Long.parseLong(value));
+    }
+}

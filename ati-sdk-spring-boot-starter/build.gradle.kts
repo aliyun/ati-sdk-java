@@ -4,6 +4,7 @@ dependencies {
     api(project(":ati-sdk-agent-client"))
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
     compileOnly("org.springframework.boot:spring-boot:$springBootVersion")
+    compileOnly("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVersion")

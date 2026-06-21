@@ -57,6 +57,11 @@ public final class TransparencyClient implements AutoCloseable {
     public static final String PRODUCTION_BASE_URL = "https://transparency.ati.aliyun.com";
 
     /**
+     * CNNIC transparency log base URL (default for ATI).
+     */
+    public static final String CNNIC_BASE_URL = "https://tl.ansagent.cn:8180";
+
+    /**
      * Default cache TTL for the root public key (24 hours).
      *
      * <p>Root keys rarely change, so a long TTL is appropriate.</p>
