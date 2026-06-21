@@ -15,5 +15,6 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:${project.property("junitVersion")}")
     testImplementation("org.mockito:mockito-core:${project.property("mockitoVersion")}")
     testImplementation("org.assertj:assertj-core:${project.property("assertjVersion")}")
+    testImplementation("org.wiremock:wiremock:${project.property("wiremockVersion")}")
     testRuntimeOnly("org.slf4j:slf4j-simple:${project.property("slf4jVersion")}")
 }

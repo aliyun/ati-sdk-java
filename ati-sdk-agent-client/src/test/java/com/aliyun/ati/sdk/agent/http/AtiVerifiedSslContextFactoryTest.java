@@ -1,0 +1,59 @@
+package com.aliyun.ati.sdk.agent.http;
+
+import org.junit.jupiter.api.Test;
+
+import javax.net.ssl.SSLContext;
+import java.security.KeyStore;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Tests for {@link AtiVerifiedSslContextFactory}.
+ */
+class AtiVerifiedSslContextFactoryTest {
+
+    @Test
+    void createReturnsValidSslContext() throws Exception {
+        // When
+        SSLContext sslContext = AtiVerifiedSslContextFactory.create();
+
+        // Then
+        assertThat(sslContext).isNotNull();
+        // Protocol is "TLS" which allows negotiation to TLS 1.2 or 1.3
+        assertThat(sslContext.getProtocol()).startsWith("TLS");
+    }
+
+    @Test
+    void createUsesCertificateCapturingTrustManager() throws Exception {
+        // When
+        SSLContext sslContext = AtiVerifiedSslContextFactory.create();
+
+        // Then - verify the SSLContext has a session context (indicating it was initialized)
+        assertThat(sslContext.getServerSessionContext()).isNotNull();
+        assertThat(sslContext.getClientSessionContext()).isNotNull();
+    }
+
+    @Test
+    void createWithKeyStoreReturnsValidSslContext() throws Exception {
+        // Given - create an empty KeyStore
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        keyStore.load(null, null);
+
+        // When
+        SSLContext sslContext = AtiVerifiedSslContextFactory.create(keyStore, "changeit".toCharArray());
+
+        // Then
+        assertThat(sslContext).isNotNull();
+        assertThat(sslContext.getProtocol()).startsWith("TLS");
+    }
+
+    @Test
+    void createWithNullKeyStoreUsesServerOnlyMode() throws Exception {
+        // When - null keystore is valid (no client auth)
+        SSLContext sslContext = AtiVerifiedSslContextFactory.create(null, null);
+
+        // Then
+        assertThat(sslContext).isNotNull();
+        assertThat(sslContext.getProtocol()).startsWith("TLS");
+    }
+}

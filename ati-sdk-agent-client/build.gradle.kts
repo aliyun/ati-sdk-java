@@ -11,7 +11,10 @@ dependencies {
 
     testImplementation("org.junit.jupiter:junit-jupiter:${project.property("junitVersion")}")
     testImplementation("org.mockito:mockito-core:${project.property("mockitoVersion")}")
+    testImplementation("org.mockito:mockito-junit-jupiter:${project.property("mockitoVersion")}")
     testImplementation("org.assertj:assertj-core:${project.property("assertjVersion")}")
+    testImplementation("org.wiremock:wiremock:${project.property("wiremockVersion")}")
+    testImplementation("com.upokecenter:cbor:4.5.4")
     testImplementation("io.github.erdtman:java-json-canonicalization:1.1")
     testRuntimeOnly("org.slf4j:slf4j-simple:${project.property("slf4jVersion")}")
 }
