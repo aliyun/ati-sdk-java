@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <ul>
  *   <li>Pool size: 10 threads (suitable for most use cases)</li>
  *   <li>Queue capacity: 500 tasks (bounded for back-pressure)</li>
- *   <li>Thread naming: "ans-io-{n}" for easy identification in thread dumps</li>
+ *   <li>Thread naming: "ati-io-{n}" for easy identification in thread dumps</li>
  *   <li>Daemon threads: Yes (won't prevent JVM shutdown)</li>
  *   <li>Rejection policy: AbortPolicy (throws RejectedExecutionException when queue is full)</li>
  * </ul>
@@ -221,7 +221,7 @@ public final class AtiExecutors {
         private final String namePrefix;
 
         AtiThreadFactory() {
-            this("ans-io");
+            this("ati-io");
         }
 
         AtiThreadFactory(String namePrefix) {

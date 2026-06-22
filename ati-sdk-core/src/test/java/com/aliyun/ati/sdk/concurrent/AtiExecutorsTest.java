@@ -48,7 +48,7 @@ class AtiExecutorsTest {
         });
 
         assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
-        assertThat(threadName.get()).startsWith("ans-io-");
+        assertThat(threadName.get()).startsWith("ati-io-");
     }
 
     @Test
@@ -107,7 +107,7 @@ class AtiExecutorsTest {
             });
 
             assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(threadName.get()).startsWith("ans-io-");
+            assertThat(threadName.get()).startsWith("ati-io-");
         } finally {
             custom.shutdown();
         }
@@ -202,7 +202,7 @@ class AtiExecutorsTest {
             }, 10, TimeUnit.MILLISECONDS);
 
             assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(threadName.get()).startsWith("ans-scheduled-");
+            assertThat(threadName.get()).startsWith("ati-scheduled-");
         } finally {
             scheduler.shutdown();
         }
@@ -242,7 +242,7 @@ class AtiExecutorsTest {
             }, 10, TimeUnit.MILLISECONDS);
 
             assertThat(latch.await(5, TimeUnit.SECONDS)).isTrue();
-            assertThat(threadName.get()).startsWith("ans-scheduled-");
+            assertThat(threadName.get()).startsWith("ati-scheduled-");
         } finally {
             scheduler.shutdown();
         }

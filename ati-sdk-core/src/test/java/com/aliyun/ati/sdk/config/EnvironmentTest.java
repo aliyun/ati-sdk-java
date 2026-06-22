@@ -6,21 +6,18 @@ import org.junit.jupiter.api.DisplayName;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Unit tests for Environment enum.
- */
 class EnvironmentTest {
 
     @Test
     @DisplayName("Should have correct base URL for OTE")
     void shouldHaveCorrectBaseUrlForOte() {
-        assertThat(Environment.OTE.getBaseUrl()).isEqualTo("https://api.ote-godaddy.com");
+        assertThat(Environment.OTE.getBaseUrl()).isEqualTo("https://api.ote-ati.aliyun.com");
     }
 
     @Test
     @DisplayName("Should have correct base URL for PROD")
     void shouldHaveCorrectBaseUrlForProd() {
-        assertThat(Environment.PROD.getBaseUrl()).isEqualTo("https://api.godaddy.com");
+        assertThat(Environment.PROD.getBaseUrl()).isEqualTo("https://api.ati.aliyun.com");
     }
 
     @Test
@@ -39,8 +36,8 @@ class EnvironmentTest {
     @Test
     @DisplayName("Should find environment from base URL")
     void shouldFindEnvironmentFromBaseUrl() {
-        assertThat(Environment.fromBaseUrl("https://api.ote-godaddy.com")).isEqualTo(Environment.OTE);
-        assertThat(Environment.fromBaseUrl("https://api.godaddy.com")).isEqualTo(Environment.PROD);
+        assertThat(Environment.fromBaseUrl("https://api.ote-ati.aliyun.com")).isEqualTo(Environment.OTE);
+        assertThat(Environment.fromBaseUrl("https://api.ati.aliyun.com")).isEqualTo(Environment.PROD);
     }
 
     @Test

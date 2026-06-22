@@ -186,7 +186,7 @@ class VerifiedClientResultTest {
         // Then
         assertThat(str).contains("VerifiedClientResult");
         assertThat(str).contains("verifier");
-        assertThat(str).contains("ansHttpClient");
+        assertThat(str).contains("atiHttpClient");
     }
 
     // ==================== Helper Methods ====================

@@ -61,7 +61,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createVerifiedRejectsNullHostname() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.defaults();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
 
         assertThrows(NullPointerException.class, () ->
             factory.createVerified(null, options, Duration.ofSeconds(10)));
@@ -78,7 +78,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createVerifiedRejectsNullTimeout() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.defaults();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
 
         assertThrows(NullPointerException.class, () ->
             factory.createVerified("example.com", options, null));
@@ -104,6 +104,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
             .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .transparencyClient(mock(TransparencyClient.class))
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -115,7 +116,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createReturnsHttpClient() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.defaults();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
 
         HttpClient client = factory.create("example.com", options, Duration.ofSeconds(10));
 
@@ -127,7 +128,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
 
         assertThrows(NullPointerException.class, () ->
-            factory.create(null, ConnectOptions.defaults(), Duration.ofSeconds(10)));
+            factory.create(null, ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build(), Duration.ofSeconds(10)));
     }
 
     @Test
@@ -273,7 +274,7 @@ class DefaultAgentHttpClientFactoryTest {
     void createReturnsUnderlyingHttpClient() {
         // Tests that create() returns the underlying HttpClient, not the wrapper
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.defaults();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
 
         HttpClient client = factory.create("example.com", options, Duration.ofSeconds(10));
 
@@ -351,6 +352,7 @@ class DefaultAgentHttpClientFactoryTest {
         ConnectOptions options = ConnectOptions.builder()
             .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
             .clientCertificate(cert, keyPair.getPrivate())
+            .transparencyClient(mock(TransparencyClient.class))
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -460,6 +462,7 @@ class DefaultAgentHttpClientFactoryTest {
         ConnectOptions options = ConnectOptions.builder()
             .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
             .clientCertPath(certPath, keyPath)
+            .transparencyClient(mock(TransparencyClient.class))
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -541,11 +544,11 @@ class DefaultAgentHttpClientFactoryTest {
     }
 
     private Path writeKeyToPem(Path path, KeyPair keyPair) throws Exception {
-        StringWriter sw = new StringWriter();
-        try (JcaPEMWriter pemWriter = new JcaPEMWriter(sw)) {
-            pemWriter.writeObject(keyPair.getPrivate());
-        }
-        Files.writeString(path, sw.toString());
+        // Write PKCS#8 format (BEGIN PRIVATE KEY) instead of PKCS#1 (BEGIN RSA PRIVATE KEY)
+        byte[] encoded = keyPair.getPrivate().getEncoded();
+        String base64 = java.util.Base64.getMimeEncoder(64, "\n".getBytes()).encodeToString(encoded);
+        String pem = "-----BEGIN PRIVATE KEY-----\n" + base64 + "\n-----END PRIVATE KEY-----\n";
+        Files.writeString(path, pem);
         return path;
     }
 }
