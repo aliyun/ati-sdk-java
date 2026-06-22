@@ -10,14 +10,14 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse valid ra-badge TXT record without agent version")
     void shouldParseValidRaBadgeRecordWithoutAgentVersion() {
-        String txtValue = "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
         assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
         assertThat(record.agentVersion()).isNull();
-        assertThat(record.url()).isEqualTo("https://transparency.ans.godaddy.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
+        assertThat(record.url()).isEqualTo("https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.agentId()).isEqualTo("6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.isSupportedBadgeFormat()).isTrue();
     }
@@ -25,14 +25,14 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse valid ra-badge TXT record with agent version")
     void shouldParseValidRaBadgeRecordWithAgentVersion() {
-        String txtValue = "v=ra-badge1; version=1.2.3; url=https://transparency.ans.godaddy.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ra-badge1; version=1.2.3; url=https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
         assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
         assertThat(record.agentVersion()).isEqualTo("1.2.3");
-        assertThat(record.url()).isEqualTo("https://transparency.ans.godaddy.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
+        assertThat(record.url()).isEqualTo("https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.agentId()).isEqualTo("6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.isSupportedBadgeFormat()).isTrue();
     }
@@ -40,7 +40,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse ra-badge record without trailing slash")
     void shouldParseRecordWithoutTrailingSlash() {
-        String txtValue = "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/abc-123";
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/abc-123";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -51,7 +51,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse ra-badge record with trailing slash")
     void shouldParseRecordWithTrailingSlash() {
-        String txtValue = "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/abc-123/";
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/abc-123/";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -74,7 +74,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should be case insensitive")
     void shouldBeCaseInsensitive() {
-        String txtValue = "V=RA-BADGE1; URL=https://transparency.ans.godaddy.com/V1/AGENTS/test-id";
+        String txtValue = "V=RA-BADGE1; URL=https://transparency.ati.aliyun.com/V1/AGENTS/test-id";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -85,7 +85,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should handle extra whitespace")
     void shouldHandleExtraWhitespace() {
-        String txtValue = "  v=ra-badge1  ;  url=https://transparency.ans.godaddy.com/v1/agents/test-id  ";
+        String txtValue = "  v=ra-badge1  ;  url=https://transparency.ati.aliyun.com/v1/agents/test-id  ";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -185,7 +185,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse legacy ra-badge record with v=ra-badge1 format")
     void shouldParseLegacyRaBadgeWithRaBadge1Format() {
-        String txtValue = "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -200,7 +200,7 @@ class RaBadgeRecordTest {
     @DisplayName("Should parse legacy ra-badge record without version field")
     void shouldParseLegacyRaBadgeWithoutVersionField() {
         // Older ra-badge records may not have a version field
-        String txtValue = "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/abc123-def456-789012";
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/abc123-def456-789012";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -217,7 +217,7 @@ class RaBadgeRecordTest {
         // Legacy records may have bare semver (1.0.0) instead of v-prefixed (v1.0.0)
         // Note: The RaBadgeRecord stores the version as-is. Normalization to v-prefixed
         // format is expected to happen at the comparison level (BadgeVerificationService).
-        String txtValue = "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/bare-semver-agent";
+        String txtValue = "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/bare-semver-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -231,7 +231,7 @@ class RaBadgeRecordTest {
     @DisplayName("Should accept v-prefixed semver")
     void shouldAcceptVPrefixedSemver() {
         // Modern records should have v-prefixed version
-        String txtValue = "v=ra-badge1; version=v1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/v-prefixed-agent";
+        String txtValue = "v=ra-badge1; version=v1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/v-prefixed-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -243,7 +243,7 @@ class RaBadgeRecordTest {
     @DisplayName("Should support ans-badge format version")
     void shouldSupportAnsBadgeFormatVersion() {
         // Future: ans-badge format
-        String txtValue = "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/ans-badge-agent";
+        String txtValue = "v=ans-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/ans-badge-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 

@@ -28,7 +28,7 @@ class RootKeyManagerTest {
             + "OZs1S99lGDqRhAQBEdetB290Det8rO1ojnHEA8PX4Yojb0oomwA2krO5Ag==";
 
     private static final String VALID_ROOT_KEY_RESPONSE =
-        "transparency.ans.godaddy.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
+        "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
 
     @Test
     @DisplayName("should retry and succeed after transient failure")

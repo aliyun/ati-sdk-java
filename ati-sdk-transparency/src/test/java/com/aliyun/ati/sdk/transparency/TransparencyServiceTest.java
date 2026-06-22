@@ -1061,14 +1061,14 @@ class TransparencyServiceTest {
      * Returns a valid EC P-256 public key in JSON format.
      */
     private String rootKeyC2spSingleResponse() {
-        return "transparency.ans.godaddy.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
+        return "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
     }
 
     /**
      * Returns a valid EC P-256 public key in C2SP note format.
      */
     private String rootKeyC2spResponse() {
-        return "transparency.ans.godaddy.com+abc123+" + TEST_EC_PUBLIC_KEY;
+        return "transparency.ati.aliyun.com+abc123+" + TEST_EC_PUBLIC_KEY;
     }
 
     /**
@@ -1082,7 +1082,7 @@ class TransparencyServiceTest {
         prefixedKey[0] = 0x02; // C2SP version byte
         System.arraycopy(originalKey, 0, prefixedKey, 1, originalKey.length);
         String prefixedBase64 = java.util.Base64.getEncoder().encodeToString(prefixedKey);
-        return "transparency.ans.godaddy.com+abc123+" + prefixedBase64;
+        return "transparency.ati.aliyun.com+abc123+" + prefixedBase64;
     }
 
     /**
@@ -1090,6 +1090,6 @@ class TransparencyServiceTest {
      */
     private String rootKeyC2spWithComments() {
         return "# This is a comment\n\n"
-            + "transparency.ans.godaddy.com+abc123+" + TEST_EC_PUBLIC_KEY;
+            + "transparency.ati.aliyun.com+abc123+" + TEST_EC_PUBLIC_KEY;
     }
 }

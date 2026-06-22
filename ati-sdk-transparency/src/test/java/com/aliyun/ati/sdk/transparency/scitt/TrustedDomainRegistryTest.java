@@ -25,20 +25,26 @@ class TrustedDomainRegistryTest {
         @Test
         @DisplayName("Should accept production domain")
         void shouldAcceptProductionDomain() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ans.godaddy.com")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com")).isTrue();
         }
 
         @Test
         @DisplayName("Should accept OTE domain")
         void shouldAcceptOteDomain() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ans.ote-godaddy.com")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.ote-ati.aliyun.com")).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should accept CNNIC domain")
+        void shouldAcceptCnnicDomain() {
+            assertThat(TrustedDomainRegistry.isTrustedDomain("tl.ansagent.cn")).isTrue();
         }
 
         @Test
         @DisplayName("Should be case insensitive")
         void shouldBeCaseInsensitive() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("TRANSPARENCY.ANS.GODADDY.COM")).isTrue();
-            assertThat(TrustedDomainRegistry.isTrustedDomain("Transparency.Ans.Godaddy.Com")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("TRANSPARENCY.ATI.ALIYUN.COM")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("Transparency.Ati.Aliyun.Com")).isTrue();
         }
 
         @Test
@@ -89,7 +95,7 @@ class TrustedDomainRegistryTest {
         void runtimePropertyChangesShouldNotAffect() {
             // Capture current state
             Set<String> before = TrustedDomainRegistry.getTrustedDomains();
-            boolean productionWasTrusted = TrustedDomainRegistry.isTrustedDomain("transparency.ans.godaddy.com");
+            boolean productionWasTrusted = TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com");
 
             // Attempt to add a malicious domain via system property
             String originalValue = System.getProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY);
@@ -100,7 +106,7 @@ class TrustedDomainRegistryTest {
                 Set<String> after = TrustedDomainRegistry.getTrustedDomains();
                 assertThat(after).isSameAs(before);
                 assertThat(TrustedDomainRegistry.isTrustedDomain("malicious.attacker.com")).isFalse();
-                assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ans.godaddy.com"))
+                assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com"))
                     .isEqualTo(productionWasTrusted);
             } finally {
                 // Restore original state
@@ -149,8 +155,12 @@ class TrustedDomainRegistryTest {
         @DisplayName("Should contain expected default domains")
         void shouldContainExpectedDefaultDomains() {
             assertThat(TrustedDomainRegistry.DEFAULT_TRUSTED_DOMAINS)
-                .hasSize(2)
-                .contains("transparency.ans.godaddy.com", "transparency.ans.ote-godaddy.com");
+                .hasSize(3)
+                .contains(
+                    "transparency.ati.aliyun.com",
+                    "transparency.ati.ote-ati.aliyun.com",
+                    "tl.ansagent.cn"
+                );
         }
 
         @Test

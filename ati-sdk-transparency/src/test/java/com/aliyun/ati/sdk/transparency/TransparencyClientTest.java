@@ -38,7 +38,7 @@ class TransparencyClientTest {
     static void setUpClass() {
         // Include localhost for WireMock tests along with production domains
         System.setProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY,
-            "transparency.ans.godaddy.com,transparency.ans.ote-godaddy.com,localhost");
+            "transparency.ati.aliyun.com,transparency.ati.ote-ati.aliyun.com,tl.ansagent.cn,localhost");
     }
 
     @AfterAll
@@ -816,14 +816,14 @@ class TransparencyClientTest {
     void shouldAcceptTrustedProductionDomain() {
         // These are in our configured trusted domains
         TransparencyClient prodClient = TransparencyClient.builder()
-            .baseUrl("https://transparency.ans.godaddy.com")
+            .baseUrl("https://transparency.ati.aliyun.com")
             .build();
-        assertThat(prodClient.getBaseUrl()).isEqualTo("https://transparency.ans.godaddy.com");
+        assertThat(prodClient.getBaseUrl()).isEqualTo("https://transparency.ati.aliyun.com");
 
         TransparencyClient oteClient = TransparencyClient.builder()
-            .baseUrl("https://transparency.ans.ote-godaddy.com")
+            .baseUrl("https://transparency.ati.ote-ati.aliyun.com")
             .build();
-        assertThat(oteClient.getBaseUrl()).isEqualTo("https://transparency.ans.ote-godaddy.com");
+        assertThat(oteClient.getBaseUrl()).isEqualTo("https://transparency.ati.ote-ati.aliyun.com");
     }
 
     // ==================== Test Data ====================
@@ -910,7 +910,7 @@ class TransparencyClientTest {
               "logSize": 1000,
               "treeHeight": 10,
               "rootHash": "abc123",
-              "originName": "transparency.ans.godaddy.com",
+              "originName": "transparency.ati.aliyun.com",
               "checkpointFormat": "sigsum",
               "publicKeyPem": "-----BEGIN PUBLIC KEY-----..."
             }
@@ -1016,14 +1016,14 @@ class TransparencyClientTest {
      * Returns a valid EC P-256 public key in C2SP note format.
      */
     private String rootKeyC2spSingleResponse() {
-        return "transparency.ans.godaddy.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
+        return "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
     }
 
     /**
      * Returns multiple valid EC P-256 public keys in C2SP note format.
      */
     private String rootKeyC2spMultipleResponse() {
-        return "transparency.ans.godaddy.com+abcd1234+" + TEST_EC_PUBLIC_KEY + "\n"
-            + "transparency.ans.godaddy.com+efgh5678+" + TEST_EC_PUBLIC_KEY_2;
+        return "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY + "\n"
+            + "transparency.ati.aliyun.com+efgh5678+" + TEST_EC_PUBLIC_KEY_2;
     }
 }

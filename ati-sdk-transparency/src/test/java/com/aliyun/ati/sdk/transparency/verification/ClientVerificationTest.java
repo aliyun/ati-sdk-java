@@ -79,7 +79,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with matching fingerprint
@@ -117,7 +117,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with no ANS name check needed
@@ -153,7 +153,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup for the cert's hostname
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(differentHostname)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT agent.host
@@ -190,7 +190,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT atiName
@@ -228,7 +228,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT fingerprint
@@ -263,7 +263,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DEPRECATED status
@@ -299,7 +299,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with EXPIRED status (even though fingerprint matches)

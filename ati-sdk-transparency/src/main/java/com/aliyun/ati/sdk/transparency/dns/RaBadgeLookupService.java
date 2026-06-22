@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Service for looking up badge TXT records from DNS.
  *
- * <p>This service supports both {@code _ati-badge} and legacy {@code _ati-badge} records,
+ * <p>This service supports both {@code _ati-badge} and legacy {@code _ra-badge} records,
  * with {@code _ati-badge} taking priority when both exist. The badge TXT record points
  * to the transparency log URL for an agent.</p>
  *
@@ -41,7 +41,7 @@ public class RaBadgeLookupService {
     private static final Logger LOGGER = LoggerFactory.getLogger(RaBadgeLookupService.class);
 
     private static final String ATI_BADGE_PREFIX = "_ati-badge.";
-    private static final String RA_BADGE_PREFIX = "_ati-badge.";
+    private static final String RA_BADGE_PREFIX = "_ra-badge.";
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(5);
 
     private final String dnsServer;
@@ -68,9 +68,9 @@ public class RaBadgeLookupService {
     /**
      * Looks up all badge TXT records for a hostname.
      *
-     * <p>This method checks BOTH {@code _ati-badge} and {@code _ati-badge} records
+     * <p>This method checks BOTH {@code _ati-badge} and {@code _ra-badge} records
      * and combines the results. This is important during version rotation where
-     * old versions may use {@code _ati-badge} while new versions use {@code _ati-badge}.</p>
+     * old versions may use {@code _ra-badge} while new versions use {@code _ati-badge}.</p>
      *
      * <p>During version rotation, multiple records may exist across both prefixes.
      * All valid records are returned.</p>
@@ -94,11 +94,11 @@ public class RaBadgeLookupService {
             allBadges.addAll(atiBadges);
         }
 
-        // Also check _ati-badge records (for version rotation compatibility)
+        // Also check _ra-badge records (for version rotation / backward compatibility)
         String raBadgeName = RA_BADGE_PREFIX + normalizedHostname;
-        List<RaBadgeRecord> raBadges = lookupBadgesForPrefix(raBadgeName, "_ati-badge");
+        List<RaBadgeRecord> raBadges = lookupBadgesForPrefix(raBadgeName, "_ra-badge");
         if (!raBadges.isEmpty()) {
-            LOGGER.debug("Found {} _ati-badge records for {}", raBadges.size(), hostname);
+            LOGGER.debug("Found {} _ra-badge records for {}", raBadges.size(), hostname);
             allBadges.addAll(raBadges);
         }
 
@@ -183,7 +183,7 @@ public class RaBadgeLookupService {
     /**
      * Checks if a hostname has any badge TXT records.
      *
-     * <p>Checks for both {@code _ati-badge} and {@code _ati-badge} records.</p>
+     * <p>Checks for both {@code _ati-badge} and {@code _ra-badge} records.</p>
      *
      * @param hostname the agent's hostname
      * @return true if at least one valid badge record exists
@@ -196,7 +196,7 @@ public class RaBadgeLookupService {
      * Looks up a single badge record for a hostname.
      *
      * <p>If multiple records exist, returns the first one. Uses {@code _ati-badge}
-     * priority over {@code _ati-badge}. Use {@link #lookupBadges(String)} to get
+     * priority over {@code _ra-badge}. Use {@link #lookupBadges(String)} to get
      * all records during version rotation.</p>
      *
      * @param hostname the agent's hostname

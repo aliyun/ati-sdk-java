@@ -27,14 +27,14 @@ class RaBadgeLookupServiceTest {
     // ==================== _ati-badge Priority Tests ====================
 
     @Test
-    @DisplayName("Should prioritize _ati-badge when both _ati-badge and _ati-badge exist")
+    @DisplayName("Should prioritize _ati-badge when both _ati-badge and _ra-badge exist")
     void shouldPrioritizeAnsBadgeWhenBothExist() {
-        // Given - both _ati-badge and _ati-badge records exist
+        // Given - both _ati-badge and _ra-badge records exist
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
+            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -44,7 +44,7 @@ class RaBadgeLookupServiceTest {
         // Then - _ati-badge should be prioritized
         assertThat(badges).isNotEmpty();
         assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_ANS);
-        assertThat(badges.get(0).badgeVersion()).isEqualTo("ans-badge1");
+        assertThat(badges.get(0).badgeVersion()).isEqualTo("ati-badge1");
     }
 
     @Test
@@ -53,7 +53,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ati-badge record exists
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -63,16 +63,16 @@ class RaBadgeLookupServiceTest {
         // Then
         assertThat(badges).hasSize(1);
         assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_ANS);
-        assertThat(badges.get(0).badgeVersion()).isEqualTo("ans-badge1");
+        assertThat(badges.get(0).badgeVersion()).isEqualTo("ati-badge1");
     }
 
     @Test
-    @DisplayName("Should fallback to _ati-badge when no _ati-badge exists")
+    @DisplayName("Should fallback to _ra-badge when no _ati-badge exists")
     void shouldFallbackToRaBadgeWhenNoAnsBadgeExists() {
-        // Given - only _ati-badge record exists (backward compatibility)
+        // Given - only _ra-badge record exists (backward compatibility)
         Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
+            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -86,7 +86,7 @@ class RaBadgeLookupServiceTest {
     }
 
     @Test
-    @DisplayName("Should return empty when neither _ati-badge nor _ati-badge exists")
+    @DisplayName("Should return empty when neither _ati-badge nor _ra-badge exists")
     void shouldReturnEmptyWhenNeitherBadgeExists() {
         // Given - no badge records exist
         Map<String, String> dnsRecords = new HashMap<>();
@@ -103,12 +103,12 @@ class RaBadgeLookupServiceTest {
     @Test
     @DisplayName("lookupBadge() should return _ati-badge when both exist")
     void lookupBadgeShouldReturnAnsBadgeWhenBothExist() {
-        // Given - both _ati-badge and _ati-badge records exist
+        // Given - both _ati-badge and _ra-badge records exist
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
+            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -126,7 +126,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ati-badge exists
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -138,12 +138,12 @@ class RaBadgeLookupServiceTest {
     }
 
     @Test
-    @DisplayName("hasBadgeRecord() should return true when only _ati-badge exists")
+    @DisplayName("hasBadgeRecord() should return true when only _ra-badge exists")
     void hasBadgeRecordShouldReturnTrueWhenOnlyRaBadgeExists() {
-        // Given - only _ati-badge exists (backward compatibility)
+        // Given - only _ra-badge exists (backward compatibility)
         Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
+            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -205,7 +205,7 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldNormalizeHostnameWithTrailingDot() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -221,15 +221,15 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldCombineAllBadgesFromBothPrefixes() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=2.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
+            "v=ra-badge1; version=2.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
-        // Should have both badges (_ati-badge first, then _ati-badge)
+        // Should have both badges (_ati-badge first, then _ra-badge)
         assertThat(badges).hasSize(2);
     }
 
@@ -239,7 +239,7 @@ class RaBadgeLookupServiceTest {
         Map<String, String> dnsRecords = new HashMap<>();
         // This has unsupported badge format
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=unsupported-format; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=unsupported-format; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -255,9 +255,9 @@ class RaBadgeLookupServiceTest {
         // TestableRaBadgeLookupService that supports multiple records per DNS name
         TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=1.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ans-badge1; version=2.0.0; url=https://transparency.ans.godaddy.com/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=2.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
