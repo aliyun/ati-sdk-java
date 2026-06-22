@@ -10,6 +10,11 @@ public final class EvidenceRef {
     private String evidenceType;
     private String evidenceUri;
     private String evidenceHash;
+    private String hashAlgorithm;
+    private String hashTarget;
+    private String contentType;
+    private String evidenceSchemaVersion;
+    private Boolean signatureRequired;
 
     private EvidenceRef() {
     }
@@ -32,5 +37,25 @@ public final class EvidenceRef {
 
     public String getEvidenceHash() {
         return evidenceHash;
+    }
+
+    public String getHashAlgorithm() {
+        return hashAlgorithm;
+    }
+
+    public String getHashTarget() {
+        return hashTarget;
+    }
+
+    public String getContentType() {
+        return contentType;
+    }
+
+    public String getEvidenceSchemaVersion() {
+        return evidenceSchemaVersion;
+    }
+
+    public Boolean isSignatureRequired() {
+        return signatureRequired;
     }
 }
