@@ -1,10 +1,7 @@
 package com.aliyun.ati.sdk.agent.server;
 
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
-import com.aliyun.ati.sdk.transparency.scitt.ScittReceipt;
-import com.aliyun.ati.sdk.transparency.scitt.StatusToken;
 
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -12,14 +9,14 @@ import java.util.Objects;
 /**
  * Result of client request verification.
  *
- * <p>Contains the outcome of verifying an incoming client request, including
- * the extracted agent identity, SCITT artifacts, and any errors encountered.</p>
+ * <p>Contains the outcome of verifying an incoming client request against
+ * ATI Badge and/or DANE records, including the extracted agent identity
+ * and any errors encountered.</p>
  *
  * @param verified true if the client was successfully verified
- * @param agentId the agent ID from the status token (null if verification failed)
- * @param statusToken the parsed status token (null if not present or failed to parse)
- * @param receipt the parsed SCITT receipt (null if not present or failed to parse)
- * @param clientCertificate the client certificate that was verified
+ * @param agentId the agent ID from the transparency log (null if not available)
+ * @param agentHost the agent hostname extracted from the certificate URI SAN
+ *                  (e.g., "client-agent.example.com")
  * @param errors list of error messages (empty if verification succeeded)
  * @param policyUsed the verification policy that was applied
  * @param verificationDuration how long verification took
@@ -27,16 +24,14 @@ import java.util.Objects;
 public record ClientRequestVerificationResult(
     boolean verified,
     String agentId,
-    StatusToken statusToken,
-    ScittReceipt receipt,
-    X509Certificate clientCertificate,
+    String agentHost,
     List<String> errors,
     VerificationPolicy policyUsed,
     Duration verificationDuration
 ) {
 
     /**
-     * Compact constructor for defensive copying.
+     * Compact constructor for defensive copying and validation.
      */
     public ClientRequestVerificationResult {
         Objects.requireNonNull(errors, "errors cannot be null");
@@ -46,68 +41,23 @@ public record ClientRequestVerificationResult(
     }
 
     /**
-     * Returns true if SCITT artifacts (receipt and status token) are present.
-     *
-     * @return true if both receipt and status token are available
-     */
-    public boolean hasScittArtifacts() {
-        return receipt != null && statusToken != null;
-    }
-
-    /**
-     * Returns true if only the status token is present.
-     *
-     * @return true if status token is available but receipt is not
-     */
-    public boolean hasStatusTokenOnly() {
-        return statusToken != null && receipt == null;
-    }
-
-    /**
-     * Returns true if any SCITT artifact is present.
-     *
-     * @return true if receipt or status token is available
-     */
-    public boolean hasAnyScittArtifact() {
-        return receipt != null || statusToken != null;
-    }
-
-    /**
-     * Returns true if the client certificate was verified against the status token.
-     *
-     * <p>This indicates the certificate fingerprint matched one of the valid
-     * identity certificate fingerprints in the status token.</p>
-     *
-     * @return true if certificate was trusted via SCITT verification
-     */
-    public boolean isCertificateTrusted() {
-        return verified && statusToken != null;
-    }
-
-    /**
      * Creates a successful verification result.
      *
-     * @param agentId the verified agent ID
-     * @param statusToken the verified status token
-     * @param receipt the verified receipt
-     * @param clientCertificate the client certificate
+     * @param agentId the verified agent ID (may be null for PKI_ONLY)
+     * @param agentHost the agent hostname from the certificate URI SAN
      * @param policy the policy that was used
      * @param duration how long verification took
      * @return a successful result
      */
     public static ClientRequestVerificationResult success(
             String agentId,
-            StatusToken statusToken,
-            ScittReceipt receipt,
-            X509Certificate clientCertificate,
+            String agentHost,
             VerificationPolicy policy,
             Duration duration) {
         return new ClientRequestVerificationResult(
             true,
             agentId,
-            statusToken,
-            receipt,
-            clientCertificate,
+            agentHost,
             List.of(),
             policy,
             duration
@@ -115,30 +65,23 @@ public record ClientRequestVerificationResult(
     }
 
     /**
-     * Creates a failed verification result.
+     * Creates a failed verification result with multiple errors.
      *
      * @param errors the error messages
-     * @param statusToken the status token if parsed (may be null)
-     * @param receipt the receipt if parsed (may be null)
-     * @param clientCertificate the client certificate
+     * @param agentHost the agent hostname if extracted (may be null)
      * @param policy the policy that was used
      * @param duration how long verification took
      * @return a failed result
      */
     public static ClientRequestVerificationResult failure(
             List<String> errors,
-            StatusToken statusToken,
-            ScittReceipt receipt,
-            X509Certificate clientCertificate,
+            String agentHost,
             VerificationPolicy policy,
             Duration duration) {
-        String agentId = statusToken != null ? statusToken.agentId() : null;
         return new ClientRequestVerificationResult(
             false,
-            agentId,
-            statusToken,
-            receipt,
-            clientCertificate,
+            null,
+            agentHost,
             errors,
             policy,
             duration
@@ -149,21 +92,19 @@ public record ClientRequestVerificationResult(
      * Creates a failed verification result with a single error.
      *
      * @param error the error message
-     * @param clientCertificate the client certificate
+     * @param agentHost the agent hostname if extracted (may be null)
      * @param policy the policy that was used
      * @param duration how long verification took
      * @return a failed result
      */
     public static ClientRequestVerificationResult failure(
             String error,
-            X509Certificate clientCertificate,
+            String agentHost,
             VerificationPolicy policy,
             Duration duration) {
         return failure(
             List.of(error),
-            null,
-            null,
-            clientCertificate,
+            agentHost,
             policy,
             duration
         );
@@ -173,12 +114,12 @@ public record ClientRequestVerificationResult(
     public String toString() {
         if (verified) {
             return String.format(
-                "ClientRequestVerificationResult{verified=true, agentId='%s', duration=%s}",
-                agentId, verificationDuration);
+                "ClientRequestVerificationResult{verified=true, agentId='%s', agentHost='%s', policy=%s, duration=%s}",
+                agentId, agentHost, policyUsed, verificationDuration);
         } else {
             return String.format(
-                "ClientRequestVerificationResult{verified=false, errors=%s, duration=%s}",
-                errors, verificationDuration);
+                "ClientRequestVerificationResult{verified=false, agentHost='%s', errors=%s, policy=%s, duration=%s}",
+                agentHost, errors, policyUsed, verificationDuration);
         }
     }
 }

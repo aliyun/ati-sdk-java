@@ -1,17 +1,17 @@
 package com.aliyun.ati.sdk.agent.server;
 
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
+import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier.TlsaExpectation;
 import com.aliyun.ati.sdk.crypto.CertificateUtils;
-import com.aliyun.ati.sdk.agent.verification.VerificationTestHelpers;
-import com.aliyun.ati.sdk.transparency.TransparencyClient;
-import com.aliyun.ati.sdk.transparency.scitt.DefaultScittHeaderProvider;
-import com.aliyun.ati.sdk.transparency.scitt.ScittExpectation;
-import com.aliyun.ati.sdk.transparency.scitt.ScittHeaders;
-import com.aliyun.ati.sdk.transparency.scitt.ScittReceipt;
-import com.aliyun.ati.sdk.transparency.scitt.ScittVerifier;
-import com.aliyun.ati.sdk.transparency.scitt.StatusToken;
-import com.upokecenter.cbor.CBORObject;
+import com.aliyun.ati.sdk.crypto.CryptoCache;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.ClientVerificationResult;
+import com.aliyun.ati.sdk.transparency.verification.VerificationStatus;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.Extension;
+import org.bouncycastle.asn1.x509.GeneralName;
+import org.bouncycastle.asn1.x509.GeneralNames;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
@@ -26,66 +26,50 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.PublicKey;
 import java.security.cert.X509Certificate;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link DefaultClientRequestVerifier}.
  *
- * <p>Covers input validation, SCITT verification, caching behavior,
- * DoS protection, and error handling paths.</p>
+ * <p>Covers input validation, PKI_ONLY, Badge verification, DANE verification,
+ * and error handling paths for the ATI spec section 9 verification flow.</p>
  */
 class DefaultClientRequestVerifierTest {
 
-    private TransparencyClient mockTransparencyClient;
-    private ScittVerifier mockScittVerifier;
-    private X509Certificate mockClientCert;
+    private BadgeVerificationService mockBadgeService;
+    private DaneTlsaVerifier mockDaneTlsaVerifier;
     private DefaultClientRequestVerifier verifier;
-    private String clientCertFingerprint;
-    private KeyPair testKeyPair;
+
+    // Test certificate with ATI URI SAN
+    private X509Certificate clientCertWithAtiSan;
+    // Test certificate without URI SAN
+    private X509Certificate clientCertWithoutUriSan;
 
     @BeforeEach
     void setUp() throws Exception {
-        mockTransparencyClient = mock(TransparencyClient.class);
-        when(mockTransparencyClient.getBaseUrl()).thenReturn("https://transparency.test.example.com");
-        mockScittVerifier = mock(ScittVerifier.class);
-        mockClientCert = createMockCertificate();
-        clientCertFingerprint = CertificateUtils.computeSha256Fingerprint(mockClientCert);
-
-        testKeyPair = VerificationTestHelpers.generateEcKeyPair();
-
-        when(mockTransparencyClient.getRootKeysAsync()).thenReturn(
-            CompletableFuture.completedFuture(toRootKeys(testKeyPair.getPublic())));
+        mockBadgeService = mock(BadgeVerificationService.class);
+        mockDaneTlsaVerifier = mock(DaneTlsaVerifier.class);
 
         verifier = DefaultClientRequestVerifier.builder()
-            .transparencyClient(mockTransparencyClient)
-            .scittVerifier(mockScittVerifier)
-            .headerProvider(new DefaultScittHeaderProvider())
-            .verificationCacheTtl(Duration.ofMinutes(5))
+            .badgeVerificationService(mockBadgeService)
+            .daneTlsaVerifier(mockDaneTlsaVerifier)
             .build();
-    }
 
-    private Map<String, PublicKey> toRootKeys(PublicKey publicKey) {
-        return VerificationTestHelpers.toRootKeys(publicKey);
+        clientCertWithAtiSan = createCertificateWithUriSan("ati://v1.client-agent.example.com");
+        clientCertWithoutUriSan = createCertificateWithoutUriSan();
     }
 
     @Nested
@@ -96,511 +80,469 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Should reject null client certificate")
         void shouldRejectNullClientCert() {
             assertThatThrownBy(() ->
-                verifier.verify(null, Map.of(), VerificationPolicy.BADGE_REQUIRED))
+                verifier.verify(null, VerificationPolicy.PKI_ONLY))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clientCert cannot be null");
-        }
-
-        @Test
-        @DisplayName("Should reject null request headers")
-        void shouldRejectNullHeaders() {
-            assertThatThrownBy(() ->
-                verifier.verify(mockClientCert, null, VerificationPolicy.BADGE_REQUIRED))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("requestHeaders cannot be null");
         }
 
         @Test
         @DisplayName("Should reject null policy")
         void shouldRejectNullPolicy() {
             assertThatThrownBy(() ->
-                verifier.verify(mockClientCert, Map.of(), null))
+                verifier.verify(clientCertWithAtiSan, null))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("policy cannot be null");
         }
     }
 
     @Nested
-    @DisplayName("Missing SCITT headers tests")
-    class MissingHeadersTests {
+    @DisplayName("ATI name extraction tests")
+    class AtiNameExtractionTests {
 
         @Test
-        @DisplayName("Should fail when SCITT headers required but missing")
-        void shouldFailWhenScittRequiredButMissing() throws Exception {
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, Map.of(), VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+        @DisplayName("Should fail when certificate has no ATI URI SAN")
+        void shouldFailWhenNoAtiUriSan() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithoutUriSan, VerificationPolicy.PKI_ONLY);
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("not present"));
+            assertThat(result.errors()).anyMatch(e -> e.contains("No ATI URI SAN"));
+            assertThat(result.agentHost()).isNull();
         }
 
         @Test
-        @DisplayName("Should fail gracefully when SCITT headers in PKI_ONLY mode but missing")
-        void shouldHandleMissingHeadersInPkiOnlyMode() throws Exception {
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, Map.of(), VerificationPolicy.PKI_ONLY)
-                .get(5, TimeUnit.SECONDS);
+        @DisplayName("Should extract agentHost from ati:// URI SAN")
+        void shouldExtractAgentHostFromAtiUri() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("not present"));
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
+        }
+
+        @Test
+        @DisplayName("Should extract agentHost from ans:// URI SAN (legacy)")
+        void shouldExtractAgentHostFromAnsUri() throws Exception {
+            X509Certificate cert = createCertificateWithUriSan("ans://v1.legacy-agent.example.com");
+
+            ClientRequestVerificationResult result = verifier.verify(
+                cert, VerificationPolicy.PKI_ONLY);
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentHost()).isEqualTo("legacy-agent.example.com");
         }
     }
 
     @Nested
-    @DisplayName("Successful verification tests")
-    class SuccessfulVerificationTests {
+    @DisplayName("extractHostFromAtiName tests")
+    class ExtractHostTests {
 
         @Test
-        @DisplayName("Should verify valid SCITT artifacts with matching certificate")
-        void shouldVerifyValidArtifacts() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of(clientCertFingerprint),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+        @DisplayName("Should extract host from ati://v1.host.example.com")
+        void shouldExtractFromVersionedAtiName() {
+            String host = DefaultClientRequestVerifier.extractHostFromAtiName(
+                "ati://v1.client-agent.example.com");
+            assertThat(host).isEqualTo("client-agent.example.com");
+        }
 
-            Map<String, String> headers = createValidScittHeaders();
+        @Test
+        @DisplayName("Should extract host from ans://v1.0.0.host.example.com")
+        void shouldExtractFromVersionedAnsName() {
+            String host = DefaultClientRequestVerifier.extractHostFromAtiName(
+                "ans://v1.0.0.host.example.com");
+            // The regex matches v1 as version prefix, rest is host
+            assertThat(host).isNotNull();
+        }
 
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+        @Test
+        @DisplayName("Should return null for null input")
+        void shouldReturnNullForNull() {
+            assertThat(DefaultClientRequestVerifier.extractHostFromAtiName(null)).isNull();
+        }
+
+        @Test
+        @DisplayName("Should return null for invalid scheme")
+        void shouldReturnNullForInvalidScheme() {
+            assertThat(DefaultClientRequestVerifier.extractHostFromAtiName("https://example.com")).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("PKI_ONLY policy tests")
+    class PkiOnlyTests {
+
+        @Test
+        @DisplayName("Should succeed with PKI_ONLY when cert has ATI SAN")
+        void shouldSucceedWithPkiOnly() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
             assertThat(result.verified()).isTrue();
-            assertThat(result.agentId()).isEqualTo("test-agent");
+            assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
             assertThat(result.errors()).isEmpty();
-            assertThat(result.hasScittArtifacts()).isTrue();
-            assertThat(result.isCertificateTrusted()).isTrue();
         }
 
         @Test
-        @DisplayName("Should cache successful verification result")
-        void shouldCacheSuccessfulResult() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of(clientCertFingerprint),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+        @DisplayName("Should not invoke badge service for PKI_ONLY")
+        void shouldNotInvokeBadgeServiceForPkiOnly() {
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result1 = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            ClientRequestVerificationResult result2 = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result1.verified()).isTrue();
-            assertThat(result2.verified()).isTrue();
+            verify(mockBadgeService, never()).verifyClient(any());
         }
 
         @Test
-        @DisplayName("Should invalidate cache when token expires before cache TTL")
-        void shouldInvalidateCacheWhenTokenExpires() throws Exception {
-            Instant shortExpiry = Instant.now().plusMillis(100);
-            StatusToken shortLivedToken = createMockStatusTokenWithExpiry(
-                "test-agent", shortExpiry);
+        @DisplayName("Should not invoke DANE verifier for PKI_ONLY")
+        void shouldNotInvokeDaneForPkiOnly() throws Exception {
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of(clientCertFingerprint),
-                "test.ans",
-                Map.of(),
-                shortLivedToken
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString(), anyInt());
+        }
 
-            Map<String, String> headers = createValidScittHeadersWithExpiry(shortExpiry);
+        @Test
+        @DisplayName("Default verify() method should use PKI_ONLY")
+        void defaultVerifyShouldUsePkiOnly() {
+            ClientRequestVerificationResult result = verifier.verify(clientCertWithAtiSan);
 
-            ClientRequestVerificationResult result1 = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-            assertThat(result1.verified()).isTrue();
-
-            verify(mockScittVerifier, times(1)).verify(any(), any(), any());
-
-            Thread.sleep(150);
-
-            ClientRequestVerificationResult result2 = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-            assertThat(result2.verified()).isTrue();
-
-            verify(mockScittVerifier, times(2)).verify(any(), any(), any());
+            assertThat(result.verified()).isTrue();
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
         }
     }
 
     @Nested
-    @DisplayName("Certificate fingerprint mismatch tests")
-    class FingerprintMismatchTests {
+    @DisplayName("BADGE_REQUIRED policy tests")
+    class BadgeRequiredTests {
 
         @Test
-        @DisplayName("Should fail when certificate fingerprint does not match identity certs")
-        void shouldFailOnFingerprintMismatch() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of("SHA256:different-fingerprint"),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+        @DisplayName("Should succeed when badge verification passes")
+        void shouldSucceedWhenBadgeVerificationPasses() {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
 
-            Map<String, String> headers = createValidScittHeaders();
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .expectedAgentHost("client-agent.example.com")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(result.errors()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Should fail when badge verification returns NOT_ATI_AGENT")
+        void shouldFailWhenNotAtiAgent() {
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.NOT_ATI_AGENT)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("fingerprint mismatch"));
+            assertThat(result.errors()).anyMatch(e -> e.contains("Badge verification failed"));
         }
 
         @Test
-        @DisplayName("Should fail when no identity certs in status token")
-        void shouldFailWhenNoIdentityCerts() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of("SHA256:some-server-cert"),
-                List.of(),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+        @DisplayName("Should fail when badge verification returns FINGERPRINT_MISMATCH")
+        void shouldFailWhenFingerprintMismatch() {
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.FINGERPRINT_MISMATCH)
+                .warningMessage("Certificate fingerprint does not match registration")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("No valid identity certificates"));
+            assertThat(result.errors()).anyMatch(e -> e.contains("Badge verification failed"));
         }
-    }
-
-    @Nested
-    @DisplayName("SCITT verification failure tests")
-    class ScittVerificationFailureTests {
 
         @Test
-        @DisplayName("Should fail when SCITT verification fails")
-        void shouldFailWhenScittVerificationFails() throws Exception {
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenReturn(ScittExpectation.invalidToken("Signature verification failed"));
+        @DisplayName("Should fail when badge verification returns REGISTRATION_INVALID")
+        void shouldFailWhenRegistrationInvalid() {
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.REGISTRATION_INVALID)
+                .warningMessage("Registration status: REVOKED")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("SCITT verification failed"));
+            assertThat(result.errors()).anyMatch(e -> e.contains("REGISTRATION_INVALID"));
         }
 
         @Test
-        @DisplayName("Should fail when status token is expired")
-        void shouldFailWhenTokenExpired() throws Exception {
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenReturn(ScittExpectation.expired());
+        @DisplayName("Should fail when badge verification returns LOOKUP_FAILED")
+        void shouldFailWhenLookupFailed() {
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.LOOKUP_FAILED)
+                .warningMessage("DNS query failed")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("SCITT verification failed"));
+            assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
         }
 
         @Test
-        @DisplayName("Should fail when agent is revoked")
-        void shouldFailWhenAgentRevoked() throws Exception {
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenReturn(ScittExpectation.revoked("test.ans"));
+        @DisplayName("Should accept DEPRECATED_OK status from badge service")
+        void shouldAcceptDeprecatedOk() {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
 
-            Map<String, String> headers = createValidScittHeaders();
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.DEPRECATED_OK)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .warningMessage("Registration is deprecated")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-        }
-    }
-
-    @Nested
-    @DisplayName("Invalid header content tests")
-    class InvalidHeaderContentTests {
-
-        @Test
-        @DisplayName("Should fail on invalid Base64 in headers")
-        void shouldFailOnInvalidBase64() throws Exception {
-            Map<String, String> headers = Map.of(
-                ScittHeaders.STATUS_TOKEN_HEADER, "not-valid-base64!!!"
-            );
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-        }
-
-        @Test
-        @DisplayName("Should fail on invalid CBOR in headers")
-        void shouldFailOnInvalidCbor() throws Exception {
-            byte[] invalidCbor = {0x01, 0x02, 0x03};
-            Map<String, String> headers = Map.of(
-                ScittHeaders.STATUS_TOKEN_HEADER, Base64.getEncoder().encodeToString(invalidCbor)
-            );
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-        }
-    }
-
-    @Nested
-    @DisplayName("DoS protection tests")
-    class DoSProtectionTests {
-
-        @Test
-        @DisplayName("Should fail when receipt header exceeds size limit")
-        void shouldFailWhenReceiptHeaderExceedsSizeLimit() throws Exception {
-            String oversizedHeader = "A".repeat(65 * 1024);
-            Map<String, String> headers = new HashMap<>();
-            headers.put(ScittHeaders.SCITT_RECEIPT_HEADER, oversizedHeader);
-            headers.put(ScittHeaders.STATUS_TOKEN_HEADER,
-                Base64.getEncoder().encodeToString(createValidStatusTokenBytes()));
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("exceeds size limit"));
-        }
-
-        @Test
-        @DisplayName("Should fail when status token header exceeds size limit")
-        void shouldFailWhenStatusTokenHeaderExceedsSizeLimit() throws Exception {
-            String oversizedHeader = "B".repeat(65 * 1024);
-            Map<String, String> headers = new HashMap<>();
-            headers.put(ScittHeaders.SCITT_RECEIPT_HEADER,
-                Base64.getEncoder().encodeToString(createValidReceiptBytes()));
-            headers.put(ScittHeaders.STATUS_TOKEN_HEADER, oversizedHeader);
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("exceeds size limit"));
-        }
-
-        @Test
-        @DisplayName("Should accept headers just under size limit")
-        void shouldAcceptHeadersJustUnderSizeLimit() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of(clientCertFingerprint),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
-
-            String largeButValidReceipt = "A".repeat(64 * 1024 - 1);
-            Map<String, String> headers = new HashMap<>();
-            headers.put(ScittHeaders.SCITT_RECEIPT_HEADER, largeButValidReceipt);
-            headers.put(ScittHeaders.STATUS_TOKEN_HEADER,
-                Base64.getEncoder().encodeToString(createValidStatusTokenBytes()));
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.errors()).noneMatch(e -> e.contains("exceeds size limit"));
-        }
-    }
-
-    @Nested
-    @DisplayName("Async error handling tests")
-    class AsyncErrorHandlingTests {
-
-        @Test
-        @DisplayName("Should handle root key fetch failure")
-        void shouldHandleRootKeyFetchFailure() throws Exception {
-            when(mockTransparencyClient.getRootKeysAsync())
-                .thenReturn(CompletableFuture.failedFuture(
-                    new RuntimeException("Network error")));
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e ->
-                e.contains("Failed to fetch SCITT public keys") || e.contains("Network error"));
-        }
-
-        @Test
-        @DisplayName("Should handle unexpected exception during verification")
-        void shouldHandleUnexpectedExceptionDuringVerification() throws Exception {
-            when(mockTransparencyClient.getRootKeysAsync())
-                .thenReturn(CompletableFuture.completedFuture(toRootKeys(testKeyPair.getPublic())));
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenThrow(new RuntimeException("Unexpected error"));
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("error"));
-        }
-    }
-
-    @Nested
-    @DisplayName("Fingerprint matching edge cases")
-    class FingerprintMatchingEdgeCaseTests {
-
-        @Test
-        @DisplayName("Should match fingerprint when present in multiple identity certs")
-        void shouldMatchFingerprintInMultipleIdentityCerts() throws Exception {
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of("SHA256:other-fp-1", clientCertFingerprint, "SHA256:other-fp-2"),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isTrue();
         }
 
         @Test
-        @DisplayName("Should match fingerprint with different case")
-        void shouldMatchFingerprintWithDifferentCase() throws Exception {
-            String upperCaseFingerprint = clientCertFingerprint.toUpperCase();
+        @DisplayName("Should fail when badgeVerificationService is not configured")
+        void shouldFailWhenBadgeServiceNotConfigured() {
+            DefaultClientRequestVerifier noBadgeVerifier = DefaultClientRequestVerifier.builder()
+                .build();
 
-            ScittExpectation expectation = ScittExpectation.verified(
-                List.of(),
-                List.of(upperCaseFingerprint),
-                "test.ans",
-                Map.of(),
-                createMockStatusToken("test-agent")
-            );
-            when(mockScittVerifier.verify(any(), any(), any())).thenReturn(expectation);
+            ClientRequestVerificationResult result = noBadgeVerifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
-            Map<String, String> headers = createValidScittHeaders();
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("badgeVerificationService is not configured"));
+        }
 
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+        @Test
+        @DisplayName("Should not invoke DANE verifier for BADGE_REQUIRED")
+        void shouldNotInvokeDaneForBadgeRequired() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+
+            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString(), anyInt());
+        }
+    }
+
+    @Nested
+    @DisplayName("DANE_AND_BADGE policy tests")
+    class DaneAndBadgeTests {
+
+        @Test
+        @DisplayName("Should succeed when both Badge and DANE pass")
+        void shouldSucceedWhenBothPass() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            // Badge passes
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            // DANE passes: TLSA expectation matches client cert public key SHA-256
+            byte[] spkiHash = CryptoCache.sha256(clientCertWithAtiSan.getPublicKey().getEncoded());
+            TlsaExpectation tlsaExpectation = new TlsaExpectation(1, 1, spkiHash);
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenReturn(List.of(tlsaExpectation));
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.DANE_AND_BADGE);
+        }
+
+        @Test
+        @DisplayName("Should fail when Badge passes but DANE has no TLSA record")
+        void shouldFailWhenNoTlsaRecord() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            // DANE: no TLSA records
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenReturn(List.of());
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("No TLSA record"));
+        }
+
+        @Test
+        @DisplayName("Should fail when Badge passes but DANE fingerprint mismatches")
+        void shouldFailWhenDaneFingerprintMismatch() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            // DANE: wrong fingerprint
+            byte[] wrongHash = new byte[32];
+            wrongHash[0] = (byte) 0xFF;
+            TlsaExpectation tlsaExpectation = new TlsaExpectation(1, 1, wrongHash);
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenReturn(List.of(tlsaExpectation));
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("does not match any TLSA record"));
+        }
+
+        @Test
+        @DisplayName("Should fail when Badge fails (regardless of DANE)")
+        void shouldFailWhenBadgeFails() {
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.NOT_ATI_AGENT)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isFalse();
+            // DANE should NOT have been invoked since Badge failed first
+        }
+
+        @Test
+        @DisplayName("Should fail when DANE verifier is not configured")
+        void shouldFailWhenDaneVerifierNotConfigured() {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            DefaultClientRequestVerifier noDaneVerifier = DefaultClientRequestVerifier.builder()
+                .badgeVerificationService(mockBadgeService)
+                .build();
+
+            ClientRequestVerificationResult result = noDaneVerifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("daneTlsaVerifier is not configured"));
+        }
+
+        @Test
+        @DisplayName("Should handle DANE lookup exception gracefully")
+        void shouldHandleDaneLookupException() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenThrow(new RuntimeException("DNS timeout"));
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).anyMatch(e -> e.contains("DANE TLSA lookup failed"));
+        }
+
+        @Test
+        @DisplayName("Should query _ati-identity._tls prefix for DANE")
+        void shouldQueryIdentityTlsaPrefix() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenReturn(List.of());
+
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+
+            // Verify the correct DNS name was queried
+            verify(mockDaneTlsaVerifier).getTlsaExpectations(
+                "_ati-identity._tls.client-agent.example.com", 0);
+        }
+
+        @Test
+        @DisplayName("Should match when one of multiple TLSA records matches")
+        void shouldMatchWhenOneOfMultipleTlsaRecordsMatches() throws Exception {
+            String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);
+
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(fingerprint)
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            // First TLSA record: wrong hash
+            byte[] wrongHash = new byte[32];
+            TlsaExpectation wrongExpectation = new TlsaExpectation(1, 1, wrongHash);
+
+            // Second TLSA record: correct hash (SPKI SHA-256)
+            byte[] correctHash = CryptoCache.sha256(clientCertWithAtiSan.getPublicKey().getEncoded());
+            TlsaExpectation correctExpectation = new TlsaExpectation(1, 1, correctHash);
+
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+                .thenReturn(List.of(wrongExpectation, correctExpectation));
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
 
             assertThat(result.verified()).isTrue();
         }
     }
 
     @Nested
-    @DisplayName("Cache expiry edge cases")
-    class CacheExpiryEdgeCaseTests {
+    @DisplayName("Error handling tests")
+    class ErrorHandlingTests {
 
         @Test
-        @DisplayName("Should use different cache keys for different certificates")
-        void shouldUseDifferentCacheKeysForDifferentCerts() throws Exception {
-            X509Certificate secondCert = createMockCertificate();
-            String secondFingerprint = CertificateUtils.computeSha256Fingerprint(secondCert);
+        @DisplayName("Should handle badge service throwing exception")
+        void shouldHandleBadgeServiceException() {
+            when(mockBadgeService.verifyClient(any()))
+                .thenThrow(new RuntimeException("Network error"));
 
-            // Use Answer to return appropriate expectation based on which cert is being verified
-            when(mockScittVerifier.verify(any(), any(), any())).thenAnswer(invocation -> {
-                // Return expectation that matches whichever fingerprint we're checking
-                // Since both calls use the same headers, the verifier is called for both
-                return ScittExpectation.verified(
-                    List.of(),
-                    List.of(clientCertFingerprint, secondFingerprint),
-                    "test.ans",
-                    Map.of(),
-                    createMockStatusToken("test-agent")
-                );
-            });
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result1 = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            ClientRequestVerificationResult result2 = verifier
-                .verify(secondCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            // Both should succeed
-            assertThat(result1.verified()).isTrue();
-            assertThat(result2.verified()).isTrue();
-            // Critical: mock should be called twice - different cert fingerprints mean different cache keys
-            verify(mockScittVerifier, times(2)).verify(any(), any(), any());
-        }
-    }
-
-    @Nested
-    @DisplayName("Agent status variations")
-    class AgentStatusVariationsTests {
-
-        @Test
-        @DisplayName("Should fail when agent status is inactive")
-        void shouldFailWhenAgentStatusIsInactive() throws Exception {
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenReturn(ScittExpectation.inactive(StatusToken.Status.DEPRECATED, "test.ans"));
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
             assertThat(result.verified()).isFalse();
-        }
-
-        @Test
-        @DisplayName("Should fail when key not found")
-        void shouldFailWhenKeyNotFound() throws Exception {
-            when(mockScittVerifier.verify(any(), any(), any()))
-                .thenReturn(ScittExpectation.keyNotFound("Required key ID not in registry"));
-
-            Map<String, String> headers = createValidScittHeaders();
-
-            ClientRequestVerificationResult result = verifier
-                .verify(mockClientCert, headers, VerificationPolicy.BADGE_REQUIRED)
-                .get(5, TimeUnit.SECONDS);
-
-            assertThat(result.verified()).isFalse();
-            assertThat(result.errors()).anyMatch(e -> e.contains("SCITT verification failed"));
+            assertThat(result.errors()).anyMatch(e -> e.contains("Verification error"));
         }
     }
 
@@ -609,65 +551,37 @@ class DefaultClientRequestVerifierTest {
     class ResultTests {
 
         @Test
-        @DisplayName("hasScittArtifacts should return true when both present")
-        void hasScittArtifactsShouldReturnTrueWhenBothPresent() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "test-agent",
-                createMockStatusToken("test-agent"),
-                createMockReceipt(),
-                mockClientCert,
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(100)
-            );
+        @DisplayName("Success result should have correct fields")
+        void successResultShouldHaveCorrectFields() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
-            assertThat(result.hasScittArtifacts()).isTrue();
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(result.errors()).isEmpty();
+            assertThat(result.verificationDuration()).isNotNull();
         }
 
         @Test
-        @DisplayName("hasScittArtifacts should return false when receipt missing")
-        void hasScittArtifactsShouldReturnFalseWhenReceiptMissing() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "test-agent",
-                createMockStatusToken("test-agent"),
-                null,
-                mockClientCert,
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(100)
-            );
-
-            assertThat(result.hasScittArtifacts()).isFalse();
-            assertThat(result.hasStatusTokenOnly()).isTrue();
-        }
-
-        @Test
-        @DisplayName("isCertificateTrusted should return true when verified with token")
-        void isCertificateTrustedWhenVerifiedWithToken() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "test-agent",
-                createMockStatusToken("test-agent"),
-                createMockReceipt(),
-                mockClientCert,
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(100)
-            );
-
-            assertThat(result.isCertificateTrusted()).isTrue();
-        }
-
-        @Test
-        @DisplayName("toString should include verification duration")
-        void toStringShouldIncludeDuration() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "test-agent",
-                createMockStatusToken("test-agent"),
-                null,
-                mockClientCert,
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(150)
-            );
+        @DisplayName("toString should include verification status")
+        void toStringShouldIncludeVerificationStatus() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
             assertThat(result.toString()).contains("verified=true");
-            assertThat(result.toString()).contains("test-agent");
+            assertThat(result.toString()).contains("client-agent.example.com");
+        }
+
+        @Test
+        @DisplayName("Failure result should include errors")
+        void failureResultShouldIncludeErrors() {
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithoutUriSan, VerificationPolicy.PKI_ONLY);
+
+            assertThat(result.verified()).isFalse();
+            assertThat(result.errors()).isNotEmpty();
+            assertThat(result.toString()).contains("verified=false");
         }
     }
 
@@ -676,149 +590,77 @@ class DefaultClientRequestVerifierTest {
     class BuilderTests {
 
         @Test
-        @DisplayName("Should require TransparencyClient")
-        void shouldRequireTransparencyClient() {
-            assertThatThrownBy(() -> DefaultClientRequestVerifier.builder().build())
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("transparencyClient is required");
+        @DisplayName("Should build without any services (all optional at build time)")
+        void shouldBuildWithoutAnyServices() {
+            DefaultClientRequestVerifier v = DefaultClientRequestVerifier.builder().build();
+            assertThat(v).isNotNull();
         }
 
         @Test
-        @DisplayName("Should build with TransparencyClient")
-        void shouldBuildWithTransparencyClient() {
-            DefaultClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
-                .transparencyClient(mockTransparencyClient)
+        @DisplayName("Should build with badge service only")
+        void shouldBuildWithBadgeServiceOnly() {
+            DefaultClientRequestVerifier v = DefaultClientRequestVerifier.builder()
+                .badgeVerificationService(mockBadgeService)
                 .build();
-
-            assertThat(verifier).isNotNull();
+            assertThat(v).isNotNull();
         }
 
         @Test
-        @DisplayName("Should build with custom cache TTL")
-        void shouldBuildWithCustomCacheTtl() {
-            DefaultClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
-                .transparencyClient(mockTransparencyClient)
-                .verificationCacheTtl(Duration.ofMinutes(10))
+        @DisplayName("Should build with both badge and DANE services")
+        void shouldBuildWithBothServices() {
+            DefaultClientRequestVerifier v = DefaultClientRequestVerifier.builder()
+                .badgeVerificationService(mockBadgeService)
+                .daneTlsaVerifier(mockDaneTlsaVerifier)
                 .build();
-
-            assertThat(verifier).isNotNull();
-        }
-
-        @Test
-        @DisplayName("Should reject null cache TTL")
-        void shouldRejectNullCacheTtl() {
-            assertThatThrownBy(() -> DefaultClientRequestVerifier.builder()
-                .verificationCacheTtl(null))
-                .isInstanceOf(NullPointerException.class)
-                .hasMessageContaining("ttl cannot be null");
-        }
-
-        @Test
-        @DisplayName("Should reject zero cache TTL")
-        void shouldRejectZeroCacheTtl() {
-            assertThatThrownBy(() -> DefaultClientRequestVerifier.builder()
-                .verificationCacheTtl(Duration.ZERO))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("must be positive");
-        }
-
-        @Test
-        @DisplayName("Should reject negative cache TTL")
-        void shouldRejectNegativeCacheTtl() {
-            assertThatThrownBy(() -> DefaultClientRequestVerifier.builder()
-                .verificationCacheTtl(Duration.ofSeconds(-1)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("must be positive");
-        }
-
-        @Test
-        @DisplayName("Should build with custom executor")
-        void shouldBuildWithCustomExecutor() {
-            Executor customExecutor = Executors.newSingleThreadExecutor();
-            DefaultClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
-                .transparencyClient(mockTransparencyClient)
-                .executor(customExecutor)
-                .build();
-
-            assertThat(verifier).isNotNull();
+            assertThat(v).isNotNull();
         }
     }
 
     // ==================== Helper Methods ====================
 
-    private Map<String, String> createValidScittHeaders() {
-        return createValidScittHeadersWithExpiry(Instant.now().plusSeconds(3600));
-    }
-
-    private Map<String, String> createValidScittHeadersWithExpiry(Instant expiresAt) {
-        byte[] receiptBytes = createValidReceiptBytes();
-        byte[] tokenBytes = createValidStatusTokenBytesWithExpiry(expiresAt);
-
-        Map<String, String> headers = new HashMap<>();
-        headers.put(ScittHeaders.SCITT_RECEIPT_HEADER, Base64.getEncoder().encodeToString(receiptBytes));
-        headers.put(ScittHeaders.STATUS_TOKEN_HEADER, Base64.getEncoder().encodeToString(tokenBytes));
-        return headers;
-    }
-
-    private byte[] createValidReceiptBytes() {
-        CBORObject protectedHeader = CBORObject.NewMap();
-        protectedHeader.Add(1, -7);
-        protectedHeader.Add(395, 1);
-        byte[] protectedBytes = protectedHeader.EncodeToBytes();
-
-        CBORObject inclusionProofMap = CBORObject.NewMap();
-        inclusionProofMap.Add(-1, 1L);
-        inclusionProofMap.Add(-2, 0L);
-        inclusionProofMap.Add(-3, CBORObject.NewArray());
-        inclusionProofMap.Add(-4, CBORObject.FromObject(new byte[32]));
-
-        CBORObject unprotectedHeader = CBORObject.NewMap();
-        unprotectedHeader.Add(396, inclusionProofMap);
-
-        CBORObject array = CBORObject.NewArray();
-        array.Add(protectedBytes);
-        array.Add(unprotectedHeader);
-        array.Add("test-payload".getBytes());
-        array.Add(new byte[64]);
-        CBORObject tagged = CBORObject.FromObjectAndTag(array, 18);
-
-        return tagged.EncodeToBytes();
-    }
-
-    private byte[] createValidStatusTokenBytes() {
-        return createValidStatusTokenBytesWithExpiry(Instant.now().plusSeconds(3600));
-    }
-
-    private byte[] createValidStatusTokenBytesWithExpiry(Instant expiresAt) {
-        long now = Instant.now().getEpochSecond();
-
-        CBORObject payload = CBORObject.NewMap();
-        payload.Add(1, "test-agent");
-        payload.Add(2, "ACTIVE");
-        payload.Add(3, now);
-        payload.Add(4, expiresAt.getEpochSecond());
-
-        CBORObject protectedHeader = CBORObject.NewMap();
-        protectedHeader.Add(1, -7);
-        byte[] protectedBytes = protectedHeader.EncodeToBytes();
-
-        CBORObject array = CBORObject.NewArray();
-        array.Add(protectedBytes);
-        array.Add(CBORObject.NewMap());
-        array.Add(payload.EncodeToBytes());
-        array.Add(new byte[64]);
-        CBORObject tagged = CBORObject.FromObjectAndTag(array, 18);
-
-        return tagged.EncodeToBytes();
-    }
-
-    private X509Certificate createMockCertificate() throws Exception {
+    /**
+     * Creates a self-signed X.509 certificate with a URI SAN containing the ATI name.
+     */
+    private X509Certificate createCertificateWithUriSan(String uriSan) throws Exception {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
         keyGen.initialize(256);
         KeyPair keyPair = keyGen.generateKeyPair();
 
         X500Name subject = new X500Name("CN=Test Agent");
-        BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
+        BigInteger serial = BigInteger.valueOf(System.nanoTime());
+        Instant now = Instant.now();
+
+        X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+            subject,
+            serial,
+            Date.from(now.minusSeconds(3600)),
+            Date.from(now.plusSeconds(86400)),
+            subject,
+            keyPair.getPublic()
+        );
+
+        // Add URI Subject Alternative Name (type 6)
+        GeneralName uriGeneralName = new GeneralName(GeneralName.uniformResourceIdentifier, uriSan);
+        GeneralNames subjectAltNames = new GeneralNames(uriGeneralName);
+        certBuilder.addExtension(Extension.subjectAlternativeName, false, subjectAltNames);
+
+        ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA")
+            .build(keyPair.getPrivate());
+
+        X509CertificateHolder certHolder = certBuilder.build(signer);
+        return new JcaX509CertificateConverter().getCertificate(certHolder);
+    }
+
+    /**
+     * Creates a self-signed X.509 certificate without a URI SAN.
+     */
+    private X509Certificate createCertificateWithoutUriSan() throws Exception {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
+        keyGen.initialize(256);
+        KeyPair keyPair = keyGen.generateKeyPair();
+
+        X500Name subject = new X500Name("CN=Plain Agent");
+        BigInteger serial = BigInteger.valueOf(System.nanoTime());
         Instant now = Instant.now();
 
         X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
@@ -835,27 +677,5 @@ class DefaultClientRequestVerifierTest {
 
         X509CertificateHolder certHolder = certBuilder.build(signer);
         return new JcaX509CertificateConverter().getCertificate(certHolder);
-    }
-
-    private StatusToken createMockStatusToken(String agentId) {
-        return createMockStatusTokenWithExpiry(agentId, Instant.now().plusSeconds(3600));
-    }
-
-    private StatusToken createMockStatusTokenWithExpiry(String agentId, Instant expiresAt) {
-        return new StatusToken(
-            agentId,
-            StatusToken.Status.ACTIVE,
-            Instant.now(),
-            expiresAt,
-            agentId + ".ans",
-            List.of(),
-            List.of(),
-            Map.of(),
-            null
-        );
-    }
-
-    private ScittReceipt createMockReceipt() {
-        return mock(ScittReceipt.class);
     }
 }

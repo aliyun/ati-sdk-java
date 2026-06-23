@@ -1,55 +1,55 @@
 package com.aliyun.ati.sdk.agent.server;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.Expiry;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
-import com.aliyun.ati.sdk.concurrent.AtiExecutors;
+import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
+import com.aliyun.ati.sdk.agent.verification.TlsaUtils;
 import com.aliyun.ati.sdk.crypto.CertificateUtils;
-import com.aliyun.ati.sdk.crypto.CryptoCache;
-import com.aliyun.ati.sdk.transparency.TransparencyClient;
-import com.aliyun.ati.sdk.transparency.scitt.DefaultScittHeaderProvider;
-import com.aliyun.ati.sdk.transparency.scitt.DefaultScittVerifier;
-import com.aliyun.ati.sdk.transparency.scitt.ScittExpectation;
-import com.aliyun.ati.sdk.transparency.scitt.ScittHeaderProvider;
-import com.aliyun.ati.sdk.transparency.scitt.ScittHeaders;
-import com.aliyun.ati.sdk.transparency.scitt.ScittReceipt;
-import com.aliyun.ati.sdk.transparency.scitt.ScittVerifier;
-import com.aliyun.ati.sdk.transparency.scitt.StatusToken;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.ClientVerificationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Default implementation of {@link ClientRequestVerifier}.
  *
- * <p>This verifier extracts SCITT artifacts from request headers, verifies their
- * cryptographic signatures, and matches the client certificate fingerprint against
- * the identity certificate fingerprints in the status token.</p>
+ * <p>This verifier implements ATI spec section 9 for server-side client verification.
+ * Unlike the ANS-style SCITT header approach, ATI uses Badge (transparency log)
+ * and DANE (DNSSEC-secured TLSA records) for client verification.</p>
+ *
+ * <h2>Verification Flow</h2>
+ * <ol>
+ *   <li>Extract {@code clientAgentHost} from the client Identity Certificate's
+ *       URI SAN ({@code ati://v1.client-agent.example.com})</li>
+ *   <li>Based on {@link VerificationPolicy}:
+ *     <ul>
+ *       <li><b>PKI_ONLY</b>: No extra verification, return success</li>
+ *       <li><b>BADGE_REQUIRED</b>: Look up DNS {@code _ati-badge.{clientAgentHost}},
+ *           query transparency log, verify seal signature + Merkle proof,
+ *           compare SHA256(clientCert) vs identityCertFingerprint</li>
+ *       <li><b>DANE_AND_BADGE</b>: Badge verification + DNS
+ *           {@code _ati-identity._tls.{clientAgentHost}} TLSA record,
+ *           compare client Identity Cert public key fingerprint vs TLSA record</li>
+ *     </ul>
+ *   </li>
+ * </ol>
  *
  * <h2>Key Design Decisions</h2>
  * <ul>
- *   <li><b>Identity vs Server Certs:</b> Uses {@code validIdentityCertFingerprints()}
- *       for client verification, NOT {@code validServerCertFingerprints()}. Identity
- *       certs identify the agent, server certs are for TLS endpoints.</li>
- *   <li><b>Caching:</b> Results are cached by (receipt hash, token hash, cert fingerprint)
- *       to avoid redundant verification for repeated requests.</li>
- *   <li><b>Security:</b> Uses constant-time comparison for fingerprint matching.</li>
+ *   <li><b>Synchronous:</b> Badge and DANE operations are synchronous for simplicity.
+ *       Use a thread pool externally if non-blocking is needed.</li>
+ *   <li><b>No HTTP headers:</b> Badge and DANE do not require client-provided HTTP headers;
+ *       verification is based solely on the client certificate and DNS records.</li>
+ *   <li><b>DANE uses {@code _ati-identity._tls}:</b> For client identity cert verification,
+ *       NOT {@code _443._tcp} (which is for server TLS certificates).</li>
  * </ul>
  *
  * @see ClientRequestVerifier
@@ -59,440 +59,275 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultClientRequestVerifier.class);
 
     /**
-     * Maximum header size in bytes to prevent DoS attacks.
+     * Pattern to extract host from ATI name URI SAN.
+     * Matches: ati://v{version}.{host} or ati://{host}
+     * Example: ati://v1.client-agent.example.com -> client-agent.example.com
      */
-    private static final int MAX_HEADER_SIZE = 64 * 1024; // 64KB
+    private static final Pattern ATI_NAME_HOST_PATTERN = Pattern.compile(
+        "^(?:ati|ans)://(?:v[^.]+\\.)?(.+)$",
+        Pattern.CASE_INSENSITIVE
+    );
 
     /**
-     * Maximum cache size to prevent memory exhaustion DoS through cache flooding.
+     * DNS prefix for identity certificate TLSA records.
+     * Per ATI spec, client identity certs use _ati-identity._tls, NOT _443._tcp.
      */
-    private static final int MAX_CACHE_SIZE = 1000;
+    private static final String IDENTITY_TLSA_PREFIX = "_ati-identity._tls.";
 
-    private final TransparencyClient transparencyClient;
-    private final ScittVerifier scittVerifier;
-    private final ScittHeaderProvider headerProvider;
-    private final Executor executor;
-    private final Duration cacheTtl;
-    private final Duration verificationTimeout;
+    /**
+     * Dummy port value for DANE TLSA lookup on identity records.
+     * The actual TLSA name is built as {@code _ati-identity._tls.{host}},
+     * so the port is not used in the DNS name, but the DaneTlsaVerifier API requires it.
+     */
+    private static final int IDENTITY_TLSA_PORT = 0;
 
-    // Verification result cache keyed by (receiptHash:tokenHash:certFingerprint)
-    // Caffeine handles automatic eviction and size limits
-    private final Cache<String, CachedResult> verificationCache;
+    private final BadgeVerificationService badgeVerificationService;
+    private final DaneTlsaVerifier daneTlsaVerifier; // nullable, only needed for DANE_AND_BADGE
 
     private DefaultClientRequestVerifier(Builder builder) {
-        this.transparencyClient = builder.transparencyClient;
-        this.scittVerifier = builder.scittVerifier;
-        this.headerProvider = builder.headerProvider;
-        this.executor = builder.executor;
-        this.cacheTtl = builder.cacheTtl;
-        this.verificationTimeout = builder.verificationTimeout;
-
-        // Build cache with custom expiry based on min(cacheTtl, tokenExpiry)
-        this.verificationCache = Caffeine.newBuilder()
-            .maximumSize(MAX_CACHE_SIZE)
-            .expireAfter(new VerificationResultExpiry())
-            .build();
+        this.badgeVerificationService = builder.badgeVerificationService;
+        this.daneTlsaVerifier = builder.daneTlsaVerifier;
     }
 
     @Override
-    public CompletableFuture<ClientRequestVerificationResult> verify(
+    public ClientRequestVerificationResult verify(
             X509Certificate clientCert,
-            Map<String, String> requestHeaders,
             VerificationPolicy policy) {
 
         Objects.requireNonNull(clientCert, "clientCert cannot be null");
-        Objects.requireNonNull(requestHeaders, "requestHeaders cannot be null");
         Objects.requireNonNull(policy, "policy cannot be null");
 
         long startNanos = System.nanoTime();
 
-        // Steps 1-4 are synchronous (header validation, extraction, cache check)
-        // Step 5 (SCITT verification) is async due to getRootKeyAsync()
-        // Step 6 (fingerprint match) chains after Step 5
-
         try {
-            // Step 1-3: Validate headers and extract artifacts (synchronous)
-            ArtifactExtractionResult extractionResult = extractAndValidateArtifacts(
-                requestHeaders, policy, clientCert, startNanos);
-            if (extractionResult.failure != null) {
-                return CompletableFuture.completedFuture(extractionResult.failure);
+            // Step 1: Extract clientAgentHost from URI SAN (type 6)
+            Optional<String> atiNameOpt = CertificateUtils.extractAtiName(clientCert);
+            if (atiNameOpt.isEmpty()) {
+                LOGGER.warn("No ATI URI SAN found in client certificate [subject={}]",
+                    clientCert.getSubjectX500Principal().getName());
+                return ClientRequestVerificationResult.failure(
+                    "No ATI URI SAN found in client certificate",
+                    null,
+                    policy,
+                    elapsed(startNanos)
+                );
             }
 
-            ScittHeaderProvider.ScittArtifacts artifacts = extractionResult.artifacts;
-            ScittReceipt receipt = artifacts.receipt();
-            StatusToken statusToken = artifacts.statusToken();
+            String atiName = atiNameOpt.get();
+            String agentHost = extractHostFromAtiName(atiName);
+            if (agentHost == null || agentHost.isBlank()) {
+                LOGGER.warn("Failed to extract host from ATI name: {}", atiName);
+                return ClientRequestVerificationResult.failure(
+                    "Invalid ATI name format: " + atiName,
+                    null,
+                    policy,
+                    elapsed(startNanos)
+                );
+            }
 
-            // Step 4: Check cache (synchronous)
-            // Use raw header values for cache key - avoids 2x SHA-256 on every lookup
-            String receiptHeader = requestHeaders.get(ScittHeaders.SCITT_RECEIPT_HEADER);
-            String tokenHeader = requestHeaders.get(ScittHeaders.STATUS_TOKEN_HEADER);
+            LOGGER.debug("Extracted agentHost='{}' from ATI name '{}'", agentHost, atiName);
+
+            // Step 2: PKI_ONLY -> done (no Badge or DANE verification)
+            if (policy == VerificationPolicy.PKI_ONLY) {
+                LOGGER.debug("PKI_ONLY policy: skipping Badge/DANE verification for {}", agentHost);
+                return ClientRequestVerificationResult.success(
+                    null,
+                    agentHost,
+                    policy,
+                    elapsed(startNanos)
+                );
+            }
+
+            // Step 3: Badge verification (BADGE_REQUIRED and DANE_AND_BADGE)
+            if (badgeVerificationService == null) {
+                LOGGER.error("Badge verification required but badgeVerificationService is not configured");
+                return ClientRequestVerificationResult.failure(
+                    "Badge verification required but badgeVerificationService is not configured",
+                    agentHost,
+                    policy,
+                    elapsed(startNanos)
+                );
+            }
+
+            ClientVerificationResult badgeResult = badgeVerificationService.verifyClient(clientCert);
+            if (!badgeResult.isSuccess()) {
+                String badgeError = buildBadgeErrorMessage(badgeResult);
+                LOGGER.warn("Badge verification failed for {}: {}", agentHost, badgeError);
+                return ClientRequestVerificationResult.failure(
+                    badgeError,
+                    agentHost,
+                    policy,
+                    elapsed(startNanos)
+                );
+            }
+
+            // Badge passed - use ATI name as agent identity
+            // (TransparencyLog does not expose a separate agentId field;
+            //  the ATI name from the cert serves as the canonical agent identifier)
+            String agentId = atiName;
+
+            // Verify certificate fingerprint matches the transparency log
             String clientFingerprint = CertificateUtils.computeSha256Fingerprint(clientCert);
-            String cacheKey = computeCacheKey(receiptHeader, tokenHeader, clientFingerprint);
-            ClientRequestVerificationResult cachedResult = checkCache(cacheKey);
-            if (cachedResult != null) {
-                return CompletableFuture.completedFuture(cachedResult);
+            String expectedFingerprint = badgeResult.getExpectedIdentityCertFingerprint();
+            if (expectedFingerprint != null
+                    && !CertificateUtils.fingerprintMatches(clientFingerprint, expectedFingerprint)) {
+                LOGGER.warn("Certificate fingerprint mismatch for {}: actual={}, expected={}",
+                    agentHost,
+                    CertificateUtils.truncateFingerprint(clientFingerprint),
+                    CertificateUtils.truncateFingerprint(expectedFingerprint));
+                return ClientRequestVerificationResult.failure(
+                    List.of(
+                        "Certificate fingerprint mismatch",
+                        "Actual: " + CertificateUtils.truncateFingerprint(clientFingerprint),
+                        "Expected: " + CertificateUtils.truncateFingerprint(expectedFingerprint)
+                    ),
+                    agentHost,
+                    policy,
+                    elapsed(startNanos)
+                );
             }
 
-            // Step 5: Verify SCITT artifacts asynchronously (uses getRootKeyAsync)
-            return verifyScittArtifactsAsync(receipt, statusToken, policy, clientCert, startNanos)
-                .thenApplyAsync(scittResult -> {
-                    if (scittResult.failure != null) {
-                        return scittResult.failure;
-                    }
+            LOGGER.debug("Badge verification succeeded for {} (agentId={})", agentHost, agentId);
 
-                    // Step 6: Verify fingerprint match
-                    ClientRequestVerificationResult fingerprintResult = verifyFingerprintMatch(
-                        clientFingerprint, scittResult.expectation, statusToken, receipt,
-                        clientCert, policy, startNanos);
-                    if (fingerprintResult != null) {
-                        return fingerprintResult;
-                    }
-
-                    // Success - create result and cache it
-                    return createSuccessResult(statusToken, receipt, clientCert, policy, startNanos, cacheKey);
-                }, executor)
-                .orTimeout(verificationTimeout.toMillis(), TimeUnit.MILLISECONDS)
-                .exceptionally(e -> {
-                    Throwable cause = e instanceof CompletionException && e.getCause() != null
-                        ? e.getCause() : e;
-                    LOGGER.error("Unexpected error during client verification", cause);
+            // Step 4: DANE verification (DANE_AND_BADGE only)
+            if (policy == VerificationPolicy.DANE_AND_BADGE) {
+                List<String> daneErrors = verifyDane(clientCert, agentHost);
+                if (!daneErrors.isEmpty()) {
+                    LOGGER.warn("DANE verification failed for {}: {}", agentHost, daneErrors);
                     return ClientRequestVerificationResult.failure(
-                        "Verification error: " + cause.getMessage(),
-                        clientCert,
+                        daneErrors,
+                        agentHost,
                         policy,
-                        durationSinceNanos(startNanos)
+                        elapsed(startNanos)
                     );
-                });
-        } catch (Exception e) {
-            LOGGER.error("Unexpected error during client verification setup", e);
-            return CompletableFuture.completedFuture(ClientRequestVerificationResult.failure(
-                "Verification error: " + e.getMessage(),
-                clientCert,
-                policy,
-                durationSinceNanos(startNanos)
-            ));
-        }
-    }
-
-    // ==================== Artifact Extraction (Steps 1-3) ====================
-
-    /**
-     * Result of artifact extraction - either artifacts or a failure.
-     */
-    private record ArtifactExtractionResult(
-        ScittHeaderProvider.ScittArtifacts artifacts,
-        ClientRequestVerificationResult failure
-    ) {
-        static ArtifactExtractionResult success(ScittHeaderProvider.ScittArtifacts artifacts) {
-            return new ArtifactExtractionResult(artifacts, null);
-        }
-
-        static ArtifactExtractionResult failure(ClientRequestVerificationResult failure) {
-            return new ArtifactExtractionResult(null, failure);
-        }
-    }
-
-    /**
-     * Validates headers and extracts SCITT artifacts (Steps 1-3).
-     */
-    private ArtifactExtractionResult extractAndValidateArtifacts(
-            Map<String, String> requestHeaders,
-            VerificationPolicy policy,
-            X509Certificate clientCert,
-            long startNanos) {
-
-        // Step 1: Check header size limits
-        String oversizedHeader = checkHeaderSizeLimits(requestHeaders);
-        if (oversizedHeader != null) {
-            return ArtifactExtractionResult.failure(failureResult(
-                "SCITT header exceeds size limit: " + oversizedHeader, clientCert, policy, startNanos));
-        }
-
-        // Step 2: Extract SCITT artifacts from headers
-        Optional<ScittHeaderProvider.ScittArtifacts> artifactsOpt;
-        try {
-            artifactsOpt = headerProvider.extractArtifacts(requestHeaders);
-        } catch (Exception e) {
-            LOGGER.warn("Failed to extract SCITT artifacts: {}", e.getMessage());
-            return ArtifactExtractionResult.failure(failureResult(
-                "Failed to parse SCITT headers: " + e.getMessage(), clientCert, policy, startNanos));
-        }
-
-        // Step 3: Handle missing SCITT artifacts
-        if (artifactsOpt.isEmpty() || !artifactsOpt.get().isPresent()) {
-            return ArtifactExtractionResult.failure(failureResult(
-                "SCITT headers required but not present", clientCert, policy, startNanos));
-        }
-
-        return ArtifactExtractionResult.success(artifactsOpt.get());
-    }
-
-    // ==================== Cache Check (Step 4) ====================
-
-    /**
-     * Checks the cache for a valid cached result.
-     *
-     * <p>Caffeine automatically handles expiration, so we just need to check if present.</p>
-     *
-     * @return the cached result if valid, null if cache miss or expired
-     */
-    private ClientRequestVerificationResult checkCache(String cacheKey) {
-        CachedResult cached = verificationCache.getIfPresent(cacheKey);
-        if (cached != null) {
-            LOGGER.debug("Cache hit for client verification");
-            return cached.result();
-        }
-        return null;
-    }
-
-    // ==================== SCITT Verification (Step 5) ====================
-
-    /**
-     * Result of SCITT verification - either expectation or a failure.
-     */
-    private record ScittVerificationResult(
-        ScittExpectation expectation,
-        ClientRequestVerificationResult failure
-    ) {
-        static ScittVerificationResult success(ScittExpectation expectation) {
-            return new ScittVerificationResult(expectation, null);
-        }
-
-        static ScittVerificationResult failure(ClientRequestVerificationResult failure) {
-            return new ScittVerificationResult(null, failure);
-        }
-    }
-
-    /**
-     * Verifies SCITT artifacts asynchronously - signatures, Merkle proof, expiry (Step 5).
-     *
-     * <p>Uses {@link TransparencyClient#getRootKeyAsync()} to avoid blocking the shared
-     * thread pool on network I/O during cache misses.</p>
-     */
-    private CompletableFuture<ScittVerificationResult> verifyScittArtifactsAsync(
-            ScittReceipt receipt,
-            StatusToken statusToken,
-            VerificationPolicy policy,
-            X509Certificate clientCert,
-            long startNanos) {
-
-        // Validate required artifacts are present (synchronous check)
-        List<String> errors = new ArrayList<>();
-        if (statusToken == null) {
-            errors.add("Status token is required but not present");
-        }
-        if (receipt == null) {
-            errors.add("Receipt is required but not present");
-        }
-        if (!errors.isEmpty()) {
-            return CompletableFuture.completedFuture(ScittVerificationResult.failure(
-                ClientRequestVerificationResult.failure(
-                    errors, statusToken, receipt, clientCert, policy, durationSinceNanos(startNanos))));
-        }
-
-        // Fetch public keys asynchronously to avoid blocking executor threads
-        return transparencyClient.getRootKeysAsync()
-            .thenApplyAsync((Map<String, PublicKey> rootKeys) -> {
-                // Verify signatures
-                ScittExpectation expectation = scittVerifier.verify(receipt, statusToken, rootKeys);
-                if (!expectation.isVerified()) {
-                    LOGGER.warn("SCITT verification failed for client [subject={}, fingerprint={}]: {}",
-                        clientCert.getSubjectX500Principal().getName(),
-                        CertificateUtils.computeSha256Fingerprint(clientCert),
-                        expectation.failureReason());
-                    return ScittVerificationResult.failure(ClientRequestVerificationResult.failure(
-                        List.of("SCITT verification failed: " + expectation.failureReason()),
-                        statusToken, receipt, clientCert, policy, durationSinceNanos(startNanos)));
                 }
-                return ScittVerificationResult.success(expectation);
-            }, executor)
-            .exceptionally(e -> {
-                Throwable cause = e instanceof CompletionException && e.getCause() != null
-                    ? e.getCause() : e;
-                LOGGER.error("Failed to fetch SCITT public keys: {}", cause.getMessage());
-                return ScittVerificationResult.failure(failureResult(
-                    "Failed to fetch SCITT public keys: " + cause.getMessage(), clientCert, policy, startNanos));
-            });
-    }
+                LOGGER.debug("DANE verification succeeded for {}", agentHost);
+            }
 
-    // ==================== Fingerprint Verification (Step 6) ====================
+            // All checks passed
+            LOGGER.info("Client verification successful for agentHost={}, agentId={}, policy={}",
+                agentHost, agentId, policy);
+            return ClientRequestVerificationResult.success(
+                agentId,
+                agentHost,
+                policy,
+                elapsed(startNanos)
+            );
 
-    /**
-     * Verifies client certificate fingerprint matches identity certs (Step 6).
-     *
-     * @return failure result if mismatch, null if fingerprint matches
-     */
-    private ClientRequestVerificationResult verifyFingerprintMatch(
-            String clientFingerprint,
-            ScittExpectation expectation,
-            StatusToken statusToken,
-            ScittReceipt receipt,
-            X509Certificate clientCert,
-            VerificationPolicy policy,
-            long startNanos) {
-
-        // CRITICAL: Use validIdentityCertFingerprints, NOT validServerCertFingerprints
-        List<String> validIdentityFingerprints = expectation.validIdentityCertFingerprints();
-
-        if (validIdentityFingerprints.isEmpty()) {
-            LOGGER.warn("No valid identity certificate fingerprints in status token");
-            return failureResult("No valid identity certificates in status token", clientCert, policy, startNanos);
-        }
-
-        boolean fingerprintMatches = validIdentityFingerprints.stream()
-            .anyMatch(expected -> CertificateUtils.fingerprintMatches(clientFingerprint, expected));
-
-        if (!fingerprintMatches) {
-            LOGGER.warn("Client certificate fingerprint does not match any identity cert in status token");
+        } catch (Exception e) {
+            LOGGER.error("Unexpected error during client verification", e);
             return ClientRequestVerificationResult.failure(
-                List.of("Client certificate fingerprint mismatch",
-                    "Actual: " + CertificateUtils.truncateFingerprint(clientFingerprint),
-                    "Expected one of: " + CertificateUtils.truncateFingerprints(validIdentityFingerprints)),
-                statusToken, receipt, clientCert, policy, durationSinceNanos(startNanos));
+                "Verification error: " + e.getMessage(),
+                null,
+                policy,
+                elapsed(startNanos)
+            );
         }
-
-        return null; // Fingerprint matches - success
     }
 
-    // ==================== Success Result & Caching ====================
+    // ==================== DANE Verification ====================
 
     /**
-     * Creates success result and caches it.
+     * Performs DANE TLSA verification for the client identity certificate.
      *
-     * <p>Caffeine automatically handles size limits and expiration.
-     * The custom {@link VerificationResultExpiry} ensures entries expire based on
-     * min(cacheTtl, tokenExpiry).</p>
+     * <p>Queries {@code _ati-identity._tls.{agentHost}} for TLSA records and
+     * compares the client certificate's public key fingerprint against them.</p>
+     *
+     * @param clientCert the client certificate
+     * @param agentHost the agent hostname
+     * @return list of errors (empty if DANE verification passed)
      */
-    private ClientRequestVerificationResult createSuccessResult(
-            StatusToken statusToken,
-            ScittReceipt receipt,
-            X509Certificate clientCert,
-            VerificationPolicy policy,
-            long startNanos,
-            String cacheKey) {
+    private List<String> verifyDane(X509Certificate clientCert, String agentHost) {
+        List<String> errors = new ArrayList<>();
 
-        LOGGER.info("Client verification successful for agent: {}", statusToken.agentId());
+        if (daneTlsaVerifier == null) {
+            errors.add("DANE verification required but daneTlsaVerifier is not configured");
+            return errors;
+        }
 
-        ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-            statusToken.agentId(),
-            statusToken,
-            receipt,
-            clientCert,
-            policy,
-            durationSinceNanos(startNanos)
-        );
+        try {
+            // Query _ati-identity._tls.{agentHost} for TLSA expectations
+            List<DaneTlsaVerifier.TlsaExpectation> expectations =
+                daneTlsaVerifier.getTlsaExpectations(
+                    IDENTITY_TLSA_PREFIX + agentHost,
+                    IDENTITY_TLSA_PORT
+                );
 
-        // Cache the result with token expiry for custom Expiry calculation
-        verificationCache.put(cacheKey, new CachedResult(result, statusToken.expiresAt()));
+            if (expectations.isEmpty()) {
+                errors.add("No TLSA record found at _ati-identity._tls." + agentHost);
+                return errors;
+            }
 
-        return result;
+            // Compare client certificate against each TLSA expectation
+            boolean matched = false;
+            for (DaneTlsaVerifier.TlsaExpectation expectation : expectations) {
+                byte[] certData = TlsaUtils.computeCertificateData(
+                    clientCert, expectation.selector(), expectation.matchingType());
+                if (certData != null
+                        && java.security.MessageDigest.isEqual(certData, expectation.expectedData())) {
+                    LOGGER.debug("DANE TLSA match found for {} ({})",
+                        agentHost,
+                        TlsaUtils.describeMatchType(expectation.selector(), expectation.matchingType()));
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched) {
+                errors.add("Client certificate does not match any TLSA record at _ati-identity._tls." + agentHost);
+            }
+
+        } catch (Exception e) {
+            LOGGER.warn("DANE TLSA lookup failed for {}: {}", agentHost, e.getMessage());
+            errors.add("DANE TLSA lookup failed: " + e.getMessage());
+        }
+
+        return errors;
     }
 
     // ==================== Helper Methods ====================
 
     /**
-     * Creates a simple failure result with duration calculation.
-     */
-    private ClientRequestVerificationResult failureResult(
-            String message,
-            X509Certificate clientCert,
-            VerificationPolicy policy,
-            long startNanos) {
-        return ClientRequestVerificationResult.failure(message, clientCert, policy, durationSinceNanos(startNanos));
-    }
-
-    /**
-     * Calculates duration since start time using nanosecond precision.
+     * Extracts the host portion from an ATI name URI.
      *
-     * <p>Uses {@link System#nanoTime()} which is more efficient than {@link java.time.Instant#now()}
-     * for elapsed time measurement - no object allocation until Duration is created, and it's
-     * monotonic (not affected by clock adjustments).</p>
-     */
-    private Duration durationSinceNanos(long startNanos) {
-        return Duration.ofNanos(System.nanoTime() - startNanos);
-    }
-
-    /**
-     * Checks header size limits to prevent DoS attacks.
+     * <p>Examples:</p>
+     * <ul>
+     *   <li>{@code ati://v1.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     *   <li>{@code ati://v1.0.0.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     *   <li>{@code ans://v1.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     * </ul>
      *
-     * @return the name of the oversized header, or null if all are within limits
+     * @param atiName the ATI name URI
+     * @return the host portion, or null if parsing fails
      */
-    private String checkHeaderSizeLimits(Map<String, String> headers) {
-        for (Map.Entry<String, String> entry : headers.entrySet()) {
-            String key = entry.getKey();
-            String value = entry.getValue();
-            if (key != null && matchesScittHeaders(key.toLowerCase())) {
-                if (value != null && value.length() > MAX_HEADER_SIZE) {
-                    return key;
-                }
-            }
+    static String extractHostFromAtiName(String atiName) {
+        if (atiName == null) {
+            return null;
+        }
+        Matcher matcher = ATI_NAME_HOST_PATTERN.matcher(atiName);
+        if (matcher.matches()) {
+            return matcher.group(1);
         }
         return null;
     }
 
-    private boolean matchesScittHeaders(String lowerKey) {
-        return lowerKey.equals(ScittHeaders.SCITT_RECEIPT_HEADER) ||
-                lowerKey.equals(ScittHeaders.STATUS_TOKEN_HEADER);
+    /**
+     * Builds a human-readable error message from a badge verification result.
+     */
+    private String buildBadgeErrorMessage(ClientVerificationResult badgeResult) {
+        StringBuilder msg = new StringBuilder("Badge verification failed: ");
+        msg.append(badgeResult.getStatus());
+        if (badgeResult.getWarningMessage() != null) {
+            msg.append(" - ").append(badgeResult.getWarningMessage());
+        }
+        return msg.toString();
     }
 
     /**
-     * Computes a cache key from the raw header values and certificate fingerprint.
-     *
-     * <p>Hashes the concatenated inputs to produce a fixed-size key. This prevents
-     * memory pressure from large Base64 headers and avoids sentinel collision
-     * (e.g., a header literally containing "none").</p>
+     * Calculates elapsed duration since start time.
      */
-    private String computeCacheKey(String receiptHeader, String tokenHeader, String certFingerprint) {
-        // Use null byte as sentinel - cannot appear in header values
-        String raw = (receiptHeader != null ? receiptHeader : "\0") + "|"
-                   + (tokenHeader != null ? tokenHeader : "\0") + "|"
-                   + certFingerprint;
-        return CertificateUtils.bytesToHex(CryptoCache.sha256(raw.getBytes(StandardCharsets.UTF_8)));
-    }
-
-
-    // ==================== Caffeine Cache Support ====================
-
-    /**
-     * Cached verification result with token expiry time for custom expiration.
-     */
-    private record CachedResult(ClientRequestVerificationResult result, Instant tokenExpiresAt) { }
-
-    /**
-     * Custom Caffeine expiry that uses the earlier of cache TTL or token expiry.
-     *
-     * <p>This ensures cached results are never returned after the underlying
-     * token has expired, even if the cache TTL hasn't been reached.</p>
-     */
-    private class VerificationResultExpiry implements Expiry<String, CachedResult> {
-
-        @Override
-        public long expireAfterCreate(String key, CachedResult value, long currentTime) {
-            long cacheTtlNanos = cacheTtl.toNanos();
-
-            // If token has no expiry, use cache TTL
-            if (value.tokenExpiresAt() == null) {
-                return cacheTtlNanos;
-            }
-
-            // Use min(cacheTtl, tokenRemainingTime)
-            Duration tokenRemaining = Duration.between(Instant.now(), value.tokenExpiresAt());
-            if (tokenRemaining.isNegative() || tokenRemaining.isZero()) {
-                return 0; // Already expired
-            }
-
-            return Math.min(cacheTtlNanos, tokenRemaining.toNanos());
-        }
-
-        @Override
-        public long expireAfterUpdate(String key, CachedResult value, long currentTime, long currentDuration) {
-            return expireAfterCreate(key, value, currentTime);
-        }
-
-        @Override
-        public long expireAfterRead(String key, CachedResult value, long currentTime, long currentDuration) {
-            return currentDuration; // No change on read
-        }
+    private Duration elapsed(long startNanos) {
+        return Duration.ofNanos(System.nanoTime() - startNanos);
     }
 
     /**
@@ -508,107 +343,48 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
      * Builder for DefaultClientRequestVerifier.
      */
     public static class Builder {
-        private TransparencyClient transparencyClient;
-        private ScittVerifier scittVerifier;
-        private ScittHeaderProvider headerProvider;
-        private Executor executor = AtiExecutors.sharedIoExecutor();
-        private Duration cacheTtl = Duration.ofMinutes(5);
-        private Duration verificationTimeout = Duration.ofSeconds(10);
+        private BadgeVerificationService badgeVerificationService;
+        private DaneTlsaVerifier daneTlsaVerifier;
 
         /**
-         * Sets the TransparencyClient for root key fetching.
+         * Sets the badge verification service for transparency log verification.
          *
-         * @param transparencyClient the transparency client (required)
+         * <p>Required for {@link VerificationPolicy#BADGE_REQUIRED} and
+         * {@link VerificationPolicy#DANE_AND_BADGE} policies.</p>
+         *
+         * @param badgeVerificationService the badge verification service
          * @return this builder
          */
-        public Builder transparencyClient(TransparencyClient transparencyClient) {
-            this.transparencyClient = transparencyClient;
+        public Builder badgeVerificationService(BadgeVerificationService badgeVerificationService) {
+            this.badgeVerificationService = badgeVerificationService;
             return this;
         }
 
         /**
-         * Sets the SCITT verifier.
+         * Sets the DANE TLSA verifier for DNSSEC-based verification.
          *
-         * @param scittVerifier the verifier
+         * <p>Required for {@link VerificationPolicy#DANE_AND_BADGE} policy.
+         * If not set, DANE_AND_BADGE policy will fail with an error.</p>
+         *
+         * @param daneTlsaVerifier the DANE TLSA verifier
          * @return this builder
          */
-        public Builder scittVerifier(ScittVerifier scittVerifier) {
-            this.scittVerifier = scittVerifier;
-            return this;
-        }
-
-        /**
-         * Sets the header provider.
-         *
-         * @param headerProvider the header provider
-         * @return this builder
-         */
-        public Builder headerProvider(ScittHeaderProvider headerProvider) {
-            this.headerProvider = headerProvider;
-            return this;
-        }
-
-        /**
-         * Sets the executor for async operations.
-         *
-         * @param executor the executor
-         * @return this builder
-         */
-        public Builder executor(Executor executor) {
-            this.executor = executor;
-            return this;
-        }
-
-        /**
-         * Sets the verification cache TTL.
-         *
-         * @param ttl the cache TTL (must be positive)
-         * @return this builder
-         * @throws IllegalArgumentException if ttl is null, zero, or negative
-         */
-        public Builder verificationCacheTtl(Duration ttl) {
-            Objects.requireNonNull(ttl, "ttl cannot be null");
-            if (ttl.isZero() || ttl.isNegative()) {
-                throw new IllegalArgumentException("cacheTtl must be positive, got: " + ttl);
-            }
-            this.cacheTtl = ttl;
-            return this;
-        }
-
-        /**
-         * Sets the timeout for the overall verification operation.
-         *
-         * <p>If verification does not complete within this timeout,
-         * the future completes with a failure result. Defaults to 10 seconds.</p>
-         *
-         * @param timeout the verification timeout (must be positive)
-         * @return this builder
-         */
-        public Builder verificationTimeout(Duration timeout) {
-            Objects.requireNonNull(timeout, "timeout cannot be null");
-            if (timeout.isZero() || timeout.isNegative()) {
-                throw new IllegalArgumentException(
-                    "verificationTimeout must be positive, got: " + timeout);
-            }
-            this.verificationTimeout = timeout;
+        public Builder daneTlsaVerifier(DaneTlsaVerifier daneTlsaVerifier) {
+            this.daneTlsaVerifier = daneTlsaVerifier;
             return this;
         }
 
         /**
          * Builds the verifier.
          *
+         * <p>No dependencies are strictly required at build time. The verifier
+         * will report errors at verification time if required services are missing
+         * for the requested policy (e.g., missing badgeVerificationService for
+         * BADGE_REQUIRED policy).</p>
+         *
          * @return the configured verifier
-         * @throws NullPointerException if transparencyClient is not set
          */
         public DefaultClientRequestVerifier build() {
-            Objects.requireNonNull(transparencyClient, "transparencyClient is required");
-            if (scittVerifier == null) {
-                String expectedIssuer = URI.create(transparencyClient.getBaseUrl()).getHost();
-                scittVerifier = new DefaultScittVerifier(expectedIssuer);
-            }
-            if (headerProvider == null) {
-                headerProvider = new DefaultScittHeaderProvider();
-            }
             return new DefaultClientRequestVerifier(this);
         }
     }

@@ -1,21 +1,16 @@
 package com.aliyun.ati.sdk.agent.server;
 
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
-import com.aliyun.ati.sdk.transparency.scitt.ScittReceipt;
-import com.aliyun.ati.sdk.transparency.scitt.StatusToken;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class ClientRequestVerificationResultTest {
 
@@ -29,9 +24,7 @@ class ClientRequestVerificationResultTest {
             assertThatThrownBy(() -> new ClientRequestVerificationResult(
                 true,
                 "agent-123",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
+                "agent.example.com",
                 null,
                 VerificationPolicy.BADGE_REQUIRED,
                 Duration.ofMillis(100)
@@ -45,9 +38,7 @@ class ClientRequestVerificationResultTest {
             assertThatThrownBy(() -> new ClientRequestVerificationResult(
                 true,
                 "agent-123",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
+                "agent.example.com",
                 List.of(),
                 null,
                 Duration.ofMillis(100)
@@ -61,9 +52,7 @@ class ClientRequestVerificationResultTest {
             assertThatThrownBy(() -> new ClientRequestVerificationResult(
                 true,
                 "agent-123",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
+                "agent.example.com",
                 List.of(),
                 VerificationPolicy.BADGE_REQUIRED,
                 null
@@ -81,8 +70,6 @@ class ClientRequestVerificationResultTest {
                 false,
                 null,
                 null,
-                null,
-                null,
                 errors,
                 VerificationPolicy.BADGE_REQUIRED,
                 Duration.ofMillis(100)
@@ -94,6 +81,22 @@ class ClientRequestVerificationResultTest {
             // Result should not be affected
             assertThat(result.errors()).containsExactly("error1");
         }
+
+        @Test
+        @DisplayName("Should allow null agentId and agentHost")
+        void shouldAllowNullAgentIdAndHost() {
+            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
+                false,
+                null,
+                null,
+                List.of("some error"),
+                VerificationPolicy.PKI_ONLY,
+                Duration.ofMillis(50)
+            );
+
+            assertThat(result.agentId()).isNull();
+            assertThat(result.agentHost()).isNull();
+        }
     }
 
     @Nested
@@ -103,54 +106,54 @@ class ClientRequestVerificationResultTest {
         @Test
         @DisplayName("success() should create verified result")
         void successShouldCreateVerifiedResult() {
-            StatusToken token = mock(StatusToken.class);
-            ScittReceipt receipt = mock(ScittReceipt.class);
-            X509Certificate cert = mock(X509Certificate.class);
             Duration duration = Duration.ofMillis(150);
 
             ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "agent-123",
-                token,
-                receipt,
-                cert,
+                "ati://v1.agent.example.com",
+                "agent.example.com",
                 VerificationPolicy.BADGE_REQUIRED,
                 duration
             );
 
             assertThat(result.verified()).isTrue();
-            assertThat(result.agentId()).isEqualTo("agent-123");
-            assertThat(result.statusToken()).isSameAs(token);
-            assertThat(result.receipt()).isSameAs(receipt);
-            assertThat(result.clientCertificate()).isSameAs(cert);
+            assertThat(result.agentId()).isEqualTo("ati://v1.agent.example.com");
+            assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).isEmpty();
             assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
             assertThat(result.verificationDuration()).isEqualTo(duration);
         }
 
         @Test
+        @DisplayName("success() should allow null agentId for PKI_ONLY")
+        void successShouldAllowNullAgentIdForPkiOnly() {
+            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
+                null,
+                "agent.example.com",
+                VerificationPolicy.PKI_ONLY,
+                Duration.ofMillis(10)
+            );
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentId()).isNull();
+            assertThat(result.agentHost()).isEqualTo("agent.example.com");
+        }
+
+        @Test
         @DisplayName("failure() with list should create failed result")
         void failureWithListShouldCreateFailedResult() {
-            StatusToken token = mock(StatusToken.class);
-            when(token.agentId()).thenReturn("extracted-agent-id");
-            ScittReceipt receipt = mock(ScittReceipt.class);
-            X509Certificate cert = mock(X509Certificate.class);
             List<String> errors = List.of("error1", "error2");
             Duration duration = Duration.ofMillis(200);
 
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 errors,
-                token,
-                receipt,
-                cert,
+                "agent.example.com",
                 VerificationPolicy.BADGE_REQUIRED,
                 duration
             );
 
             assertThat(result.verified()).isFalse();
-            assertThat(result.agentId()).isEqualTo("extracted-agent-id");
-            assertThat(result.statusToken()).isSameAs(token);
-            assertThat(result.receipt()).isSameAs(receipt);
-            assertThat(result.clientCertificate()).isSameAs(cert);
+            assertThat(result.agentId()).isNull();
+            assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).containsExactly("error1", "error2");
             assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
             assertThat(result.verificationDuration()).isEqualTo(duration);
@@ -159,185 +162,34 @@ class ClientRequestVerificationResultTest {
         @Test
         @DisplayName("failure() with single error should create failed result")
         void failureWithSingleErrorShouldCreateFailedResult() {
-            X509Certificate cert = mock(X509Certificate.class);
             Duration duration = Duration.ofMillis(50);
 
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 "Single error message",
-                cert,
+                "agent.example.com",
                 VerificationPolicy.PKI_ONLY,
                 duration
             );
 
             assertThat(result.verified()).isFalse();
             assertThat(result.agentId()).isNull();
-            assertThat(result.statusToken()).isNull();
-            assertThat(result.receipt()).isNull();
-            assertThat(result.clientCertificate()).isSameAs(cert);
+            assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).containsExactly("Single error message");
             assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
             assertThat(result.verificationDuration()).isEqualTo(duration);
         }
 
         @Test
-        @DisplayName("failure() should extract agent ID from null token")
-        void failureShouldHandleNullToken() {
-            X509Certificate cert = mock(X509Certificate.class);
-
+        @DisplayName("failure() should handle null agentHost")
+        void failureShouldHandleNullAgentHost() {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
-                List.of("error"),
+                "No ATI SAN found",
                 null,
-                null,
-                cert,
                 VerificationPolicy.BADGE_REQUIRED,
                 Duration.ofMillis(100)
             );
 
-            assertThat(result.agentId()).isNull();
-        }
-    }
-
-    @Nested
-    @DisplayName("Helper method tests")
-    class HelperMethodTests {
-
-        @Test
-        @DisplayName("hasScittArtifacts() returns true when both are present")
-        void hasScittArtifactsReturnsTrue() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "agent",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ZERO
-            );
-
-            assertThat(result.hasScittArtifacts()).isTrue();
-        }
-
-        @Test
-        @DisplayName("hasScittArtifacts() returns false when receipt is null")
-        void hasScittArtifactsReturnsFalseNoReceipt() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", mock(StatusToken.class), null,
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.hasScittArtifacts()).isFalse();
-        }
-
-        @Test
-        @DisplayName("hasScittArtifacts() returns false when token is null")
-        void hasScittArtifactsReturnsFalseNoToken() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", null, mock(ScittReceipt.class),
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.hasScittArtifacts()).isFalse();
-        }
-
-        @Test
-        @DisplayName("hasStatusTokenOnly() returns true when token present but not receipt")
-        void hasStatusTokenOnlyReturnsTrue() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", mock(StatusToken.class), null,
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.hasStatusTokenOnly()).isTrue();
-        }
-
-        @Test
-        @DisplayName("hasStatusTokenOnly() returns false when both present")
-        void hasStatusTokenOnlyReturnsFalseBothPresent() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "agent",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ZERO
-            );
-
-            assertThat(result.hasStatusTokenOnly()).isFalse();
-        }
-
-        @Test
-        @DisplayName("hasAnyScittArtifact() returns true with only receipt")
-        void hasAnyScittArtifactReturnsTrueOnlyReceipt() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", null, mock(ScittReceipt.class),
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.hasAnyScittArtifact()).isTrue();
-        }
-
-        @Test
-        @DisplayName("hasAnyScittArtifact() returns true with only token")
-        void hasAnyScittArtifactReturnsTrueOnlyToken() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", mock(StatusToken.class), null,
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.hasAnyScittArtifact()).isTrue();
-        }
-
-        @Test
-        @DisplayName("hasAnyScittArtifact() returns false with neither")
-        void hasAnyScittArtifactReturnsFalseNeither() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
-                "error",
-                mock(X509Certificate.class),
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ZERO
-            );
-
-            assertThat(result.hasAnyScittArtifact()).isFalse();
-        }
-
-        @Test
-        @DisplayName("isCertificateTrusted() returns true when verified with token")
-        void isCertificateTrustedReturnsTrue() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "agent",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ZERO
-            );
-
-            assertThat(result.isCertificateTrusted()).isTrue();
-        }
-
-        @Test
-        @DisplayName("isCertificateTrusted() returns false when not verified")
-        void isCertificateTrustedReturnsFalseNotVerified() {
-            ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
-                List.of("error"),
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
-                VerificationPolicy.BADGE_REQUIRED,
-                Duration.ZERO
-            );
-
-            assertThat(result.isCertificateTrusted()).isFalse();
-        }
-
-        @Test
-        @DisplayName("isCertificateTrusted() returns false when verified without token")
-        void isCertificateTrustedReturnsFalseNoToken() {
-            ClientRequestVerificationResult result = new ClientRequestVerificationResult(
-                true, "agent", null, mock(ScittReceipt.class),
-                mock(X509Certificate.class), List.of(), VerificationPolicy.BADGE_REQUIRED, Duration.ZERO
-            );
-
-            assertThat(result.isCertificateTrusted()).isFalse();
+            assertThat(result.agentHost()).isNull();
         }
     }
 
@@ -349,10 +201,8 @@ class ClientRequestVerificationResultTest {
         @DisplayName("toString() for verified result includes agentId and duration")
         void toStringForVerifiedResult() {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
-                "test-agent-id",
-                mock(StatusToken.class),
-                mock(ScittReceipt.class),
-                mock(X509Certificate.class),
+                "ati://v1.test-agent.example.com",
+                "test-agent.example.com",
                 VerificationPolicy.BADGE_REQUIRED,
                 Duration.ofMillis(123)
             );
@@ -360,7 +210,7 @@ class ClientRequestVerificationResultTest {
             String str = result.toString();
 
             assertThat(str).contains("verified=true");
-            assertThat(str).contains("agentId='test-agent-id'");
+            assertThat(str).contains("test-agent.example.com");
             assertThat(str).contains("PT0.123S");
         }
 
@@ -369,9 +219,7 @@ class ClientRequestVerificationResultTest {
         void toStringForFailedResult() {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 List.of("error1", "error2"),
-                null,
-                null,
-                mock(X509Certificate.class),
+                "agent.example.com",
                 VerificationPolicy.BADGE_REQUIRED,
                 Duration.ofMillis(456)
             );

@@ -3,8 +3,6 @@ package com.aliyun.ati.sdk.agent.server;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
 
 import java.security.cert.X509Certificate;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Server-side verifier for incoming client requests.
@@ -13,28 +11,27 @@ import java.util.concurrent.CompletableFuture;
  * implementations) to verify that incoming client requests are from legitimate
  * ATI-registered agents.</p>
  *
- * <p>Verification involves:</p>
+ * <p>Verification is based on the client's Identity Certificate (presented via mTLS)
+ * and proceeds according to the specified {@link VerificationPolicy}:</p>
  * <ol>
- *   <li>Extracting SCITT artifacts (receipt and status token) from request headers</li>
- *   <li>Verifying the cryptographic signatures on the artifacts</li>
- *   <li>Checking the status token hasn't expired</li>
- *   <li>Matching the client's mTLS certificate fingerprint against the
- *       {@code validIdentityCertFingerprints} in the status token</li>
+ *   <li><b>PKI_ONLY</b> - Extract agent identity from the certificate URI SAN only</li>
+ *   <li><b>BADGE_REQUIRED</b> - PKI + Badge verification via DNS {@code _ati-badge}
+ *       record and transparency log (seal signature, Merkle proof, fingerprint match)</li>
+ *   <li><b>DANE_AND_BADGE</b> - Badge + DANE verification via DNSSEC-secured
+ *       {@code _ati-identity._tls} TLSA record</li>
  * </ol>
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
  * ClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
- *     .scittVerifier(scittVerifierAdapter)
+ *     .badgeVerificationService(badgeService)
  *     .build();
  *
  * // In request handler
  * X509Certificate clientCert = (X509Certificate) sslSession.getPeerCertificates()[0];
- * Map<String, String> headers = extractHeaders(request);
  *
- * ClientRequestVerificationResult result = verifier
- *     .verify(clientCert, headers, VerificationPolicy.BADGE_REQUIRED)
- *     .join();
+ * ClientRequestVerificationResult result = verifier.verify(
+ *     clientCert, VerificationPolicy.BADGE_REQUIRED);
  *
  * if (!result.verified()) {
  *     return Response.status(403)
@@ -43,7 +40,7 @@ import java.util.concurrent.CompletableFuture;
  * }
  *
  * // Proceed with verified agent identity
- * String agentId = result.agentId();
+ * String agentHost = result.agentHost();
  * }</pre>
  *
  * @see DefaultClientRequestVerifier
@@ -54,34 +51,32 @@ public interface ClientRequestVerifier {
     /**
      * Verifies an incoming client request.
      *
-     * <p>This method extracts SCITT artifacts from the request headers, verifies
-     * their signatures, and matches the client certificate fingerprint against
-     * the status token's identity certificate fingerprints.</p>
+     * <p>This method extracts the agent identity from the client's Identity Certificate
+     * URI SAN and verifies it according to the specified policy. Badge verification
+     * uses DNS {@code _ati-badge} records and the transparency log. DANE verification
+     * uses DNSSEC-secured {@code _ati-identity._tls} TLSA records.</p>
      *
-     * @param clientCert the client's X.509 certificate from mTLS handshake
-     * @param requestHeaders the HTTP request headers (must include SCITT headers).
-     *        Header keys must be lowercase (e.g., {@code x-scitt-receipt}, {@code x-ans-status-token}).
+     * @param clientCert the client's X.509 Identity Certificate from mTLS handshake
      * @param policy the verification policy to apply
-     * @return a future that completes with the verification result
+     * @return the verification result (never null)
      * @throws NullPointerException if any parameter is null
      */
-    CompletableFuture<ClientRequestVerificationResult> verify(
+    ClientRequestVerificationResult verify(
         X509Certificate clientCert,
-        Map<String, String> requestHeaders,
         VerificationPolicy policy
     );
 
     /**
-     * Verifies an incoming client request using the default BADGE_REQUIRED policy.
+     * Verifies an incoming client request using the default PKI_ONLY policy.
      *
-     * @param clientCert the client's X.509 certificate from mTLS handshake
-     * @param requestHeaders the HTTP request headers (keys must be lowercase)
-     * @return a future that completes with the verification result
-     * @throws NullPointerException if any parameter is null
+     * <p>This is the simplest verification level: it extracts the agent identity
+     * from the certificate URI SAN but performs no Badge or DANE checks.</p>
+     *
+     * @param clientCert the client's X.509 Identity Certificate from mTLS handshake
+     * @return the verification result (never null)
+     * @throws NullPointerException if clientCert is null
      */
-    default CompletableFuture<ClientRequestVerificationResult> verify(
-            X509Certificate clientCert,
-            Map<String, String> requestHeaders) {
-        return verify(clientCert, requestHeaders, VerificationPolicy.BADGE_REQUIRED);
+    default ClientRequestVerificationResult verify(X509Certificate clientCert) {
+        return verify(clientCert, VerificationPolicy.PKI_ONLY);
     }
 }
