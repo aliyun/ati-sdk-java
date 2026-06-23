@@ -125,6 +125,23 @@ public final class TransparencyClient implements AutoCloseable {
     }
 
     /**
+     * Retrieves a transparency log entry using a full path extracted from a badge URL.
+     *
+     * <p>Per spec 7.1, the SDK should extract the full path from the badge TXT URL
+     * and concatenate it with the configured TL base-url, rather than reconstructing
+     * a path from the agent ID. This ensures that even if DNS is compromised, the SDK
+     * only talks to the configured transparency log.</p>
+     *
+     * @param tlPath the full path from the badge URL (e.g., "/v1/agents/{uuid}" or "/tl/agents/{uuid}/logs/latest")
+     * @return the transparency log entry
+     * @throws com.aliyun.ati.sdk.exception.AtiNotFoundException if the agent is not found
+     * @throws IllegalArgumentException if the path is null, empty, or contains path traversal
+     */
+    public TransparencyLog getTransparencyLogByPath(String tlPath) {
+        return service.getTransparencyLogByPath(tlPath);
+    }
+
+    /**
      * Retrieves a paginated list of transparency log records for an agent.
      *
      * <p>This returns the audit trail showing all state changes for the agent.</p>
@@ -278,6 +295,17 @@ public final class TransparencyClient implements AutoCloseable {
      */
     public CompletableFuture<TransparencyLog> getAgentTransparencyLogAsync(String agentId) {
         return CompletableFuture.supplyAsync(() -> getAgentTransparencyLog(agentId), AtiExecutors.sharedIoExecutor());
+    }
+
+    /**
+     * Retrieves a transparency log entry by path asynchronously.
+     *
+     * @param tlPath the full path from the badge URL
+     * @return a CompletableFuture with the transparency log entry
+     * @see #getTransparencyLogByPath(String)
+     */
+    public CompletableFuture<TransparencyLog> getTransparencyLogByPathAsync(String tlPath) {
+        return CompletableFuture.supplyAsync(() -> getTransparencyLogByPath(tlPath), AtiExecutors.sharedIoExecutor());
     }
 
     /**

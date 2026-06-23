@@ -39,6 +39,7 @@ class BadgeVerificationServiceTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
+    private static final String TEST_TL_PATH = "/v1/agents/" + TEST_AGENT_ID;
     private static final String TEST_FINGERPRINT = "SHA256:a1b2c3d4e5f6g7h8";
     private static final String TEST_ANS_NAME = "ans://v1.0.0.agent.example.com";
 
@@ -67,7 +68,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("ACTIVE");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -84,7 +85,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("DEPRECATED");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -111,7 +112,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("REVOKED");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -124,7 +125,7 @@ class BadgeVerificationServiceTest {
         RaBadgeRecord badge = RaBadgeRecord.parse(
             "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
-        when(transparencyClient.getAgentTransparencyLog(anyString()))
+        when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("Network error"));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -143,7 +144,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("WARNING");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -163,7 +164,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("EXPIRED");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -179,7 +180,7 @@ class BadgeVerificationServiceTest {
         RaBadgeRecord badge = RaBadgeRecord.parse(
             "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
-        when(transparencyClient.getAgentTransparencyLog(anyString()))
+        when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("Connection timeout"));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -194,7 +195,7 @@ class BadgeVerificationServiceTest {
         RaBadgeRecord badge = RaBadgeRecord.parse(
             "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
-        when(transparencyClient.getAgentTransparencyLog(anyString()))
+        when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("HTTP 503 Service Unavailable"));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -211,7 +212,7 @@ class BadgeVerificationServiceTest {
         RaBadgeRecord badge = RaBadgeRecord.parse(
             "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
-        when(transparencyClient.getAgentTransparencyLog(anyString()))
+        when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("HTTP 404 Not Found"));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -244,7 +245,7 @@ class BadgeVerificationServiceTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("UNKNOWN_STATUS");
-        when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
@@ -274,9 +275,9 @@ class BadgeVerificationServiceTest {
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
             // Both registrations are ACTIVE with different fingerprints
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_1));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -298,9 +299,9 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("DEPRECATED", FINGERPRINT_1));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -322,9 +323,9 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("REVOKED", FINGERPRINT_1));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -346,9 +347,9 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenThrow(new RuntimeException("Network error"));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -420,7 +421,7 @@ class BadgeVerificationServiceTest {
             AtomicInteger maxConcurrent = new AtomicInteger(0);
 
             // Mock transparency client with concurrent tracking
-            when(transparencyClient.getAgentTransparencyLog(anyString())).thenAnswer(invocation -> {
+            when(transparencyClient.getTransparencyLogByPath(anyString())).thenAnswer(invocation -> {
                 int current = concurrentCalls.incrementAndGet();
                 maxConcurrent.updateAndGet(max -> Math.max(max, current));
 
@@ -445,7 +446,7 @@ class BadgeVerificationServiceTest {
                 ClientVerificationResult result = verificationService.verifyClient(cert);
 
                 // Then - verify all 3 registrations were fetched
-                verify(transparencyClient, times(3)).getAgentTransparencyLog(anyString());
+                verify(transparencyClient, times(3)).getTransparencyLogByPath(anyString());
 
                 // Verify some parallelism occurred (at least 2 concurrent)
                 assertThat(maxConcurrent.get()).isGreaterThanOrEqualTo(2);
@@ -464,11 +465,11 @@ class BadgeVerificationServiceTest {
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
             // First is DEPRECATED, second is ACTIVE, third is EXPIRED
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "DEPRECATED", TEST_FINGERPRINT));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_3))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_3))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "EXPIRED", TEST_FINGERPRINT));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -494,9 +495,9 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "DEPRECATED", TEST_FINGERPRINT));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -522,7 +523,7 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(anyString()))
+            when(transparencyClient.getTransparencyLogByPath(anyString()))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "DEPRECATED", TEST_FINGERPRINT));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -549,11 +550,11 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
                 .thenThrow(new RuntimeException("Network error"));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
-            when(transparencyClient.getAgentTransparencyLog(AGENT_ID_3))
+            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_3))
                 .thenThrow(new RuntimeException("Timeout"));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -579,7 +580,7 @@ class BadgeVerificationServiceTest {
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getAgentTransparencyLog(anyString()))
+            when(transparencyClient.getTransparencyLogByPath(anyString()))
                 .thenThrow(new RuntimeException("All fail"));
 
             X509Certificate cert = mock(X509Certificate.class);

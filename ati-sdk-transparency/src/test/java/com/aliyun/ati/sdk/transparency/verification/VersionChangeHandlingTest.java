@@ -37,6 +37,8 @@ class VersionChangeHandlingTest {
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID_V1 = "6bf2b7a9-1383-4e33-a945-845f34af7526";
     private static final String TEST_AGENT_ID_V2 = "7cf3c8b0-2494-5f44-b056-956f45bf8637";
+    private static final String TEST_TL_PATH_V1 = "/v1/agents/" + TEST_AGENT_ID_V1;
+    private static final String TEST_TL_PATH_V2 = "/v1/agents/" + TEST_AGENT_ID_V2;
     private static final String TEST_ANS_NAME_V1 = "ans://v1.0.0.agent.example.com";
     private static final String TEST_ANS_NAME_V2 = "ans://v1.0.1.agent.example.com";
     private static final String TEST_FINGERPRINT_V1 =
@@ -92,8 +94,8 @@ class VersionChangeHandlingTest {
             // Both registrations are ACTIVE
             TransparencyLog registrationV1 = createMockRegistration("ACTIVE", TEST_FINGERPRINT_V1, TEST_ANS_NAME_V1);
             TransparencyLog registrationV2 = createMockRegistration("ACTIVE", TEST_FINGERPRINT_V2, TEST_ANS_NAME_V2);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V1)).thenReturn(registrationV1);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V2)).thenReturn(registrationV2);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2)).thenReturn(registrationV2);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -104,7 +106,7 @@ class VersionChangeHandlingTest {
             assertThat(result.getExpectedIdentityCertFingerprint()).isEqualTo(TEST_FINGERPRINT_V1);
 
             // Should only fetch the v1.0.0 registration (version filtering optimization)
-            verify(transparencyClient).getAgentTransparencyLog(TEST_AGENT_ID_V1);
+            verify(transparencyClient).getTransparencyLogByPath(TEST_TL_PATH_V1);
         }
     }
 
@@ -138,7 +140,7 @@ class VersionChangeHandlingTest {
             // v1.0.0 is DEPRECATED, v1.0.1 is ACTIVE
             TransparencyLog registrationV1 = createMockRegistration("DEPRECATED", TEST_FINGERPRINT_V1,
                     TEST_ANS_NAME_V1);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V1)).thenReturn(registrationV1);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -175,7 +177,7 @@ class VersionChangeHandlingTest {
 
             // v1.0.1 registration doesn't match the cert
             TransparencyLog registrationV2 = createMockRegistration("ACTIVE", TEST_FINGERPRINT_V2, TEST_ANS_NAME_V2);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V2)).thenReturn(registrationV2);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2)).thenReturn(registrationV2);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -216,8 +218,8 @@ class VersionChangeHandlingTest {
             // v1.0.0 is DEPRECATED, v1.0.1 is ACTIVE
             TransparencyLog registrationV1 = createMockRegistrationNoAtiName("DEPRECATED", TEST_FINGERPRINT_V1);
             TransparencyLog registrationV2 = createMockRegistrationNoAtiName("ACTIVE", TEST_FINGERPRINT_V2);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V1)).thenReturn(registrationV1);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V2)).thenReturn(registrationV2);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2)).thenReturn(registrationV2);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -253,10 +255,10 @@ class VersionChangeHandlingTest {
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2, badgeV1));
 
             // v1.0.1 fetch fails (5xx), but v1.0.0 succeeds
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V2))
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2))
                 .thenThrow(new RuntimeException("Service unavailable"));
             TransparencyLog registrationV1 = createMockRegistration("ACTIVE", TEST_FINGERPRINT_V1, TEST_ANS_NAME_V1);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V1)).thenReturn(registrationV1);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -289,9 +291,9 @@ class VersionChangeHandlingTest {
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both fetch attempts fail
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V1))
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1))
                 .thenThrow(new RuntimeException("Service unavailable"));
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID_V2))
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2))
                 .thenThrow(new RuntimeException("Service unavailable"));
 
             // When

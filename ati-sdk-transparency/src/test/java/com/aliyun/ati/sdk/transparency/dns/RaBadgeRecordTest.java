@@ -251,4 +251,39 @@ class RaBadgeRecordTest {
         assertThat(record.badgeVersion()).isEqualTo("ans-badge1");
         assertThat(record.agentVersion()).isEqualTo("1.0.0");
     }
+
+    @Test
+    @DisplayName("Should extract tlPath from URL")
+    void shouldExtractTlPathFromUrl() {
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+
+        RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
+
+        assertThat(record).isNotNull();
+        assertThat(record.tlPath()).isEqualTo("/v1/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
+    }
+
+    @Test
+    @DisplayName("Should extract agentId and tlPath from CNNIC TL URL with /tl/ prefix")
+    void shouldExtractFromCnnicTlUrl() {
+        String txtValue = "v=ati-badge1; version=1.0.4; url=https://tl.ansagent.cn:8180/tl/agents/effae2b2-f451-4c1c-addd-212c649ef5bd/logs/latest";
+
+        RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
+
+        assertThat(record).isNotNull();
+        assertThat(record.agentId()).isEqualTo("effae2b2-f451-4c1c-addd-212c649ef5bd");
+        assertThat(record.tlPath()).isEqualTo("/tl/agents/effae2b2-f451-4c1c-addd-212c649ef5bd/logs/latest");
+        assertThat(record.agentVersion()).isEqualTo("1.0.4");
+    }
+
+    @Test
+    @DisplayName("Should extract tlPath with trailing slash")
+    void shouldExtractTlPathWithTrailingSlash() {
+        String txtValue = "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/abc-123/";
+
+        RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
+
+        assertThat(record).isNotNull();
+        assertThat(record.tlPath()).isEqualTo("/v1/agents/abc-123/");
+    }
 }

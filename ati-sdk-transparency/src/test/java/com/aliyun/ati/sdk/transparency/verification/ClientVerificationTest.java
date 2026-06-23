@@ -35,6 +35,7 @@ class ClientVerificationTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
+    private static final String TEST_TL_PATH = "/v1/agents/" + TEST_AGENT_ID;
     private static final String TEST_ANS_NAME = "ans://v1.0.0.agent.example.com";
     private static final String TEST_FINGERPRINT =
             "SHA256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
@@ -84,7 +85,7 @@ class ClientVerificationTest {
 
             // Mock registration with matching fingerprint
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -122,7 +123,7 @@ class ClientVerificationTest {
 
             // Mock registration with no ANS name check needed
             TransparencyLog registration = createMockRegistrationNoAtiName("ACTIVE", TEST_FINGERPRINT);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -159,7 +160,7 @@ class ClientVerificationTest {
             // Mock registration with DIFFERENT agent.host
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
             // agent.host in registration is TEST_HOSTNAME but cert has different-agent.example.com
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -196,7 +197,7 @@ class ClientVerificationTest {
             // Mock registration with DIFFERENT atiName
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
             // atiName in registration is TEST_ANS_NAME (v1.0.0) but cert has v2.0.0
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -233,7 +234,7 @@ class ClientVerificationTest {
 
             // Mock registration with DIFFERENT fingerprint
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -268,7 +269,7 @@ class ClientVerificationTest {
 
             // Mock registration with DEPRECATED status
             TransparencyLog registration = createMockRegistration("DEPRECATED", TEST_FINGERPRINT);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
@@ -304,7 +305,7 @@ class ClientVerificationTest {
 
             // Mock registration with EXPIRED status (even though fingerprint matches)
             TransparencyLog registration = createMockRegistration("EXPIRED", TEST_FINGERPRINT);
-            when(transparencyClient.getAgentTransparencyLog(TEST_AGENT_ID)).thenReturn(registration);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);

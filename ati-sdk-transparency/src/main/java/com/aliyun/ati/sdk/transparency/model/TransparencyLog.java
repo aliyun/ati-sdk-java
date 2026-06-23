@@ -31,6 +31,12 @@ public class TransparencyLog {
     @JsonProperty("status")
     private String status;
 
+    @JsonProperty("seal")
+    private Seal seal;
+
+    @JsonProperty("evidenceRef")
+    private EvidenceRef evidenceRef;
+
     /**
      * The strongly-typed payload based on schema version.
      * This is populated by the TransparencyService after parsing.
@@ -71,6 +77,22 @@ public class TransparencyLog {
 
     public void setSignature(String signature) {
         this.signature = signature;
+    }
+
+    public Seal getSeal() {
+        return seal;
+    }
+
+    public void setSeal(Seal seal) {
+        this.seal = seal;
+    }
+
+    public EvidenceRef getEvidenceRef() {
+        return evidenceRef;
+    }
+
+    public void setEvidenceRef(EvidenceRef evidenceRef) {
+        this.evidenceRef = evidenceRef;
     }
 
     public String getStatus() {

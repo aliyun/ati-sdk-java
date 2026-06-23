@@ -1,5 +1,6 @@
 package com.aliyun.ati.sdk.transparency.dns;
 
+import java.net.URI;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,16 +19,23 @@ import java.util.regex.Pattern;
  *   <li>{@code url=...} - the transparency log URL for this agent</li>
  * </ul>
  *
+ * <p><b>Security note (Spec 7.1):</b> The SDK extracts the full path from the TXT URL
+ * and concatenates it with the configured TL base-url, rather than reconstructing a path
+ * from the agent ID. This ensures that even if DNS is compromised, the SDK only talks to
+ * the configured transparency log.</p>
+ *
  * @param badgeVersion the badge format version (e.g., "ra-badge1")
  * @param agentVersion the agent's semantic version (e.g., "1.0.0"), may be null
  * @param url the full transparency log URL
- * @param agentId the extracted agent ID from the URL
+ * @param agentId the extracted agent ID from the URL (kept for backwards compatibility)
+ * @param tlPath the full path extracted from the URL (e.g., "/v1/agents/{uuid}" or "/tl/agents/{uuid}/logs/latest")
  */
 public record RaBadgeRecord(
     String badgeVersion,
     String agentVersion,
     String url,
-    String agentId
+    String agentId,
+    String tlPath
 ) {
     // Pattern to parse ra-badge TXT record
     // Matches: v=ati-badge1; version=1.0.0; url=https://... (version is optional)
@@ -36,9 +44,9 @@ public record RaBadgeRecord(
         Pattern.CASE_INSENSITIVE
     );
 
-    // Pattern to extract agent ID from URL path
+    // Pattern to extract agent ID from URL path (supports both /v1/agents/ and /tl/agents/ prefixes)
     private static final Pattern AGENT_ID_PATTERN = Pattern.compile(
-        "/v1/agents/([a-f0-9-]+)/?$",
+        "/(?:v1|tl)/agents/([a-f0-9-]+)",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -62,10 +70,13 @@ public record RaBadgeRecord(
         String agentVersion = matcher.group(2); // May be null if not present
         String url = matcher.group(3);
 
-        // Extract agent ID from URL
+        // Extract agent ID from URL (backwards compat)
         String agentId = extractAgentId(url);
 
-        return new RaBadgeRecord(badgeVersion, agentVersion, url, agentId);
+        // Extract full path from URL (spec 7.1: use full path, not reconstructed)
+        String tlPath = extractPath(url);
+
+        return new RaBadgeRecord(badgeVersion, agentVersion, url, agentId, tlPath);
     }
 
     /**
@@ -83,6 +94,26 @@ public record RaBadgeRecord(
             return matcher.group(1);
         }
         return null;
+    }
+
+    /**
+     * Extracts the path portion from a transparency log URL.
+     *
+     * <p>Per spec 7.1, the SDK should extract the full path from the badge URL
+     * and concatenate it with the configured TL base-url for security.</p>
+     *
+     * @param url the URL
+     * @return the path portion (e.g., "/v1/agents/{uuid}"), or null if extraction fails
+     */
+    private static String extractPath(String url) {
+        if (url == null) {
+            return null;
+        }
+        try {
+            return URI.create(url).getPath();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**
@@ -105,6 +136,7 @@ public record RaBadgeRecord(
             ", agentVersion='" + agentVersion + "'" +
             ", url='" + url + "'" +
             ", agentId='" + agentId + "'" +
+            ", tlPath='" + tlPath + "'" +
             "}";
     }
 }

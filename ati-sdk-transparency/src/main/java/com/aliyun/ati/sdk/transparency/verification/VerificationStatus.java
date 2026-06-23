@@ -49,5 +49,11 @@ public enum VerificationStatus {
     /**
      * Failed to look up the registration (network error, DNS error, etc.).
      */
-    LOOKUP_FAILED
+    LOOKUP_FAILED,
+
+    /**
+     * The seal signature or Merkle proof verification failed for the
+     * transparency log response. This indicates potential tampering.
+     */
+    SEAL_VERIFICATION_FAILED
 }

@@ -69,6 +69,32 @@ class TransparencyService implements AutoCloseable {
     }
 
     /**
+     * Gets the transparency log entry using a full path extracted from a badge URL.
+     *
+     * <p>Per spec 7.1, the SDK should extract the full path from the badge TXT URL
+     * and concatenate it with the configured TL base-url, rather than reconstructing
+     * a path from the agent ID. This ensures that even if DNS is compromised, the SDK
+     * only talks to the configured transparency log.</p>
+     *
+     * @param tlPath the full path from the badge URL (e.g., "/v1/agents/{uuid}" or "/tl/agents/{uuid}/logs/latest")
+     * @return the transparency log entry
+     * @throws com.aliyun.ati.sdk.exception.AtiNotFoundException if the agent is not found
+     * @throws IllegalArgumentException if the path is null, empty, or contains path traversal
+     */
+    TransparencyLog getTransparencyLogByPath(String tlPath) {
+        if (tlPath == null || tlPath.isBlank()) {
+            throw new IllegalArgumentException("tlPath cannot be null or empty");
+        }
+        // Security: reject path traversal attempts
+        if (tlPath.contains("..") || tlPath.contains("\\")) {
+            throw new IllegalArgumentException("Path traversal detected in tlPath: " + tlPath);
+        }
+        // Ensure path starts with /
+        String safePath = tlPath.startsWith("/") ? tlPath : "/" + tlPath;
+        return fetchWithSchemaVersion(safePath);
+    }
+
+    /**
      * Gets the audit trail for an agent.
      */
     TransparencyLogAudit getAgentTransparencyLogAudit(String agentId, AgentAuditParams params) {

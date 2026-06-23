@@ -140,22 +140,22 @@ public final class BadgeVerificationService implements ServerVerifier {
                     .build();
             }
 
-            // Step 3: Filter badges with valid agent IDs
-            List<RaBadgeRecord> badgesWithIds = validBadges.stream()
-                .filter(badge -> badge.agentId() != null && !badge.agentId().isBlank())
+            // Step 3: Filter badges with valid paths (spec 7.1: use full path, not just agentId)
+            List<RaBadgeRecord> badgesWithPaths = validBadges.stream()
+                .filter(badge -> badge.tlPath() != null && !badge.tlPath().isBlank())
                 .collect(Collectors.toList());
 
-            if (badgesWithIds.isEmpty()) {
-                LOG.warn("No badge records with valid agent IDs for {}", hostname);
+            if (badgesWithPaths.isEmpty()) {
+                LOG.warn("No badge records with valid paths for {}", hostname);
                 return ServerVerificationResult.builder()
                     .status(VerificationStatus.LOOKUP_FAILED)
-                    .warningMessage("Invalid badge records: missing agent IDs")
+                    .warningMessage("Invalid badge records: missing paths")
                     .build();
             }
 
             // Step 4: Fetch all registrations in parallel
-            LOG.debug("Fetching {} registrations in parallel for server verification", badgesWithIds.size());
-            List<FetchResult> fetchResults = fetchRegistrationsInParallel(badgesWithIds);
+            LOG.debug("Fetching {} registrations in parallel for server verification", badgesWithPaths.size());
+            List<FetchResult> fetchResults = fetchRegistrationsInParallel(badgesWithPaths);
 
             // Step 5: Evaluate all registrations and collect valid fingerprints
             return evaluateServerRegistrations(fetchResults);
@@ -412,15 +412,15 @@ public final class BadgeVerificationService implements ServerVerifier {
             String certAtiName,
             String certCn) {
 
-        // Filter badges with valid agent IDs
+        // Filter badges with valid paths (spec 7.1: use full path)
         List<RaBadgeRecord> validBadges = badges.stream()
-            .filter(badge -> badge.agentId() != null && !badge.agentId().isBlank())
+            .filter(badge -> badge.tlPath() != null && !badge.tlPath().isBlank())
             .collect(Collectors.toList());
 
         if (validBadges.isEmpty()) {
             return ClientVerificationResult.builder()
                 .status(VerificationStatus.LOOKUP_FAILED)
-                .warningMessage("No valid badge records with agent IDs")
+                .warningMessage("No valid badge records with paths")
                 .build();
         }
 
@@ -433,17 +433,36 @@ public final class BadgeVerificationService implements ServerVerifier {
     }
 
     /**
-     * Fetches registrations for all badges in parallel.
+     * Fetches registrations for all badges in parallel, with seal + Merkle verification.
+     *
+     * <p>Per spec 7.1, uses the full path from the badge URL concatenated with the
+     * configured TL base-url, rather than reconstructing from agentId. This ensures
+     * that even if DNS is compromised, the SDK only talks to the configured TL.</p>
+     *
+     * <p>Per spec 8.2, after fetching, verifies the seal signature (SHA-256withECDSA + RFC 8785 JCS)
+     * and Merkle inclusion proof (RFC 9162) if present in the response.</p>
      */
     private List<FetchResult> fetchRegistrationsInParallel(List<RaBadgeRecord> badges) {
         // Create futures for all badge lookups
         List<CompletableFuture<FetchResult>> futures = badges.stream()
             .map(badge -> CompletableFuture.supplyAsync(() -> {
                 try {
-                    TransparencyLog registration = transparencyClient.getAgentTransparencyLog(badge.agentId());
+                    // Spec 7.1: use full path from badge URL, not reconstructed from agentId
+                    TransparencyLog registration = transparencyClient.getTransparencyLogByPath(badge.tlPath());
+
+                    // Spec 8.2: verify seal signature and Merkle proof if present
+                    SealVerifier.VerificationResult sealResult = SealVerifier.verify(registration);
+                    if (!sealResult.isValid()) {
+                        LOG.warn("Seal/Merkle verification failed for path {}: {}",
+                            badge.tlPath(), sealResult.failureReason());
+                        return FetchResult.failure(badge,
+                            new SecurityException("TL response integrity check failed: "
+                                + sealResult.failureReason()));
+                    }
+
                     return FetchResult.success(badge, registration);
                 } catch (Exception e) {
-                    LOG.debug("Failed to fetch registration for agent {}: {}", badge.agentId(), e.getMessage());
+                    LOG.debug("Failed to fetch registration for path {}: {}", badge.tlPath(), e.getMessage());
                     return FetchResult.failure(badge, e);
                 }
             }, executor))

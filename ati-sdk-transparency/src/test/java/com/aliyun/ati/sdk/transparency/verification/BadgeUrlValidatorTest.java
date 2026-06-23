@@ -242,17 +242,32 @@ class BadgeUrlValidatorTest {
     // ==================== Non-Standard Port Rejection ====================
 
     @Test
-    @DisplayName("Should reject badge URL with non-standard port")
+    @DisplayName("Should reject badge URL with non-standard port for untrusted domain")
     void shouldRejectNonStandardPort() {
-        // Given - URL with non-standard port
-        String url = "https://transparency.ati.aliyun.com:8443/v1/agents/" + VALID_AGENT_ID;
+        // Given - URL with non-standard port on untrusted domain
+        String url = "https://evil-transparency.attacker.com:8443/v1/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
 
-        // Then - should reject
+        // Then - should reject (untrusted domain with non-standard port)
         assertThat(result.valid()).isFalse();
-        assertThat(result.reason()).containsIgnoringCase("port");
+    }
+
+    @Test
+    @DisplayName("Should accept badge URL with non-standard port for trusted domain")
+    void shouldAcceptNonStandardPortForTrustedDomain() {
+        // Given - trusted domain with non-standard port (e.g., CNNIC TL at :8180)
+        BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
+            .addTrustedDomain("tl.ansagent.cn")
+            .build();
+        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
+
+        // When
+        BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);
+
+        // Then - should accept (trusted domain, non-standard port allowed)
+        assertThat(result.valid()).isTrue();
     }
 
     @Test
@@ -346,6 +361,38 @@ class BadgeUrlValidatorTest {
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
+
+        // Then - should accept
+        assertThat(result.valid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should accept CNNIC TL badge URL with /tl/agents/ path")
+    void shouldAcceptCnnicTlPath() {
+        // Given - CNNIC TL URL with /tl/agents/ path prefix
+        BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
+            .addTrustedDomain("tl.ansagent.cn")
+            .build();
+        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
+
+        // When
+        BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);
+
+        // Then - should accept
+        assertThat(result.valid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Should accept CNNIC TL badge URL with /tl/agents/{uuid}/logs/latest suffix")
+    void shouldAcceptCnnicTlPathWithSuffix() {
+        // Given - CNNIC TL URL with additional path suffix
+        BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
+            .addTrustedDomain("tl.ansagent.cn")
+            .build();
+        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID + "/logs/latest";
+
+        // When
+        BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);
 
         // Then - should accept
         assertThat(result.valid()).isTrue();

@@ -174,11 +174,15 @@ public final class BadgeUrlValidator {
     }
 
     /**
-     * Valid badge URL path pattern: /v1/agents/{uuid}/ with optional trailing slash.
+     * Valid badge URL path pattern: /v1/agents/{uuid} or /tl/agents/{uuid}[/optional/suffix]
+     * with optional trailing slash.
      * UUID format: lowercase hex with dashes (e.g., 6bf2b7a9-1383-4e33-a945-845f34af7526)
+     *
+     * <p>Supports both GoDaddy ANS paths (/v1/agents/) and CNNIC TL paths (/tl/agents/)
+     * as per spec 7.1.</p>
      */
     private static final Pattern VALID_PATH_PATTERN = Pattern.compile(
-        "^/v1/agents/[a-f0-9-]+/?$",
+        "^/(?:v1|tl)/agents/[a-f0-9-]+(?:/[a-z0-9/_-]*)?$",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -303,7 +307,10 @@ public final class BadgeUrlValidator {
     }
 
     /**
-     * Validates the port (only default HTTPS port 443 allowed).
+     * Validates the port (only default HTTPS port 443 or trusted non-standard ports allowed).
+     *
+     * <p>Non-standard ports are allowed when used with trusted domains (e.g., CNNIC TL
+     * at port 8180). The domain has already been validated at this point.</p>
      */
     private ValidationResult validatePort(URI uri) {
         int port = uri.getPort();
@@ -315,6 +322,13 @@ public final class BadgeUrlValidator {
 
         // Explicit port 443 for HTTPS = OK
         if (port == 443) {
+            return ValidationResult.success();
+        }
+
+        // Allow non-standard ports for trusted domains (e.g., CNNIC TL at :8180)
+        // The domain has already been validated by validateDomain(), so this is safe
+        String host = uri.getHost();
+        if (host != null && trustedDomains.contains(host.toLowerCase())) {
             return ValidationResult.success();
         }
 
@@ -348,7 +362,7 @@ public final class BadgeUrlValidator {
 
         // Validate path matches expected pattern
         if (!VALID_PATH_PATTERN.matcher(path).matches()) {
-            return ValidationResult.failure("Invalid path format (expected /v1/agents/{uuid})");
+            return ValidationResult.failure("Invalid path format (expected /v1/agents/{uuid} or /tl/agents/{uuid}[/...])");
         }
 
         return ValidationResult.success();
