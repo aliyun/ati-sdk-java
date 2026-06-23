@@ -454,7 +454,7 @@ class DaneVerifierTest {
 
         assertThat(config.policy()).isEqualTo(DanePolicy.VALIDATE_IF_PRESENT);
         assertThat(config.resolver()).isEqualTo(DnsResolverConfig.CLOUDFLARE);
-        assertThat(config.validationMode()).isEqualTo(DnssecValidationMode.TRUST_RESOLVER);
+        assertThat(config.validationMode()).isEqualTo(DnssecValidationMode.VALIDATE_IN_CODE);
         assertThat(config.cacheTtl()).isEqualTo(DaneConfig.DEFAULT_CACHE_TTL);
     }
 
@@ -478,7 +478,7 @@ class DaneVerifierTest {
 
         assertThat(config.policy()).isEqualTo(DanePolicy.REQUIRED);
         assertThat(config.resolver()).isEqualTo(DnsResolverConfig.GOOGLE);
-        assertThat(config.validationMode()).isEqualTo(DnssecValidationMode.TRUST_RESOLVER);
+        assertThat(config.validationMode()).isEqualTo(DnssecValidationMode.VALIDATE_IN_CODE);
         assertThat(config.cacheTtl()).isEqualTo(java.time.Duration.ofMinutes(30));
     }
 
@@ -616,12 +616,12 @@ class DaneVerifierTest {
     }
 
     @Test
-    @DisplayName("DefaultDaneTlsaVerifier defaults to TRUST_RESOLVER mode")
-    void defaultDaneTlsaVerifierDefaultsToTrustResolverMode() {
+    @DisplayName("DefaultDaneTlsaVerifier defaults to VALIDATE_IN_CODE mode")
+    void defaultDaneTlsaVerifierDefaultsToValidateInCodeMode() {
         DaneConfig config = DaneConfig.defaults();
         DefaultDaneTlsaVerifier verifier = new DefaultDaneTlsaVerifier(config);
 
-        assertThat(verifier.getValidationMode()).isEqualTo(DnssecValidationMode.TRUST_RESOLVER);
+        assertThat(verifier.getValidationMode()).isEqualTo(DnssecValidationMode.VALIDATE_IN_CODE);
     }
 
     // ==================== TLSA Lookup Caching Tests ====================

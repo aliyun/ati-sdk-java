@@ -73,12 +73,12 @@ class VersionChangeHandlingTest {
     void shouldSelectCorrectBadgeWithTwoActiveVersions() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - client presents v1.0.0 identity cert
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME_V1));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT_V1);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V1, TEST_FINGERPRINT_V1))
@@ -117,12 +117,12 @@ class VersionChangeHandlingTest {
     void shouldPassWithWarningWhenOldVersionDeprecated() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - client presents v1.0.0 identity cert (old version)
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME_V1));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT_V1);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V1, TEST_FINGERPRINT_V1))
@@ -158,12 +158,12 @@ class VersionChangeHandlingTest {
     void shouldRejectWhenNoMatchingVersionInDns() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - client presents v1.0.0 cert, but DNS only has v1.0.1
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME_V1)); // v1.0.0
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT_V1);
             // Fingerprint doesn't match v1.0.1's fingerprint
@@ -190,42 +190,19 @@ class VersionChangeHandlingTest {
     // ==================== Server verification without version ====================
 
     @Test
-    @DisplayName("Should prefer ACTIVE badge when server cert has no version")
-    void shouldPreferActiveBadgeWhenServerCertHasNoVersion() {
+    @DisplayName("Should fail when cert has no ATI URI SAN")
+    void shouldFailWhenCertHasNoAtiUriSan() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
-            // Given - client presents cert without version (no URI SAN)
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
+            // Given - client presents cert without URI SAN
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
-                .thenReturn(Optional.empty()); // No version in cert
-            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
-                .thenReturn(TEST_FINGERPRINT_V2);
-            // Fingerprint matches v1.0.1's fingerprint
-            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V2, TEST_FINGERPRINT_V2))
-                .thenReturn(true);
-            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V2, TEST_FINGERPRINT_V1))
-                .thenReturn(false);
-
-            // Two badges - v1.0.0 DEPRECATED, v1.0.1 ACTIVE
-            RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V1);
-            RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V2);
-            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
-
-            // v1.0.0 is DEPRECATED, v1.0.1 is ACTIVE
-            TransparencyLog registrationV1 = createMockRegistrationNoAtiName("DEPRECATED", TEST_FINGERPRINT_V1);
-            TransparencyLog registrationV2 = createMockRegistrationNoAtiName("ACTIVE", TEST_FINGERPRINT_V2);
-            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
-            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V2)).thenReturn(registrationV2);
+                .thenReturn(Optional.empty()); // No ATI URI SAN
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
 
-            // Then - should prefer ACTIVE badge (v1.0.1)
-            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            // Then - should fail because ATI URI SAN is required
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.LOOKUP_FAILED);
+            assertThat(result.getWarningMessage()).contains("ATI URI SAN");
         }
     }
 
@@ -236,12 +213,12 @@ class VersionChangeHandlingTest {
     void shouldPassIfSuccessfulBadgeMatchesDespitePartialFailure() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - client presents v1.0.0 identity cert
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME_V1));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT_V1);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V1, TEST_FINGERPRINT_V1))
@@ -274,12 +251,12 @@ class VersionChangeHandlingTest {
     void shouldApplyFailurePolicyWhenAllBadgeFetchesFail() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - client presents cert
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME_V1));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT_V1);
 

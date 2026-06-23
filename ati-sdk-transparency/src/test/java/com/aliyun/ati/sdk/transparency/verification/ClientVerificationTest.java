@@ -67,12 +67,12 @@ class ClientVerificationTest {
     void shouldPassWhenAllFieldsMatchWithActiveStatus() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - mock certificate utilities
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
@@ -101,35 +101,19 @@ class ClientVerificationTest {
     // ==================== No URI SAN in Cert ====================
 
     @Test
-    @DisplayName("Should verify when cert has no URI SAN (ANS name comparison skipped)")
-    void shouldVerifyWhenCertHasNoUriSan() {
+    @DisplayName("Should fail when cert has no URI SAN (ATI name required per spec)")
+    void shouldFailWhenCertHasNoUriSan() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - mock certificate with NO URI SAN
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.empty()); // No URI SAN
-            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
-                .thenReturn(TEST_FINGERPRINT);
-            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
-                .thenReturn(true);
-
-            // Mock badge lookup
-            RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
-            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
-
-            // Mock registration with no ANS name check needed
-            TransparencyLog registration = createMockRegistrationNoAtiName("ACTIVE", TEST_FINGERPRINT);
-            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
 
-            // Then - should verify based on fingerprint and hostname
-            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            // Then - should fail because URI SAN is required for badge lookup
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.LOOKUP_FAILED);
+            assertThat(result.getWarningMessage()).contains("ATI URI SAN");
         }
     }
 
@@ -139,27 +123,27 @@ class ClientVerificationTest {
     @DisplayName("Should reject when CN (hostname) does not match agent.host")
     void shouldRejectWhenCnMismatchesAgentHost() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
-            // Given - mock certificate with DIFFERENT hostname
+            // Given - mock certificate with DIFFERENT hostname in CN
             String differentHostname = "different-agent.example.com";
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(differentHostname));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(differentHostname);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(differentHostname);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
                 .thenReturn(true);
 
-            // Mock badge lookup for the cert's hostname
+            // Mock badge lookup using agentHost from URI SAN
             RaBadgeRecord badge = RaBadgeRecord.parse(
                 "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
-            when(raBadgeLookupService.lookupBadges(differentHostname)).thenReturn(List.of(badge));
+            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT agent.host
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
-            // agent.host in registration is TEST_HOSTNAME but cert has different-agent.example.com
+            // agent.host in registration is TEST_HOSTNAME but cert CN has different-agent.example.com
             when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
@@ -178,12 +162,12 @@ class ClientVerificationTest {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - mock certificate with DIFFERENT ANS name
             String differentAtiName = "ans://v2.0.0.agent.example.com";
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(differentAtiName)); // Different version
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(differentAtiName))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
@@ -215,12 +199,12 @@ class ClientVerificationTest {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given
             String differentFingerprint = "SHA256:different1234567890abcdef1234567890abcdef1234567890abcdef12345678";
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(differentFingerprint);
             // Fingerprints DON'T match
@@ -251,12 +235,12 @@ class ClientVerificationTest {
     void shouldPassWithWarningWhenDeprecatedStatus() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
@@ -287,12 +271,12 @@ class ClientVerificationTest {
     void shouldReturnRegistrationInvalidWhenExpiredStatus() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
@@ -323,12 +307,10 @@ class ClientVerificationTest {
     void shouldReturnNotAnsAgentWhenNoBadgeRecord() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
-                .thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
 
             // Mock no badge records found
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of());
@@ -341,14 +323,14 @@ class ClientVerificationTest {
         }
     }
 
-    // ==================== 4.10 No FQDN in Certificate ====================
+    // ==================== 4.10 No ATI URI SAN in Certificate ====================
 
     @Test
-    @DisplayName("4.10 Should return LOOKUP_FAILED when certificate has no FQDN")
-    void shouldReturnLookupFailedWhenNoFqdn() {
+    @DisplayName("4.10 Should return LOOKUP_FAILED when certificate has no ATI URI SAN")
+    void shouldReturnLookupFailedWhenNoAtiUriSan() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
-            // Given - certificate has no FQDN (no DNS SAN or CN)
-            certUtils.when(() -> CertificateUtils.extractFqdn(mockCertificate))
+            // Given - certificate has no ATI URI SAN
+            certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.empty());
 
             // When
@@ -356,7 +338,7 @@ class ClientVerificationTest {
 
             // Then
             assertThat(result.getStatus()).isEqualTo(VerificationStatus.LOOKUP_FAILED);
-            assertThat(result.getWarningMessage()).contains("FQDN");
+            assertThat(result.getWarningMessage()).contains("ATI URI SAN");
         }
     }
 

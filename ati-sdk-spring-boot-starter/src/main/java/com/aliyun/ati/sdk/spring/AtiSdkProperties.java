@@ -24,7 +24,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       private-key: /path/to/server.key
  *       port: 443
  *       verification:
- *         policy: BADGE_REQUIRED
+ *         policy: PKI_ONLY
  *       idca:
  *         trust-certificate: /path/to/idca-trust.pem
  *     transparency:
@@ -198,7 +198,7 @@ public class AtiSdkProperties {
         private String certificate;
         private String privateKey;
         private int port = 443;
-        private Verification verification = new Verification();
+        private Verification verification = new Verification("PKI_ONLY");
         private Idca idca = new Idca();
 
         public String getCertificate() {
@@ -277,6 +277,18 @@ public class AtiSdkProperties {
      */
     public static class Verification {
         private String policy = "BADGE_REQUIRED";
+
+        public Verification() {
+        }
+
+        /**
+         * Creates a Verification with the specified default policy.
+         *
+         * @param defaultPolicy the default policy value
+         */
+        public Verification(String defaultPolicy) {
+            this.policy = defaultPolicy;
+        }
 
         public String getPolicy() {
             return policy;

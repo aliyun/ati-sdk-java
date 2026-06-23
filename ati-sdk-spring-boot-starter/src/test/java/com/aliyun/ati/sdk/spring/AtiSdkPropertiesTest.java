@@ -389,12 +389,12 @@ class AtiSdkPropertiesTest {
         }
 
         @Test
-        @DisplayName("Server verification policy should default to BADGE_REQUIRED")
+        @DisplayName("Server verification policy should default to PKI_ONLY")
         void serverVerificationPolicyShouldDefault() {
             AtiSdkProperties props = new AtiSdkProperties();
 
             assertThat(props.getServer().getVerification().getPolicy())
-                .isEqualTo("BADGE_REQUIRED");
+                .isEqualTo("PKI_ONLY");
         }
 
         @Test

@@ -436,9 +436,9 @@ class BadgeVerificationServiceTest {
             X509Certificate cert = mock(X509Certificate.class);
 
             try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
-                certUtils.when(() -> CertificateUtils.extractFqdn(any())).thenReturn(Optional.of(TEST_HOSTNAME));
-                certUtils.when(() -> CertificateUtils.getCommonName(any())).thenReturn(TEST_HOSTNAME);
                 certUtils.when(() -> CertificateUtils.extractAtiName(any())).thenReturn(Optional.of(TEST_ANS_NAME));
+                certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME)).thenReturn(TEST_HOSTNAME);
+                certUtils.when(() -> CertificateUtils.getCommonName(any())).thenReturn(TEST_HOSTNAME);
                 certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(any())).thenReturn(TEST_FINGERPRINT);
                 certUtils.when(() -> CertificateUtils.fingerprintMatches(anyString(), anyString())).thenReturn(true);
 
@@ -597,9 +597,9 @@ class BadgeVerificationServiceTest {
         }
 
         private void setupCertificateUtilsMocks(MockedStatic<CertificateUtils> certUtils) {
-            certUtils.when(() -> CertificateUtils.extractFqdn(any())).thenReturn(Optional.of(TEST_HOSTNAME));
-            certUtils.when(() -> CertificateUtils.getCommonName(any())).thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.extractAtiName(any())).thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME)).thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(any())).thenReturn(TEST_HOSTNAME);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(any())).thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(anyString(), anyString())).thenReturn(true);
         }

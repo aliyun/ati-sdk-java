@@ -316,8 +316,8 @@ class DaneTlsaVerifierIntegrationTest {
     // ==================== Validation Mode Tests ====================
 
     @Test
-    @DisplayName("Should use TRUST_RESOLVER mode by default")
-    void shouldUseTrustResolverModeByDefault() {
+    @DisplayName("Should use VALIDATE_IN_CODE mode by default")
+    void shouldUseValidateInCodeModeByDefault() {
         // Given
         DaneConfig config = DaneConfig.defaults();
 
@@ -325,7 +325,7 @@ class DaneTlsaVerifierIntegrationTest {
         DefaultDaneTlsaVerifier verifier = new DefaultDaneTlsaVerifier(config);
 
         // Then
-        assertThat(verifier.getValidationMode()).isEqualTo(DnssecValidationMode.TRUST_RESOLVER);
+        assertThat(verifier.getValidationMode()).isEqualTo(DnssecValidationMode.VALIDATE_IN_CODE);
     }
 
     @Test

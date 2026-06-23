@@ -21,7 +21,7 @@ class DaneConfigTest {
         assertNotNull(config);
         assertEquals(DanePolicy.VALIDATE_IF_PRESENT, config.policy());
         assertEquals(DnsResolverConfig.CLOUDFLARE, config.resolver());
-        assertEquals(DnssecValidationMode.TRUST_RESOLVER, config.validationMode());
+        assertEquals(DnssecValidationMode.VALIDATE_IN_CODE, config.validationMode());
         assertEquals(DaneConfig.DEFAULT_CACHE_TTL, config.cacheTtl());
     }
 
@@ -55,7 +55,7 @@ class DaneConfigTest {
 
         assertEquals(DanePolicy.VALIDATE_IF_PRESENT, config.policy());
         assertEquals(DnsResolverConfig.CLOUDFLARE, config.resolver());
-        assertEquals(DnssecValidationMode.TRUST_RESOLVER, config.validationMode());
+        assertEquals(DnssecValidationMode.VALIDATE_IN_CODE, config.validationMode());
         assertEquals(DaneConfig.DEFAULT_CACHE_TTL, config.cacheTtl());
     }
 

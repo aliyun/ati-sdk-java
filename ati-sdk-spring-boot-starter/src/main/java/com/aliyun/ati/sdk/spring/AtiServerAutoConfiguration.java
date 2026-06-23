@@ -1,8 +1,12 @@
 package com.aliyun.ati.sdk.spring;
 
+import com.aliyun.ati.sdk.agent.server.DefaultClientRequestVerifier;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.server.Ssl;
@@ -80,5 +84,39 @@ public class AtiServerAutoConfiguration {
             LOG.info("ATI server configured on port {} with client-auth={}",
                 serverProps.getPort(), ssl.getClientAuth());
         };
+    }
+
+    /**
+     * Creates a DefaultClientRequestVerifier bean for server-side client verification.
+     *
+     * <p>Only created when mode is "server" or "both". The verifier uses the
+     * {@link BadgeVerificationService} for badge-based client verification
+     * when available.</p>
+     *
+     * @param properties the ATI SDK properties
+     * @param badgeVerificationServiceProvider the badge verification service (optional)
+     * @return the client request verifier
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public DefaultClientRequestVerifier clientRequestVerifier(
+            AtiSdkProperties properties,
+            ObjectProvider<BadgeVerificationService> badgeVerificationServiceProvider) {
+
+        if (!properties.isServerMode()) {
+            LOG.debug("Skipping DefaultClientRequestVerifier bean: mode={}", properties.getMode());
+            return null;
+        }
+
+        BadgeVerificationService badgeService = badgeVerificationServiceProvider.getIfAvailable();
+        LOG.info("Creating DefaultClientRequestVerifier with policy={}, badgeService={}",
+            properties.getServer().getVerification().getPolicy(),
+            badgeService != null ? "present" : "absent");
+
+        DefaultClientRequestVerifier.Builder builder = DefaultClientRequestVerifier.builder();
+        if (badgeService != null) {
+            builder.badgeVerificationService(badgeService);
+        }
+        return builder.build();
     }
 }

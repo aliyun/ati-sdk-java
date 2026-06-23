@@ -2,6 +2,7 @@ val springBootVersion: String by project
 
 dependencies {
     api(project(":ati-sdk-agent-client"))
+    api(project(":ati-sdk-discovery"))
     implementation("org.springframework.boot:spring-boot-autoconfigure:$springBootVersion")
     compileOnly("org.springframework.boot:spring-boot:$springBootVersion")
     compileOnly("org.springframework.boot:spring-boot-starter-web:$springBootVersion")

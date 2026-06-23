@@ -366,6 +366,40 @@ public final class CertificateUtils {
     }
 
     /**
+     * Pattern to extract host from ATI name URI SAN.
+     * Matches: ati://v{version}.{host} or ati://{host} (also ans://)
+     * Example: ati://v1.client-agent.example.com -> client-agent.example.com
+     */
+    private static final Pattern ATI_NAME_HOST_PATTERN = Pattern.compile(
+        "^(?:ati|ans)://(?:v[^.]+\\.)?(.+)$",
+        Pattern.CASE_INSENSITIVE
+    );
+
+    /**
+     * Extracts the host portion from an ATI name URI.
+     *
+     * <p>Examples:</p>
+     * <ul>
+     *   <li>{@code ati://v1.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     *   <li>{@code ati://v1.0.0.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     *   <li>{@code ans://v1.client-agent.example.com} -> {@code client-agent.example.com}</li>
+     * </ul>
+     *
+     * @param atiName the ATI name URI
+     * @return the host portion, or null if parsing fails
+     */
+    public static String extractHostFromAtiName(String atiName) {
+        if (atiName == null) {
+            return null;
+        }
+        Matcher matcher = ATI_NAME_HOST_PATTERN.matcher(atiName);
+        if (matcher.matches()) {
+            return matcher.group(1);
+        }
+        return null;
+    }
+
+    /**
      * Gets URI Subject Alternative Names from a certificate.
      *
      * @param certificate the certificate

@@ -20,7 +20,7 @@ import java.util.Objects;
  *
  * <h2>Example Usage</h2>
  * <pre>{@code
- * // Default configuration (opportunistic DANE with Cloudflare DNS, trust resolver)
+ * // Default configuration (opportunistic DANE with Cloudflare DNS, in-code validation)
  * DaneConfig config = DaneConfig.defaults();
  *
  * // Custom configuration with in-code DNSSEC validation
@@ -77,7 +77,7 @@ public record DaneConfig(
      * <ul>
      *   <li>Policy: VALIDATE_IF_PRESENT (opportunistic DANE)</li>
      *   <li>Resolver: CLOUDFLARE (1.1.1.1 - DNSSEC-validating)</li>
-     *   <li>Validation Mode: TRUST_RESOLVER (trust AD flag from resolver)</li>
+     *   <li>Validation Mode: VALIDATE_IN_CODE (perform DNSSEC validation locally)</li>
      *   <li>Cache TTL: 1 hour</li>
      * </ul>
      *
@@ -87,7 +87,7 @@ public record DaneConfig(
         return new DaneConfig(
             DanePolicy.VALIDATE_IF_PRESENT,
             DnsResolverConfig.CLOUDFLARE,
-            DnssecValidationMode.TRUST_RESOLVER,
+            DnssecValidationMode.VALIDATE_IN_CODE,
             DEFAULT_CACHE_TTL
         );
     }
@@ -123,7 +123,7 @@ public record DaneConfig(
     public static final class Builder {
         private DanePolicy policy = DanePolicy.VALIDATE_IF_PRESENT;
         private DnsResolverConfig resolver = DnsResolverConfig.CLOUDFLARE;
-        private DnssecValidationMode validationMode = DnssecValidationMode.TRUST_RESOLVER;
+        private DnssecValidationMode validationMode = DnssecValidationMode.VALIDATE_IN_CODE;
         private Duration cacheTtl = DEFAULT_CACHE_TTL;
 
         private Builder() {}

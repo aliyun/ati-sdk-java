@@ -174,9 +174,10 @@ public final class BadgeVerificationService implements ServerVerifier {
      *
      * <p>This method:</p>
      * <ol>
-     *   <li>Extracts the FQDN from the client certificate (DNS SAN or CN)</li>
-     *   <li>Extracts the ANS name from the client certificate (URI SAN)</li>
-     *   <li>Looks up the _ati-badge TXT record for the FQDN</li>
+     *   <li>Extracts the {@code clientAgentHost} from the client certificate's URI SAN
+     *       (e.g., {@code ati://v1.client-agent.example.com} -> {@code client-agent.example.com})</li>
+     *   <li>Extracts the CN for agent.host matching (Section 4.4)</li>
+     *   <li>Looks up the _ati-badge TXT record for the agentHost</li>
      *   <li>Fetches the registration(s) from the transparency log</li>
      *   <li>Matches the certificate fingerprint and ANS name</li>
      * </ol>
@@ -189,49 +190,55 @@ public final class BadgeVerificationService implements ServerVerifier {
         LOG.debug("Verifying client certificate: {}", clientCert.getSubjectX500Principal());
 
         try {
-            // Step 1: Extract FQDN from certificate (for DNS lookup)
-            Optional<String> fqdnOpt = CertificateUtils.extractFqdn(clientCert);
-            if (fqdnOpt.isEmpty()) {
-                LOG.warn("Client certificate has no FQDN (no DNS SAN or CN)");
+            // Step 1: Extract agentHost from URI SAN (type 6) per spec §9.2
+            // The server must use the ATI name URI SAN, not DNS SAN or CN, for badge lookup
+            Optional<String> certAtiName = CertificateUtils.extractAtiName(clientCert);
+            if (certAtiName.isEmpty()) {
+                LOG.warn("Client certificate has no ATI URI SAN");
                 return ClientVerificationResult.builder()
                     .status(VerificationStatus.LOOKUP_FAILED)
-                    .warningMessage("Certificate has no FQDN")
+                    .warningMessage("Certificate has no ATI URI SAN")
                     .build();
             }
-            String fqdn = fqdnOpt.get();
+
+            String agentHost = CertificateUtils.extractHostFromAtiName(certAtiName.get());
+            if (agentHost == null || agentHost.isBlank()) {
+                LOG.warn("Failed to extract host from ATI name: {}", certAtiName.get());
+                return ClientVerificationResult.builder()
+                    .status(VerificationStatus.LOOKUP_FAILED)
+                    .warningMessage("Invalid ATI name format: " + certAtiName.get())
+                    .build();
+            }
 
             // Step 2: Extract CN from certificate (for agent.host matching per Section 4.4)
             String certCn = CertificateUtils.getCommonName(clientCert);
 
-            // Step 3: Extract ANS name from certificate (required per Section 4.4)
-            Optional<String> certAtiName = CertificateUtils.extractAtiName(clientCert);
-
-            // Step 4: Extract version from ANS name for efficient badge filtering
+            // Step 3: Extract version from ANS name for efficient badge filtering
             String certVersion = certAtiName.map(this::extractVersionFromAtiName).orElse(null);
 
-            // Step 5: Compute client certificate fingerprint
+            // Step 4: Compute client certificate fingerprint
             String clientFingerprint = CertificateUtils.computeSha256Fingerprint(clientCert);
 
-            // Step 6: Look up badge DNS records (may have multiple for version rotation)
-            List<RaBadgeRecord> badges = raBadgeLookupService.lookupBadges(fqdn);
+            // Step 5: Look up badge DNS records using agentHost from URI SAN
+            List<RaBadgeRecord> badges = raBadgeLookupService.lookupBadges(agentHost);
             if (badges.isEmpty()) {
-                LOG.debug("No badge record found for {}", fqdn);
+                LOG.debug("No badge record found for {}", agentHost);
                 return ClientVerificationResult.builder()
                     .status(VerificationStatus.NOT_ATI_AGENT)
                     .build();
             }
 
-            // Step 7: Validate badge URLs for security and filter invalid ones
+            // Step 6: Validate badge URLs for security and filter invalid ones
             List<RaBadgeRecord> validBadges = filterValidBadgeUrls(badges);
             if (validBadges.isEmpty()) {
-                LOG.warn("All badge URLs invalid for {}", fqdn);
+                LOG.warn("All badge URLs invalid for {}", agentHost);
                 return ClientVerificationResult.builder()
                     .status(VerificationStatus.LOOKUP_FAILED)
                     .warningMessage("All badge URLs failed validation")
                     .build();
             }
 
-            // Step 8: Filter badges by version to reduce TL API calls during version rotation
+            // Step 7: Filter badges by version to reduce TL API calls during version rotation
             List<RaBadgeRecord> filteredBadges = filterBadgesByVersion(validBadges, certVersion);
             if (filteredBadges.isEmpty()) {
                 // Fall back to all valid badges if no version match (backwards compatibility)
@@ -242,7 +249,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                     validBadges.size(), filteredBadges.size(), certVersion);
             }
 
-            // Step 9: Check each registration for matching fingerprint, CN, and ANS name
+            // Step 8: Check each registration for matching fingerprint, CN, and ANS name
             return findMatchingClientRegistration(filteredBadges, clientFingerprint, certAtiName.orElse(null), certCn);
 
         } catch (Exception e) {

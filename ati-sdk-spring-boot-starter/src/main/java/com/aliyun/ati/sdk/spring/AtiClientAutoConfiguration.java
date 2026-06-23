@@ -1,6 +1,9 @@
 package com.aliyun.ati.sdk.spring;
 
 import com.aliyun.ati.sdk.agent.AtiClient;
+import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,6 +77,65 @@ public class AtiClientAutoConfiguration {
             builder.connectTimeout(parseDuration(connectTimeout));
         }
 
+        return builder.build();
+    }
+
+    /**
+     * Creates an AtiDiscoveryClient bean for agent resolution via Alibaba Cloud OpenAPI.
+     *
+     * <p>Only created when mode is "client" or "both" and discovery credentials are configured.</p>
+     *
+     * @param properties the ATI SDK properties
+     * @return the discovery client
+     * @throws Exception if the OpenAPI client cannot be created
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public AtiDiscoveryClient atiDiscoveryClient(AtiSdkProperties properties) throws Exception {
+        if (!properties.isClientMode()) {
+            LOG.debug("Skipping AtiDiscoveryClient bean: mode={}", properties.getMode());
+            return null;
+        }
+
+        AtiSdkProperties.Discovery discovery = properties.getDiscovery();
+        LOG.info("Creating AtiDiscoveryClient with endpoint={}", discovery.getEndpoint());
+        return new AtiDiscoveryClient(
+            discovery.getEndpoint(),
+            discovery.getAccessKeyId(),
+            discovery.getAccessKeySecret());
+    }
+
+    /**
+     * Creates an AtiVerifiedClient bean for verified agent-to-agent connections.
+     *
+     * <p>Only created when mode is "client" or "both".</p>
+     *
+     * @param properties the ATI SDK properties
+     * @param transparencyClient the transparency client for badge verification
+     * @return the verified client
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public AtiVerifiedClient atiVerifiedClient(AtiSdkProperties properties,
+                                               TransparencyClient transparencyClient) {
+        if (!properties.isClientMode()) {
+            LOG.debug("Skipping AtiVerifiedClient bean: mode={}", properties.getMode());
+            return null;
+        }
+
+        String policyStr = properties.getVerification().getPolicy();
+        VerificationPolicy policy = VerificationPolicy.valueOf(policyStr);
+
+        AtiVerifiedClient.Builder builder = AtiVerifiedClient.builder()
+            .transparencyClient(transparencyClient)
+            .policy(policy);
+
+        String connectTimeout = properties.getClient().getConnectTimeout();
+        if (connectTimeout != null) {
+            builder.connectTimeout(parseDuration(connectTimeout));
+        }
+
+        LOG.info("Creating AtiVerifiedClient with policy={}", policy);
         return builder.build();
     }
 
