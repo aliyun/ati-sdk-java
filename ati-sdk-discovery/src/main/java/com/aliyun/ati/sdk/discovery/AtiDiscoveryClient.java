@@ -77,7 +77,9 @@ public final class AtiDiscoveryClient {
                 .setVersion(API_VERSION)
                 .setProtocol("HTTPS")
                 .setMethod("POST")
+                .setAuthType("AK")
                 .setStyle("RPC")
+                .setPathname("/")
                 .setReqBodyType("json")
                 .setBodyType("json");
 
@@ -93,6 +95,8 @@ public final class AtiDiscoveryClient {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = (Map<String, Object>) openApiClient.callApi(
                 params, request, new RuntimeOptions());
+
+            LOG.debug("Discovery response for {}: {}", agentHost, response);
 
             return parseResponse(response);
         } catch (Exception e) {
@@ -122,40 +126,47 @@ public final class AtiDiscoveryClient {
             return null;
         }
 
-        Boolean success = (Boolean) body.get("Success");
-        if (success == null || !success) {
-            return null;
-        }
-
-        Map<String, Object> data = (Map<String, Object>) body.get("Data");
-        if (data == null) {
+        // RPC style: data is directly in body, no Success/Data wrapper
+        String agentId = (String) body.get("AgentId");
+        if (agentId == null || agentId.isBlank()) {
             return null;
         }
 
         AgentDetail detail = new AgentDetail();
-        detail.setAgentId((String) data.get("AgentId"));
-        detail.setAgentDisplayName((String) data.get("AgentDisplayName"));
-        detail.setAgentHost((String) data.get("AgentHost"));
-        detail.setAgentVersion((String) data.get("AgentVersion"));
-        detail.setAgentDescription((String) data.get("AgentDescription"));
-        detail.setStatus((String) data.get("Status"));
-        detail.setTrustLevel((String) data.get("TrustLevel"));
+        detail.setAgentId(agentId);
+        detail.setAgentDisplayName((String) body.get("AgentDisplayName"));
+        detail.setAgentHost((String) body.get("AgentHost"));
+        detail.setAgentVersion((String) body.get("AgentVersion"));
+        detail.setAgentDescription((String) body.get("AgentDescription"));
+        detail.setStatus((String) body.get("Status"));
+        detail.setTrustLevel((String) body.get("TrustLevel"));
 
-        List<Map<String, Object>> endpointsList =
-            (List<Map<String, Object>>) data.get("Endpoints");
-        if (endpointsList != null) {
-            List<AgentEndpoint> endpoints = new ArrayList<>();
-            for (Map<String, Object> ep : endpointsList) {
-                AgentEndpoint endpoint = new AgentEndpoint();
-                endpoint.setProtocol((String) ep.get("Protocol"));
-                endpoint.setAgentUrl((String) ep.get("AgentUrl"));
-                endpoint.setMetadataUrl((String) ep.get("MetadataUrl"));
-                List<String> transports = (List<String>) ep.get("Transports");
-                endpoint.setTransports(
-                    transports != null ? transports : List.of());
-                endpoints.add(endpoint);
+        // Endpoints structure: {Endpoint=[{AgentUrl=..., Protocol=..., Transports={Transport=[...]}}]}
+        Map<String, Object> endpointsWrapper =
+            (Map<String, Object>) body.get("Endpoints");
+        if (endpointsWrapper != null) {
+            List<Map<String, Object>> endpointsList =
+                (List<Map<String, Object>>) endpointsWrapper.get("Endpoint");
+            if (endpointsList != null) {
+                List<AgentEndpoint> endpoints = new ArrayList<>();
+                for (Map<String, Object> ep : endpointsList) {
+                    AgentEndpoint endpoint = new AgentEndpoint();
+                    endpoint.setProtocol((String) ep.get("Protocol"));
+                    endpoint.setAgentUrl((String) ep.get("AgentUrl"));
+                    endpoint.setMetadataUrl((String) ep.get("MetadataUrl"));
+                    // Transports: {Transport=[STREAMABLE-HTTP]}
+                    Map<String, Object> transportsWrapper =
+                        (Map<String, Object>) ep.get("Transports");
+                    if (transportsWrapper != null) {
+                        List<String> transports =
+                            (List<String>) transportsWrapper.get("Transport");
+                        endpoint.setTransports(
+                            transports != null ? transports : List.of());
+                    }
+                    endpoints.add(endpoint);
+                }
+                detail.setEndpoints(endpoints);
             }
-            detail.setEndpoints(endpoints);
         }
 
         return detail;
