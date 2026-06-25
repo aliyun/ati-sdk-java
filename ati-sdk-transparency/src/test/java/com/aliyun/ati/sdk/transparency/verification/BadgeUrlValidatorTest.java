@@ -21,7 +21,7 @@ class BadgeUrlValidatorTest {
 
     @BeforeEach
     void setUp() {
-        validator = BadgeUrlValidator.withGoDaddyDefaults();
+        validator = BadgeUrlValidator.withAtiDefaults();
     }
 
     // ==================== Builder Tests ====================
@@ -50,7 +50,7 @@ class BadgeUrlValidatorTest {
                 .addTrustedDomain("transparency.my-provider.com")
                 .build();
 
-            // GoDaddy domain should be rejected since we didn't include it
+            // ATI domain should be rejected since we didn't include it
             String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
             BadgeUrlValidator.ValidationResult result = customValidator.validate(url);
 
@@ -85,14 +85,14 @@ class BadgeUrlValidatorTest {
         }
 
         @Test
-        @DisplayName("Should support adding GoDaddy defaults via builder")
-        void shouldSupportAddingGoDaddyDefaultsViaBuilder() {
+        @DisplayName("Should support adding ATI defaults via builder")
+        void shouldSupportAddingATIDefaultsViaBuilder() {
             BadgeUrlValidator customValidator = BadgeUrlValidator.builder()
-                .addGoDaddyDefaults()
+                .addAtiDefaults()
                 .addTrustedDomain("transparency.custom.com")
                 .build();
 
-            assertThat(customValidator.getTrustedDomains()).hasSize(3); // 2 GoDaddy + 1 custom
+            assertThat(customValidator.getTrustedDomains()).hasSize(3); // 2 ATI + 1 custom
         }
 
         @Test
@@ -118,11 +118,11 @@ class BadgeUrlValidatorTest {
         }
 
         @Test
-        @DisplayName("withGoDaddyDefaults should create validator with GoDaddy domains")
-        void withGoDaddyDefaultsShouldCreateValidatorWithGoDaddyDomains() {
-            BadgeUrlValidator godaddyValidator = BadgeUrlValidator.withGoDaddyDefaults();
+        @DisplayName("withAtiDefaults should create validator with ATI domains")
+        void withAtiDefaultsShouldCreateValidatorWithATIDomains() {
+            BadgeUrlValidator atiValidator = BadgeUrlValidator.withAtiDefaults();
 
-            assertThat(godaddyValidator.getTrustedDomains()).containsExactlyInAnyOrder(
+            assertThat(atiValidator.getTrustedDomains()).containsExactlyInAnyOrder(
                 "transparency.ati.aliyun.com",
                 "transparency.ati.ote-ati.aliyun.com"
             );

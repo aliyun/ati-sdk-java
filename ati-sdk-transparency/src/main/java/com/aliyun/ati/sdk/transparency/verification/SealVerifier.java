@@ -100,7 +100,7 @@ public final class SealVerifier {
     /**
      * Verifies both the seal signature and Merkle inclusion proof of a TL response.
      *
-     * <p>If the response has no seal or merkle data (e.g., legacy GoDaddy TL format),
+     * <p>If the response has no seal or merkle data (e.g., legacy TL format),
      * verification is skipped and the result is considered valid for backwards compatibility.</p>
      *
      * @param log the transparency log response to verify

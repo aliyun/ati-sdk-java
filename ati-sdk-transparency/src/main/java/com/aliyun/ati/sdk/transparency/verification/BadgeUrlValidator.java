@@ -32,8 +32,8 @@ import java.util.regex.Pattern;
  *     .addTrustedDomain("transparency.ati.ote-ati.aliyun.com")
  *     .build();
  *
- * // Or use GoDaddy ANS defaults
- * BadgeUrlValidator validator = BadgeUrlValidator.withGoDaddyDefaults();
+ * // Or use ATI defaults
+ * BadgeUrlValidator validator = BadgeUrlValidator.withAtiDefaults();
  *
  * ValidationResult result = validator.validate(badgeUrl);
  * if (!result.valid()) {
@@ -46,7 +46,7 @@ public final class BadgeUrlValidator {
     private static final Logger LOGGER = LoggerFactory.getLogger(BadgeUrlValidator.class);
 
     /**
-     * GoDaddy ATI transparency log domains (for use with {@link #withGoDaddyDefaults()}).
+     * ATI transparency log domains (for use with {@link #withAtiDefaults()}).
      */
     public static final List<String> ATI_TRUSTED_DOMAINS = List.of(
         "transparency.ati.aliyun.com",      // Production
@@ -75,14 +75,14 @@ public final class BadgeUrlValidator {
     }
 
     /**
-     * Creates a validator configured with the standard GoDaddy ATI transparency log domains.
+     * Creates a validator configured with the standard ATI transparency log domains.
      *
      * <p>This is a convenience factory method for the common case of using the
-     * GoDaddy ATI transparency logs (production, OTE, and development).</p>
+     * ATI transparency logs (production, OTE, and development).</p>
      *
-     * @return a validator with GoDaddy ANS domains
+     * @return a validator with ATI domains
      */
-    public static BadgeUrlValidator withGoDaddyDefaults() {
+    public static BadgeUrlValidator withAtiDefaults() {
         return new BadgeUrlValidator(ATI_TRUSTED_DOMAINS);
     }
 
@@ -151,11 +151,11 @@ public final class BadgeUrlValidator {
         }
 
         /**
-         * Adds the standard GoDaddy ATI transparency log domains.
+         * Adds the standard ATI transparency log domains.
          *
          * @return this builder
          */
-        public Builder addGoDaddyDefaults() {
+        public Builder addAtiDefaults() {
             return addTrustedDomains(ATI_TRUSTED_DOMAINS);
         }
 
@@ -178,7 +178,7 @@ public final class BadgeUrlValidator {
      * with optional trailing slash.
      * UUID format: lowercase hex with dashes (e.g., 6bf2b7a9-1383-4e33-a945-845f34af7526)
      *
-     * <p>Supports both GoDaddy ANS paths (/v1/agents/) and CNNIC TL paths (/tl/agents/)
+     * <p>Supports both ATI paths (/v1/agents/) and CNNIC TL paths (/tl/agents/)
      * as per spec 7.1.</p>
      */
     private static final Pattern VALID_PATH_PATTERN = Pattern.compile(

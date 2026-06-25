@@ -94,7 +94,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             : new RaBadgeLookupService();
         this.badgeUrlValidator = builder.badgeUrlValidator != null
             ? builder.badgeUrlValidator
-            : BadgeUrlValidator.withGoDaddyDefaults();
+            : BadgeUrlValidator.withAtiDefaults();
         this.executor = builder.executor != null
             ? builder.executor
             : AtiExecutors.sharedIoExecutor();
