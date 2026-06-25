@@ -182,7 +182,7 @@ public final class BadgeUrlValidator {
      * as per spec 7.1.</p>
      */
     private static final Pattern VALID_PATH_PATTERN = Pattern.compile(
-        "^/(?:v1|tl)/agents/[a-f0-9-]+(?:/[a-z0-9/_-]*)?$",
+        "^(?:/[a-z0-9_-]+)*/(?:v1|tl)/agents/[a-f0-9-]+(?:/[a-z0-9/_-]*)?$",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -362,7 +362,7 @@ public final class BadgeUrlValidator {
 
         // Validate path matches expected pattern
         if (!VALID_PATH_PATTERN.matcher(path).matches()) {
-            return ValidationResult.failure("Invalid path format (expected /v1/agents/{uuid} or /tl/agents/{uuid}[/...])");
+            return ValidationResult.failure("Invalid path format (expected path containing /v1/agents/{uuid} or /tl/agents/{uuid})");
         }
 
         return ValidationResult.success();
