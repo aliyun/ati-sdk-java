@@ -4,14 +4,8 @@ import com.aliyun.ati.sdk.crypto.CertificateUtils;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.dns.RaBadgeLookupService;
 import com.aliyun.ati.sdk.transparency.dns.RaBadgeRecord;
-import com.aliyun.ati.sdk.transparency.model.AgentV1;
-import com.aliyun.ati.sdk.transparency.model.AttestationsV1;
-import com.aliyun.ati.sdk.transparency.model.CertificateInfo;
-import com.aliyun.ati.sdk.transparency.model.CertType;
-import com.aliyun.ati.sdk.transparency.model.EventV1;
-import com.aliyun.ati.sdk.transparency.model.ProducerV1;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
-import com.aliyun.ati.sdk.transparency.model.TransparencyLogV1;
+import com.aliyun.ati.sdk.transparency.model.TransparencyLogAtiV1;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -36,7 +30,7 @@ class ClientVerificationTest {
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
     private static final String TEST_TL_PATH = "/v1/agents/" + TEST_AGENT_ID;
-    private static final String TEST_ANS_NAME = "ans://v1.0.0.agent.example.com";
+    private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
     private static final String TEST_FINGERPRINT =
             "SHA256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
 
@@ -161,7 +155,7 @@ class ClientVerificationTest {
     void shouldRejectWhenUriSanMismatchesAtiName() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given - mock certificate with DIFFERENT ANS name
-            String differentAtiName = "ans://v2.0.0.agent.example.com";
+            String differentAtiName = "ati://v2.0.0.agent.example.com";
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
                 .thenReturn(Optional.of(differentAtiName)); // Different version
             certUtils.when(() -> CertificateUtils.extractHostFromAtiName(differentAtiName))
@@ -349,77 +343,43 @@ class ClientVerificationTest {
     }
 
     private TransparencyLog createMockRegistration(String status, String fingerprint, String atiName) {
-        CertificateInfo serverCert = new CertificateInfo();
-        serverCert.setFingerprint(fingerprint);
-        serverCert.setType(CertType.X509_DV_SERVER);
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName(atiName);
+        payload.setAgentHost(TEST_HOSTNAME);
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus(status);
 
-        CertificateInfo identityCert = new CertificateInfo();
-        identityCert.setFingerprint(fingerprint);
-        identityCert.setType(CertType.X509_OV_CLIENT);
-
-        AttestationsV1 attestations = new AttestationsV1();
-        attestations.setServerCert(serverCert);
-        attestations.setIdentityCert(identityCert);
-
-        AgentV1 agent = new AgentV1();
-        agent.setHost(TEST_HOSTNAME);
-        agent.setName("Test Agent");
-        agent.setVersion("v1.0.0");
-
-        EventV1 event = new EventV1();
-        event.setAtiName(atiName);
-        event.setAgent(agent);
-        event.setAttestations(attestations);
-
-        ProducerV1 producer = new ProducerV1();
-        producer.setEvent(event);
-
-        TransparencyLogV1 v1Payload = new TransparencyLogV1();
-        v1Payload.setLogId("log-123");
-        v1Payload.setProducer(producer);
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint(fingerprint);
+        certs.setIdentityCertFingerprint(fingerprint);
+        payload.setCertificates(certs);
 
         TransparencyLog log = new TransparencyLog();
         log.setStatus(status);
-        log.setSchemaVersion("V1");
-        log.setParsedPayload(v1Payload);
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
 
         return log;
     }
 
     private TransparencyLog createMockRegistrationNoAtiName(String status, String fingerprint) {
-        CertificateInfo serverCert = new CertificateInfo();
-        serverCert.setFingerprint(fingerprint);
-        serverCert.setType(CertType.X509_DV_SERVER);
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName(null); // No ATI name
+        payload.setAgentHost(TEST_HOSTNAME);
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus(status);
 
-        CertificateInfo identityCert = new CertificateInfo();
-        identityCert.setFingerprint(fingerprint);
-        identityCert.setType(CertType.X509_OV_CLIENT);
-
-        AttestationsV1 attestations = new AttestationsV1();
-        attestations.setServerCert(serverCert);
-        attestations.setIdentityCert(identityCert);
-
-        AgentV1 agent = new AgentV1();
-        agent.setHost(TEST_HOSTNAME);
-        agent.setName("Test Agent");
-        agent.setVersion("v1.0.0");
-
-        EventV1 event = new EventV1();
-        event.setAtiName(null); // No ANS name
-        event.setAgent(agent);
-        event.setAttestations(attestations);
-
-        ProducerV1 producer = new ProducerV1();
-        producer.setEvent(event);
-
-        TransparencyLogV1 v1Payload = new TransparencyLogV1();
-        v1Payload.setLogId("log-123");
-        v1Payload.setProducer(producer);
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint(fingerprint);
+        certs.setIdentityCertFingerprint(fingerprint);
+        payload.setCertificates(certs);
 
         TransparencyLog log = new TransparencyLog();
         log.setStatus(status);
-        log.setSchemaVersion("V1");
-        log.setParsedPayload(v1Payload);
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
 
         return log;
     }

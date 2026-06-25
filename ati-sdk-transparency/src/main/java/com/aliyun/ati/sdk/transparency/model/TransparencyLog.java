@@ -9,9 +9,9 @@ import java.util.Map;
 /**
  * Transparency log entry for an agent.
  *
- * <p>This is the main response from the transparency log API.
- * Use {@link #getV0Payload()} or {@link #getV1Payload()} to access
- * the strongly-typed payload based on schema version.</p>
+ * <p>This is the main response from the ATI transparency log API.
+ * Use {@link #getParsedPayload()} to access the strongly-typed
+ * {@link TransparencyLogAtiV1} payload.</p>
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransparencyLog {
@@ -37,12 +37,8 @@ public class TransparencyLog {
     @JsonProperty("evidenceRef")
     private EvidenceRef evidenceRef;
 
-    /**
-     * The strongly-typed payload based on schema version.
-     * This is populated by the TransparencyService after parsing.
-     */
     @JsonIgnore
-    private Object parsedPayload;
+    private TransparencyLogAtiV1 parsedPayload;
 
     public TransparencyLog() {
     }
@@ -103,57 +99,12 @@ public class TransparencyLog {
         this.status = status;
     }
 
-    public Object getParsedPayload() {
+    public TransparencyLogAtiV1 getParsedPayload() {
         return parsedPayload;
     }
 
-    public void setParsedPayload(Object parsedPayload) {
+    public void setParsedPayload(TransparencyLogAtiV1 parsedPayload) {
         this.parsedPayload = parsedPayload;
-    }
-
-    /**
-     * Returns the parsed payload as a V1 schema object, or null if not V1.
-     *
-     * @return the V1 payload, or null
-     */
-    public TransparencyLogV1 getV1Payload() {
-        if (parsedPayload instanceof TransparencyLogV1) {
-            return (TransparencyLogV1) parsedPayload;
-        }
-        return null;
-    }
-
-    /**
-     * Returns the parsed payload as a V0 schema object, or null if not V0.
-     *
-     * @return the V0 payload, or null
-     */
-    public TransparencyLogV0 getV0Payload() {
-        if (parsedPayload instanceof TransparencyLogV0) {
-            return (TransparencyLogV0) parsedPayload;
-        }
-        return null;
-    }
-
-    /**
-     * Returns true if this is a V1 schema entry.
-     *
-     * @return true if V1 schema
-     */
-    public boolean isV1() {
-        return "V1".equalsIgnoreCase(schemaVersion) || getV1Payload() != null;
-    }
-
-    /**
-     * Returns true if this is a V0 schema entry.
-     *
-     * @return true if V0 schema
-     */
-    public boolean isV0() {
-        return "V0".equalsIgnoreCase(schemaVersion)
-            || schemaVersion == null
-            || schemaVersion.isEmpty()
-            || getV0Payload() != null;
     }
 
     /**
@@ -162,17 +113,8 @@ public class TransparencyLog {
      * @return the server certificate fingerprint, or null if not available
      */
     public String getServerCertFingerprint() {
-        if (isV1()) {
-            TransparencyLogV1 v1 = getV1Payload();
-            if (v1 != null && v1.getAttestations() != null
-                    && v1.getAttestations().getServerCert() != null) {
-                return v1.getAttestations().getServerCert().getFingerprint();
-            }
-        } else if (isV0()) {
-            TransparencyLogV0 v0 = getV0Payload();
-            if (v0 != null && v0.getAttestations() != null) {
-                return v0.getAttestations().getServerCertFingerprint();
-            }
+        if (parsedPayload != null && parsedPayload.getCertificates() != null) {
+            return parsedPayload.getCertificates().getServerCertFingerprint();
         }
         return null;
     }
@@ -183,58 +125,28 @@ public class TransparencyLog {
      * @return the identity certificate fingerprint, or null if not available
      */
     public String getIdentityCertFingerprint() {
-        if (isV1()) {
-            TransparencyLogV1 v1 = getV1Payload();
-            if (v1 != null && v1.getAttestations() != null
-                    && v1.getAttestations().getIdentityCert() != null) {
-                return v1.getAttestations().getIdentityCert().getFingerprint();
-            }
-        } else if (isV0()) {
-            TransparencyLogV0 v0 = getV0Payload();
-            if (v0 != null && v0.getAttestations() != null) {
-                return v0.getAttestations().getClientCertFingerprint();
-            }
+        if (parsedPayload != null && parsedPayload.getCertificates() != null) {
+            return parsedPayload.getCertificates().getIdentityCertFingerprint();
         }
         return null;
     }
 
     /**
-     * Convenience method to get the ANS name.
+     * Convenience method to get the ATI name.
      *
-     * @return the ANS name, or null if not available
+     * @return the ATI name (e.g. "ati://v1.0.0.agent.example.com"), or null
      */
     public String getAtiName() {
-        if (isV1()) {
-            TransparencyLogV1 v1 = getV1Payload();
-            return v1 != null ? v1.getAtiName() : null;
-        } else if (isV0()) {
-            TransparencyLogV0 v0 = getV0Payload();
-            return v0 != null ? v0.getAtiName() : null;
-        }
-        return null;
+        return parsedPayload != null ? parsedPayload.getAgentName() : null;
     }
 
     /**
      * Convenience method to get the agent host (FQDN).
      *
-     * <p>This is the {@code agent.host} field from V1 schema or
-     * {@code agentFqdn} from V0 schema.</p>
-     *
      * @return the agent host, or null if not available
      */
     public String getAgentHost() {
-        if (isV1()) {
-            TransparencyLogV1 v1 = getV1Payload();
-            if (v1 != null && v1.getEvent() != null && v1.getEvent().getAgent() != null) {
-                return v1.getEvent().getAgent().getHost();
-            }
-        } else if (isV0()) {
-            TransparencyLogV0 v0 = getV0Payload();
-            if (v0 != null && v0.getEvent() != null) {
-                return v0.getEvent().getAgentFqdn();
-            }
-        }
-        return null;
+        return parsedPayload != null ? parsedPayload.getAgentHost() : null;
     }
 
     @Override

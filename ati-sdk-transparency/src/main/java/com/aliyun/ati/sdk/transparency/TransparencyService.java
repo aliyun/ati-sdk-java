@@ -10,9 +10,8 @@ import com.aliyun.ati.sdk.transparency.model.CheckpointHistoryParams;
 import com.aliyun.ati.sdk.transparency.model.CheckpointHistoryResponse;
 import com.aliyun.ati.sdk.transparency.model.CheckpointResponse;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
+import com.aliyun.ati.sdk.transparency.model.TransparencyLogAtiV1;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLogAudit;
-import com.aliyun.ati.sdk.transparency.model.TransparencyLogV0;
-import com.aliyun.ati.sdk.transparency.model.TransparencyLogV1;
 import com.aliyun.ati.sdk.transparency.scitt.RefreshDecision;
 
 import org.slf4j.Logger;
@@ -394,14 +393,9 @@ class TransparencyService implements AutoCloseable {
         }
 
         try {
-            if ("V1".equalsIgnoreCase(schemaVersion)) {
-                TransparencyLogV1 v1 = objectMapper.convertValue(result.getPayload(), TransparencyLogV1.class);
-                result.setParsedPayload(v1);
-            } else {
-                // V0 is default for missing or unknown schema version
-                TransparencyLogV0 v0 = objectMapper.convertValue(result.getPayload(), TransparencyLogV0.class);
-                result.setParsedPayload(v0);
-            }
+            TransparencyLogAtiV1 atiV1 = objectMapper.convertValue(
+                result.getPayload(), TransparencyLogAtiV1.class);
+            result.setParsedPayload(atiV1);
         } catch (IllegalArgumentException e) {
             LOGGER.warn("Failed to parse {} payload: {}", schemaVersion, e.getMessage());
         }

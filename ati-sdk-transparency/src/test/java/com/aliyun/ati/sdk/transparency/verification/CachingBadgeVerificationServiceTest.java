@@ -1,13 +1,7 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
-import com.aliyun.ati.sdk.transparency.model.AgentV1;
-import com.aliyun.ati.sdk.transparency.model.AttestationsV1;
-import com.aliyun.ati.sdk.transparency.model.CertificateInfo;
-import com.aliyun.ati.sdk.transparency.model.CertType;
-import com.aliyun.ati.sdk.transparency.model.EventV1;
-import com.aliyun.ati.sdk.transparency.model.ProducerV1;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
-import com.aliyun.ati.sdk.transparency.model.TransparencyLogV1;
+import com.aliyun.ati.sdk.transparency.model.TransparencyLogAtiV1;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -32,7 +26,7 @@ class CachingBadgeVerificationServiceTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_FINGERPRINT = "SHA256:a1b2c3d4e5f6g7h8";
-    private static final String TEST_ANS_NAME = "ans://v1.0.0.agent.example.com";
+    private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
 
     @Mock
     private BadgeVerificationService delegate;
@@ -437,39 +431,22 @@ class CachingBadgeVerificationServiceTest {
     }
 
     private TransparencyLog createMockRegistration(String status) {
-        CertificateInfo serverCert = new CertificateInfo();
-        serverCert.setFingerprint(TEST_FINGERPRINT);
-        serverCert.setType(CertType.X509_DV_SERVER);
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName(TEST_ANS_NAME);
+        payload.setAgentHost(TEST_HOSTNAME);
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus(status);
 
-        CertificateInfo identityCert = new CertificateInfo();
-        identityCert.setFingerprint(TEST_FINGERPRINT);
-        identityCert.setType(CertType.X509_OV_CLIENT);
-
-        AttestationsV1 attestations = new AttestationsV1();
-        attestations.setServerCert(serverCert);
-        attestations.setIdentityCert(identityCert);
-
-        AgentV1 agent = new AgentV1();
-        agent.setHost(TEST_HOSTNAME);
-        agent.setName("Test Agent");
-        agent.setVersion("v1.0.0");
-
-        EventV1 event = new EventV1();
-        event.setAtiName(TEST_ANS_NAME);
-        event.setAgent(agent);
-        event.setAttestations(attestations);
-
-        ProducerV1 producer = new ProducerV1();
-        producer.setEvent(event);
-
-        TransparencyLogV1 v1Payload = new TransparencyLogV1();
-        v1Payload.setLogId("log-123");
-        v1Payload.setProducer(producer);
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint(TEST_FINGERPRINT);
+        certs.setIdentityCertFingerprint(TEST_FINGERPRINT);
+        payload.setCertificates(certs);
 
         TransparencyLog log = new TransparencyLog();
         log.setStatus(status);
-        log.setSchemaVersion("V1");
-        log.setParsedPayload(v1Payload);
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
 
         return log;
     }

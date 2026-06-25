@@ -33,11 +33,9 @@ import java.util.concurrent.CompletableFuture;
  * // Get current registration
  * TransparencyLog log = client.getAgentTransparencyLog("agent-uuid");
  *
- * // Access V1 payload
- * if (log.isV1()) {
- *     TransparencyLogV1 v1 = log.getV1Payload();
- *     String fingerprint = v1.getAttestations().getServerCert().getFingerprint();
- * }
+ * // Access parsed payload
+ * TransparencyLogAtiV1 payload = log.getParsedPayload();
+ * String fingerprint = payload.getCertificates().getServerCertFingerprint();
  *
  * // Or use convenience methods
  * String serverFingerprint = log.getServerCertFingerprint();

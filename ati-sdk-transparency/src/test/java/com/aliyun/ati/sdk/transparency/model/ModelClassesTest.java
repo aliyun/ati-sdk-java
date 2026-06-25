@@ -16,98 +16,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ModelClassesTest {
 
     @Test
-    @DisplayName("RABadge getters and setters should work")
-    void raBadgeGettersAndSettersWork() {
-        RABadge badge = new RABadge();
-
-        badge.setRaId("test-ra-id");
-        badge.setBadgeUrlStatus("active");
-        badge.setRenewalStatus("valid");
-        badge.setAtiCapabilitiesHash("hash123");
-
-        OffsetDateTime now = OffsetDateTime.now();
-        badge.setIssuedAt(now);
-        badge.setExpiresAt(now.plusDays(365));
-
-        assertThat(badge.getRaId()).isEqualTo("test-ra-id");
-        assertThat(badge.getBadgeUrlStatus()).isEqualTo("active");
-        assertThat(badge.getRenewalStatus()).isEqualTo("valid");
-        assertThat(badge.getAtiCapabilitiesHash()).isEqualTo("hash123");
-        assertThat(badge.getIssuedAt()).isEqualTo(now);
-        assertThat(badge.getExpiresAt()).isEqualTo(now.plusDays(365));
-    }
-
-    @Test
-    @DisplayName("RABadge toString should contain key fields")
-    void raBadgeToStringShouldContainKeyFields() {
-        RABadge badge = new RABadge();
-        badge.setRaId("test-id");
-        badge.setBadgeUrlStatus("active");
-
-        String str = badge.toString();
-
-        assertThat(str).contains("test-id");
-        assertThat(str).contains("active");
-    }
-
-    @Test
-    @DisplayName("RABadge attestations should work")
-    void raBadgeAttestationsWork() {
-        RABadge badge = new RABadge();
-        AttestationsV0 attestations = new AttestationsV0();
-        badge.setAttestations(attestations);
-        badge.setRevocationReasonCode(RevocationReason.KEY_COMPROMISE);
-
-        assertThat(badge.getAttestations()).isSameAs(attestations);
-        assertThat(badge.getRevocationReasonCode()).isEqualTo(RevocationReason.KEY_COMPROMISE);
-    }
-
-    @Test
-    @DisplayName("AttestationsV0 getters and setters should work")
-    void attestationsV0GettersAndSettersWork() {
-        AttestationsV0 attestations = new AttestationsV0();
-
-        attestations.setServerCertFingerprint("fp123");
-        attestations.setClientCertFingerprint("client-fp");
-        attestations.setCsrSubmission("csr-data");
-        attestations.setDnssecStatus("DNSSEC_VALID");
-        attestations.setDomainValidation("VALIDATED");
-        attestations.setDomainValidationStatus("COMPLETED");
-        attestations.setIdentityCertType("X509-EV-CLIENT");
-        attestations.setServerCertType("X509-DV-SERVER");
-        attestations.setProtocolExtensionsVerified("true");
-        attestations.setDnsRecordsProvisionedStatus("PROVISIONED");
-
-        Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_tlsa", "record1");
-        attestations.setDnsRecordsProvisioned(dnsRecords);
-
-        assertThat(attestations.getServerCertFingerprint()).isEqualTo("fp123");
-        assertThat(attestations.getClientCertFingerprint()).isEqualTo("client-fp");
-        assertThat(attestations.getCsrSubmission()).isEqualTo("csr-data");
-        assertThat(attestations.getDnssecStatus()).isEqualTo("DNSSEC_VALID");
-        assertThat(attestations.getDomainValidation()).isEqualTo("VALIDATED");
-        assertThat(attestations.getDomainValidationStatus()).isEqualTo("COMPLETED");
-        assertThat(attestations.getIdentityCertType()).isEqualTo("X509-EV-CLIENT");
-        assertThat(attestations.getServerCertType()).isEqualTo("X509-DV-SERVER");
-        assertThat(attestations.getProtocolExtensionsVerified()).isEqualTo("true");
-        assertThat(attestations.getDnsRecordsProvisionedStatus()).isEqualTo("PROVISIONED");
-        assertThat(attestations.getDnsRecordsProvisioned()).containsEntry("_tlsa", "record1");
-    }
-
-    @Test
-    @DisplayName("AttestationsV0 toString should work")
-    void attestationsV0ToStringWorks() {
-        AttestationsV0 attestations = new AttestationsV0();
-        attestations.setServerCertFingerprint("fp123");
-        attestations.setClientCertFingerprint("client-fp");
-
-        String str = attestations.toString();
-        assertThat(str).contains("fp123");
-        assertThat(str).contains("client-fp");
-    }
-
-    @Test
     @DisplayName("CertificateInfo getters and setters should work")
     void certificateInfoGettersAndSettersWork() {
         CertificateInfo info = new CertificateInfo();
@@ -136,45 +44,6 @@ class ModelClassesTest {
 
         String str = info.toString();
         assertThat(str).contains("fp123");
-    }
-
-    @Test
-    @DisplayName("EventV0 getters and setters should work")
-    void eventV0GettersAndSettersWork() {
-        EventV0 event = new EventV0();
-        EventMetadataV0 metadata = new EventMetadataV0();
-        RABadge badge = new RABadge();
-        OffsetDateTime now = OffsetDateTime.now();
-
-        event.setMetadata(metadata);
-        event.setEventType(EventTypeV0.AGENT_ACTIVE);
-        event.setAgentFqdn("agent.example.com");
-        event.setAgentId("agent-123");
-        event.setAtiName("ans-name");
-        event.setProtocol("MCP");
-        event.setRaBadge(badge);
-        event.setTimestamp(now);
-
-        assertThat(event.getMetadata()).isSameAs(metadata);
-        assertThat(event.getEventType()).isEqualTo(EventTypeV0.AGENT_ACTIVE);
-        assertThat(event.getAgentFqdn()).isEqualTo("agent.example.com");
-        assertThat(event.getAgentId()).isEqualTo("agent-123");
-        assertThat(event.getAtiName()).isEqualTo("ans-name");
-        assertThat(event.getProtocol()).isEqualTo("MCP");
-        assertThat(event.getRaBadge()).isSameAs(badge);
-        assertThat(event.getTimestamp()).isEqualTo(now);
-    }
-
-    @Test
-    @DisplayName("EventV0 toString should work")
-    void eventV0ToStringWorks() {
-        EventV0 event = new EventV0();
-        event.setAgentFqdn("agent.example.com");
-        event.setAgentId("agent-123");
-
-        String str = event.toString();
-        assertThat(str).contains("agent.example.com");
-        assertThat(str).contains("agent-123");
     }
 
     @Test
@@ -400,40 +269,6 @@ class ModelClassesTest {
     }
 
     @Test
-    @DisplayName("RevocationReason enum values exist")
-    void revocationReasonEnumValuesExist() {
-        assertThat(RevocationReason.values()).contains(
-            RevocationReason.KEY_COMPROMISE,
-            RevocationReason.SUPERSEDED,
-            RevocationReason.CESSATION_OF_OPERATION,
-            RevocationReason.AA_COMPROMISE,
-            RevocationReason.AFFILIATION_CHANGED,
-            RevocationReason.CA_COMPROMISE,
-            RevocationReason.CERTIFICATE_HOLD,
-            RevocationReason.EXPIRED_CERT,
-            RevocationReason.PRIVILEGE_WITHDRAWN,
-            RevocationReason.REMOVE_FROM_CRL,
-            RevocationReason.UNSPECIFIED
-        );
-    }
-
-    @Test
-    @DisplayName("RevocationReason getValue should return string value")
-    void revocationReasonGetValueWorks() {
-        assertThat(RevocationReason.KEY_COMPROMISE.getValue()).isEqualTo("KEY_COMPROMISE");
-        assertThat(RevocationReason.SUPERSEDED.getValue()).isEqualTo("SUPERSEDED");
-    }
-
-    @Test
-    @DisplayName("RevocationReason fromString should parse correctly")
-    void revocationReasonFromStringWorks() {
-        assertThat(RevocationReason.fromString("KEY_COMPROMISE")).isEqualTo(RevocationReason.KEY_COMPROMISE);
-        assertThat(RevocationReason.fromString("key_compromise")).isEqualTo(RevocationReason.KEY_COMPROMISE);
-        assertThat(RevocationReason.fromString(null)).isNull();
-        assertThat(RevocationReason.fromString("UNKNOWN")).isNull();
-    }
-
-    @Test
     @DisplayName("CertType enum values exist")
     void certTypeEnumValuesExist() {
         assertThat(CertType.values()).contains(
@@ -461,484 +296,97 @@ class ModelClassesTest {
         assertThat(CertType.fromString("UNKNOWN")).isNull();
     }
 
+    // ==================== TransparencyLogAtiV1 Tests ====================
+
     @Test
-    @DisplayName("EventTypeV0 enum values exist")
-    void eventTypeV0EnumValuesExist() {
-        assertThat(EventTypeV0.values()).contains(
-            EventTypeV0.AGENT_ACTIVE,
-            EventTypeV0.AGENT_REVOCATION,
-            EventTypeV0.CERTIFICATE_EXPIRING,
-            EventTypeV0.CERTIFICATE_RENEWED
-        );
+    @DisplayName("TransparencyLogAtiV1 getters and setters should work")
+    void transparencyLogAtiV1GettersAndSettersWork() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+
+        payload.setLogId("log-123");
+        payload.setEventType("AGENT_REGISTERED");
+        payload.setTimestamp("2026-01-15T10:00:00+08:00");
+        payload.setAgentName("ati://v1.0.0.agent.example.com");
+        payload.setAgentHost("agent.example.com");
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus("ACTIVE");
+
+        assertThat(payload.getLogId()).isEqualTo("log-123");
+        assertThat(payload.getEventType()).isEqualTo("AGENT_REGISTERED");
+        assertThat(payload.getTimestamp()).isEqualTo("2026-01-15T10:00:00+08:00");
+        assertThat(payload.getAgentName()).isEqualTo("ati://v1.0.0.agent.example.com");
+        assertThat(payload.getAgentHost()).isEqualTo("agent.example.com");
+        assertThat(payload.getVersion()).isEqualTo("1.0.0");
+        assertThat(payload.getAgentId()).isEqualTo("some-uuid");
+        assertThat(payload.getAgentStatus()).isEqualTo("ACTIVE");
     }
 
     @Test
-    @DisplayName("EventTypeV0 getValue should return string value")
-    void eventTypeV0GetValueWorks() {
-        assertThat(EventTypeV0.AGENT_ACTIVE.getValue()).isEqualTo("AGENT_ACTIVE");
-        assertThat(EventTypeV0.AGENT_REVOCATION.getValue()).isEqualTo("AGENT_REVOCATION");
+    @DisplayName("TransparencyLogAtiV1 certificates should work")
+    void transparencyLogAtiV1CertificatesWork() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint("SHA-256:abc123");
+        certs.setIdentityCertFingerprint("SHA-256:def456");
+        payload.setCertificates(certs);
+
+        assertThat(payload.getCertificates()).isSameAs(certs);
+        assertThat(payload.getCertificates().getServerCertFingerprint()).isEqualTo("SHA-256:abc123");
+        assertThat(payload.getCertificates().getIdentityCertFingerprint()).isEqualTo("SHA-256:def456");
     }
 
     @Test
-    @DisplayName("EventTypeV0 fromString should parse correctly")
-    void eventTypeV0FromStringWorks() {
-        assertThat(EventTypeV0.fromString("AGENT_ACTIVE")).isEqualTo(EventTypeV0.AGENT_ACTIVE);
-        assertThat(EventTypeV0.fromString("agent_active")).isEqualTo(EventTypeV0.AGENT_ACTIVE);
-        assertThat(EventTypeV0.fromString(null)).isNull();
-        assertThat(EventTypeV0.fromString("UNKNOWN")).isNull();
-    }
+    @DisplayName("TransparencyLogAtiV1 toString should work")
+    void transparencyLogAtiV1ToStringWorks() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName("ati://v1.0.0.agent.example.com");
+        payload.setAgentHost("agent.example.com");
 
-    @Test
-    @DisplayName("SchemaVersion enum values exist")
-    void schemaVersionEnumValuesExist() {
-        assertThat(SchemaVersion.values()).contains(
-            SchemaVersion.V0,
-            SchemaVersion.V1
-        );
-    }
-
-    @Test
-    @DisplayName("SchemaVersion getValue should return string value")
-    void schemaVersionGetValueWorks() {
-        assertThat(SchemaVersion.V0.getValue()).isEqualTo("V0");
-        assertThat(SchemaVersion.V1.getValue()).isEqualTo("V1");
-    }
-
-    @Test
-    @DisplayName("SchemaVersion fromString should parse correctly")
-    void schemaVersionFromStringWorks() {
-        assertThat(SchemaVersion.fromString("V0")).isEqualTo(SchemaVersion.V0);
-        assertThat(SchemaVersion.fromString("v1")).isEqualTo(SchemaVersion.V1);
-        assertThat(SchemaVersion.fromString(null)).isEqualTo(SchemaVersion.V0); // defaults to V0
-        assertThat(SchemaVersion.fromString("")).isEqualTo(SchemaVersion.V0); // defaults to V0
-        assertThat(SchemaVersion.fromString("UNKNOWN")).isEqualTo(SchemaVersion.V0); // defaults to V0
-    }
-
-    // ==================== V1 Model Classes ====================
-
-    @Test
-    @DisplayName("EventTypeV1 enum values exist")
-    void eventTypeV1EnumValuesExist() {
-        assertThat(EventTypeV1.values()).contains(
-            EventTypeV1.AGENT_REGISTERED,
-            EventTypeV1.AGENT_REVOKED,
-            EventTypeV1.AGENT_DEPRECATED,
-            EventTypeV1.AGENT_RENEWED
-        );
-    }
-
-    @Test
-    @DisplayName("EventTypeV1 getValue should return string value")
-    void eventTypeV1GetValueWorks() {
-        assertThat(EventTypeV1.AGENT_REGISTERED.getValue()).isEqualTo("AGENT_REGISTERED");
-        assertThat(EventTypeV1.AGENT_REVOKED.getValue()).isEqualTo("AGENT_REVOKED");
-    }
-
-    @Test
-    @DisplayName("EventTypeV1 fromString should parse correctly")
-    void eventTypeV1FromStringWorks() {
-        assertThat(EventTypeV1.fromString("AGENT_REGISTERED")).isEqualTo(EventTypeV1.AGENT_REGISTERED);
-        assertThat(EventTypeV1.fromString("agent_registered")).isEqualTo(EventTypeV1.AGENT_REGISTERED);
-        assertThat(EventTypeV1.fromString(null)).isNull();
-        assertThat(EventTypeV1.fromString("UNKNOWN")).isNull();
-    }
-
-    @Test
-    @DisplayName("AgentV1 getters and setters should work")
-    void agentV1GettersAndSettersWork() {
-        AgentV1 agent = new AgentV1();
-
-        agent.setHost("agent.example.com");
-        agent.setVersion("v1.0.0");
-        agent.setName("Test Agent");
-        agent.setProviderId("provider-123");
-
-        assertThat(agent.getHost()).isEqualTo("agent.example.com");
-        assertThat(agent.getVersion()).isEqualTo("v1.0.0");
-        assertThat(agent.getName()).isEqualTo("Test Agent");
-        assertThat(agent.getProviderId()).isEqualTo("provider-123");
-    }
-
-    @Test
-    @DisplayName("AgentV1 toString should work")
-    void agentV1ToStringWorks() {
-        AgentV1 agent = new AgentV1();
-        agent.setHost("agent.example.com");
-        agent.setVersion("v1.0.0");
-
-        String str = agent.toString();
+        String str = payload.toString();
+        assertThat(str).contains("ati://v1.0.0.agent.example.com");
         assertThat(str).contains("agent.example.com");
-        assertThat(str).contains("v1.0.0");
     }
 
     @Test
-    @DisplayName("AttestationsV1 getters and setters should work")
-    void attestationsV1GettersAndSettersWork() {
-        AttestationsV1 attestations = new AttestationsV1();
-        CertificateInfo serverCert = new CertificateInfo("fp1", CertType.X509_DV_SERVER);
-        CertificateInfo identityCert = new CertificateInfo("fp2", CertType.X509_EV_CLIENT);
+    @DisplayName("TransparencyLogAtiV1.Certificates toString should work")
+    void transparencyLogAtiV1CertificatesToStringWorks() {
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint("SHA-256:server");
+        certs.setIdentityCertFingerprint("SHA-256:identity");
 
-        attestations.setDomainValidation("ACME-DNS-01");
-        attestations.setServerCert(serverCert);
-        attestations.setIdentityCert(identityCert);
-
-        assertThat(attestations.getDomainValidation()).isEqualTo("ACME-DNS-01");
-        assertThat(attestations.getServerCert()).isSameAs(serverCert);
-        assertThat(attestations.getIdentityCert()).isSameAs(identityCert);
+        String str = certs.toString();
+        assertThat(str).contains("SHA-256:server");
+        assertThat(str).contains("SHA-256:identity");
     }
 
-    @Test
-    @DisplayName("AttestationsV1 toString should work")
-    void attestationsV1ToStringWorks() {
-        AttestationsV1 attestations = new AttestationsV1();
-        attestations.setDomainValidation("ACME-DNS-01");
-
-        String str = attestations.toString();
-        assertThat(str).contains("ACME-DNS-01");
-    }
+    // ==================== TransparencyLog convenience methods (ATI-TL-V1) ====================
 
     @Test
-    @DisplayName("EventV1 getters and setters should work")
-    void eventV1GettersAndSettersWork() {
-        EventV1 event = new EventV1();
-        AgentV1 agent = new AgentV1();
-        AttestationsV1 attestations = new AttestationsV1();
-        OffsetDateTime now = OffsetDateTime.now();
+    @DisplayName("TransparencyLog convenience methods should work with ATI-TL-V1 payload")
+    void transparencyLogConvenienceMethodsShouldWorkWithAtiV1() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName("ati://v1.0.0.agent.example.com");
+        payload.setAgentHost("agent.example.com");
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus("ACTIVE");
 
-        event.setAtiId("ans-123");
-        event.setAtiName("ans://v1.0.0.agent.example");
-        event.setEventType(EventTypeV1.AGENT_REGISTERED);
-        event.setAgent(agent);
-        event.setAttestations(attestations);
-        event.setIssuedAt(now);
-        event.setExpiresAt(now.plusYears(1));
-        event.setRaId("ra.example.com");
-        event.setTimestamp(now);
-        event.setRevocationReasonCode(RevocationReason.KEY_COMPROMISE);
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint("SHA-256:server");
+        certs.setIdentityCertFingerprint("SHA-256:identity");
+        payload.setCertificates(certs);
 
-        assertThat(event.getAtiId()).isEqualTo("ans-123");
-        assertThat(event.getAtiName()).isEqualTo("ans://v1.0.0.agent.example");
-        assertThat(event.getEventType()).isEqualTo(EventTypeV1.AGENT_REGISTERED);
-        assertThat(event.getAgent()).isSameAs(agent);
-        assertThat(event.getAttestations()).isSameAs(attestations);
-        assertThat(event.getIssuedAt()).isEqualTo(now);
-        assertThat(event.getExpiresAt()).isEqualTo(now.plusYears(1));
-        assertThat(event.getRaId()).isEqualTo("ra.example.com");
-        assertThat(event.getTimestamp()).isEqualTo(now);
-        assertThat(event.getRevocationReasonCode()).isEqualTo(RevocationReason.KEY_COMPROMISE);
-    }
-
-    @Test
-    @DisplayName("EventV1 toString should work")
-    void eventV1ToStringWorks() {
-        EventV1 event = new EventV1();
-        event.setAtiId("ans-123");
-        event.setAtiName("ans://v1.0.0.agent.example");
-
-        String str = event.toString();
-        assertThat(str).contains("ans-123");
-    }
-
-    @Test
-    @DisplayName("ProducerV1 getters and setters should work")
-    void producerV1GettersAndSettersWork() {
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-
-        producer.setEvent(event);
-        producer.setKeyId("key-123");
-        producer.setSignature("sig-456");
-
-        assertThat(producer.getEvent()).isSameAs(event);
-        assertThat(producer.getKeyId()).isEqualTo("key-123");
-        assertThat(producer.getSignature()).isEqualTo("sig-456");
-    }
-
-    @Test
-    @DisplayName("ProducerV1 toString should work")
-    void producerV1ToStringWorks() {
-        ProducerV1 producer = new ProducerV1();
-        producer.setKeyId("key-123");
-        producer.setSignature("sig-456");
-
-        String str = producer.toString();
-        assertThat(str).contains("key-123");
-    }
-
-    @Test
-    @DisplayName("ProducerV0 getters and setters should work")
-    void producerV0GettersAndSettersWork() {
-        ProducerV0 producer = new ProducerV0();
-        EventV0 event = new EventV0();
-
-        producer.setEvent(event);
-        producer.setKeyId("key-123");
-        producer.setSignature("sig-456");
-
-        assertThat(producer.getEvent()).isSameAs(event);
-        assertThat(producer.getKeyId()).isEqualTo("key-123");
-        assertThat(producer.getSignature()).isEqualTo("sig-456");
-    }
-
-    @Test
-    @DisplayName("ProducerV0 toString should work")
-    void producerV0ToStringWorks() {
-        ProducerV0 producer = new ProducerV0();
-        producer.setKeyId("key-123");
-
-        String str = producer.toString();
-        assertThat(str).contains("key-123");
-    }
-
-    @Test
-    @DisplayName("EventMetadataV0 getters and setters should work")
-    void eventMetadataV0GettersAndSettersWork() {
-        EventMetadataV0 metadata = new EventMetadataV0();
-
-        metadata.setAgentCardUrl("https://example.com/card");
-        metadata.setAtiCapabilities(List.of("cap1", "cap2"));
-        metadata.setDescription("Test description");
-        metadata.setEndpoint("https://example.com/api");
-        metadata.setRaBadgeUrl("https://example.com/badge");
-
-        assertThat(metadata.getAgentCardUrl()).isEqualTo("https://example.com/card");
-        assertThat(metadata.getAtiCapabilities()).containsExactly("cap1", "cap2");
-        assertThat(metadata.getDescription()).isEqualTo("Test description");
-        assertThat(metadata.getEndpoint()).isEqualTo("https://example.com/api");
-        assertThat(metadata.getRaBadgeUrl()).isEqualTo("https://example.com/badge");
-    }
-
-    @Test
-    @DisplayName("EventMetadataV0 toString should work")
-    void eventMetadataV0ToStringWorks() {
-        EventMetadataV0 metadata = new EventMetadataV0();
-        metadata.setEndpoint("https://example.com/api");
-        metadata.setDescription("Test description");
-
-        String str = metadata.toString();
-        assertThat(str).contains("https://example.com/api");
-        assertThat(str).contains("Test description");
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV0 getters and setters should work")
-    void transparencyLogV0GettersAndSettersWork() {
-        TransparencyLogV0 log = new TransparencyLogV0();
-        ProducerV0 producer = new ProducerV0();
-
-        log.setLogId("log-123");
-        log.setProducer(producer);
-
-        assertThat(log.getLogId()).isEqualTo("log-123");
-        assertThat(log.getProducer()).isSameAs(producer);
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV0 toString should work")
-    void transparencyLogV0ToStringWorks() {
-        TransparencyLogV0 log = new TransparencyLogV0();
-        log.setLogId("log-123");
-
-        String str = log.toString();
-        assertThat(str).contains("log-123");
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV0 getAtiName should extract from producer event")
-    void transparencyLogV0GetAtiNameWorks() {
-        TransparencyLogV0 log = new TransparencyLogV0();
-        ProducerV0 producer = new ProducerV0();
-        EventV0 event = new EventV0();
-        event.setAtiName("ans://v1.0.0.agent.example");
-        producer.setEvent(event);
-        log.setProducer(producer);
-
-        assertThat(log.getAtiName()).isEqualTo("ans://v1.0.0.agent.example");
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV0 getAtiName should return null when no producer")
-    void transparencyLogV0GetAtiNameNullWhenNoProducer() {
-        TransparencyLogV0 log = new TransparencyLogV0();
-
-        assertThat(log.getAtiName()).isNull();
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getters and setters should work")
-    void transparencyLogV1GettersAndSettersWork() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-
-        log.setLogId("log-v1-123");
-        log.setProducer(producer);
-
-        assertThat(log.getLogId()).isEqualTo("log-v1-123");
-        assertThat(log.getProducer()).isSameAs(producer);
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 toString should work")
-    void transparencyLogV1ToStringWorks() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        log.setLogId("log-v1-123");
-
-        String str = log.toString();
-        assertThat(str).contains("log-v1-123");
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getEventType should extract from producer event")
-    void transparencyLogV1GetEventTypeWorks() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-        event.setEventType(EventTypeV1.AGENT_REGISTERED);
-        producer.setEvent(event);
-        log.setProducer(producer);
-
-        assertThat(log.getEventType()).isEqualTo(EventTypeV1.AGENT_REGISTERED);
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getAtiName should extract from producer event")
-    void transparencyLogV1GetAtiNameWorks() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-        event.setAtiName("ans://v1.0.0.agent.example");
-        producer.setEvent(event);
-        log.setProducer(producer);
-
-        assertThat(log.getAtiName()).isEqualTo("ans://v1.0.0.agent.example");
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getAttestations should extract from event")
-    void transparencyLogV1GetAttestationsWorks() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-        AttestationsV1 attestations = new AttestationsV1();
-        event.setAttestations(attestations);
-        producer.setEvent(event);
-        log.setProducer(producer);
-
-        assertThat(log.getAttestations()).isSameAs(attestations);
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getEvent should extract from producer")
-    void transparencyLogV1GetEventWorks() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-        producer.setEvent(event);
-        log.setProducer(producer);
-
-        assertThat(log.getEvent()).isSameAs(event);
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 convenience methods return null when no producer")
-    void transparencyLogV1ConvenienceMethodsReturnNullWhenNoProducer() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-
-        assertThat(log.getEventType()).isNull();
-        assertThat(log.getAtiName()).isNull();
-        assertThat(log.getEvent()).isNull();
-        assertThat(log.getAttestations()).isNull();
-    }
-
-    @Test
-    @DisplayName("TransparencyLogV1 getAttestations returns null when event is null")
-    void transparencyLogV1GetAttestationsReturnsNullWhenEventIsNull() {
-        TransparencyLogV1 log = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        // producer with no event set
-        log.setProducer(producer);
-
-        assertThat(log.getAttestations()).isNull();
-    }
-
-    @Test
-    @DisplayName("TransparencyLog convenience methods should work for V1")
-    void transparencyLogConvenienceMethodsShouldWorkForV1() {
         TransparencyLog log = new TransparencyLog();
-        log.setSchemaVersion("V1");
+        log.setStatus("ACTIVE");
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
 
-        // Create V1 payload
-        TransparencyLogV1 v1 = new TransparencyLogV1();
-        ProducerV1 producer = new ProducerV1();
-        EventV1 event = new EventV1();
-        AgentV1 agent = new AgentV1();
-        agent.setHost("agent.example.com");
-        AttestationsV1 attestations = new AttestationsV1();
-        CertificateInfo serverCert = new CertificateInfo("SHA256:server", CertType.X509_DV_SERVER);
-        CertificateInfo identityCert = new CertificateInfo("SHA256:identity", CertType.X509_EV_CLIENT);
-        attestations.setServerCert(serverCert);
-        attestations.setIdentityCert(identityCert);
-        event.setAgent(agent);
-        event.setAttestations(attestations);
-        event.setAtiName("ans://v1.0.0.agent.example");
-        producer.setEvent(event);
-        v1.setProducer(producer);
-        log.setParsedPayload(v1);
-
-        assertThat(log.isV1()).isTrue();
-        assertThat(log.isV0()).isFalse();
-        assertThat(log.getServerCertFingerprint()).isEqualTo("SHA256:server");
-        assertThat(log.getIdentityCertFingerprint()).isEqualTo("SHA256:identity");
+        assertThat(log.getServerCertFingerprint()).isEqualTo("SHA-256:server");
+        assertThat(log.getIdentityCertFingerprint()).isEqualTo("SHA-256:identity");
         assertThat(log.getAgentHost()).isEqualTo("agent.example.com");
-        assertThat(log.getAtiName()).isEqualTo("ans://v1.0.0.agent.example");
-    }
-
-    @Test
-    @DisplayName("TransparencyLog convenience methods should work for V0")
-    void transparencyLogConvenienceMethodsShouldWorkForV0() {
-        TransparencyLog log = new TransparencyLog();
-        log.setSchemaVersion("V0");
-
-        // Create V0 payload
-        TransparencyLogV0 v0 = new TransparencyLogV0();
-        ProducerV0 producer = new ProducerV0();
-        EventV0 event = new EventV0();
-        event.setAgentFqdn("agent.example.com");
-        event.setAtiName("ans://v1.0.0.agent.example");
-        RABadge badge = new RABadge();
-        AttestationsV0 attestations = new AttestationsV0();
-        attestations.setServerCertFingerprint("SHA256:server");
-        attestations.setClientCertFingerprint("SHA256:client");
-        badge.setAttestations(attestations);
-        event.setRaBadge(badge);
-        producer.setEvent(event);
-        v0.setProducer(producer);
-        log.setParsedPayload(v0);
-
-        assertThat(log.isV0()).isTrue();
-        assertThat(log.isV1()).isFalse();
-        assertThat(log.getServerCertFingerprint()).isEqualTo("SHA256:server");
-        assertThat(log.getIdentityCertFingerprint()).isEqualTo("SHA256:client");
-        assertThat(log.getAgentHost()).isEqualTo("agent.example.com");
-        assertThat(log.getAtiName()).isEqualTo("ans://v1.0.0.agent.example");
-    }
-
-    @Test
-    @DisplayName("TransparencyLog getV1Payload and getV0Payload should return typed payload")
-    void transparencyLogGetTypedPayloadWorks() {
-        TransparencyLog logV1 = new TransparencyLog();
-        TransparencyLogV1 v1 = new TransparencyLogV1();
-        logV1.setParsedPayload(v1);
-
-        assertThat(logV1.getV1Payload()).isSameAs(v1);
-        assertThat(logV1.getV0Payload()).isNull();
-
-        TransparencyLog logV0 = new TransparencyLog();
-        TransparencyLogV0 v0 = new TransparencyLogV0();
-        logV0.setParsedPayload(v0);
-
-        assertThat(logV0.getV0Payload()).isSameAs(v0);
-        assertThat(logV0.getV1Payload()).isNull();
+        assertThat(log.getAtiName()).isEqualTo("ati://v1.0.0.agent.example.com");
     }
 
     @Test
@@ -950,6 +398,21 @@ class ModelClassesTest {
         assertThat(log.getIdentityCertFingerprint()).isNull();
         assertThat(log.getAgentHost()).isNull();
         assertThat(log.getAtiName()).isNull();
+    }
+
+    @Test
+    @DisplayName("TransparencyLog convenience methods return null when no certificates")
+    void transparencyLogConvenienceMethodsReturnNullWhenNoCertificates() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName("ati://v1.0.0.agent.example.com");
+        // No certificates set
+
+        TransparencyLog log = new TransparencyLog();
+        log.setParsedPayload(payload);
+
+        assertThat(log.getServerCertFingerprint()).isNull();
+        assertThat(log.getIdentityCertFingerprint()).isNull();
+        assertThat(log.getAtiName()).isEqualTo("ati://v1.0.0.agent.example.com");
     }
 
     @Test

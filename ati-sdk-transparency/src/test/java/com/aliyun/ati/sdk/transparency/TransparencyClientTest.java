@@ -5,12 +5,11 @@ import com.github.tomakehurst.wiremock.junit5.WireMockTest;
 import com.aliyun.ati.sdk.exception.AtiNotFoundException;
 import com.aliyun.ati.sdk.transparency.model.AgentAuditParams;
 import com.aliyun.ati.sdk.transparency.model.CheckpointResponse;
-import com.aliyun.ati.sdk.transparency.model.EventTypeV1;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
+import com.aliyun.ati.sdk.transparency.model.TransparencyLogAtiV1;
 import com.aliyun.ati.sdk.transparency.model.CheckpointHistoryParams;
 import com.aliyun.ati.sdk.transparency.model.CheckpointHistoryResponse;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLogAudit;
-import com.aliyun.ati.sdk.transparency.model.TransparencyLogV1;
 import com.aliyun.ati.sdk.transparency.scitt.TrustedDomainRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,16 +46,15 @@ class TransparencyClientTest {
     }
 
     @Test
-    @DisplayName("Should retrieve agent transparency log with V1 schema")
-    void shouldRetrieveAgentTransparencyLogV1(WireMockRuntimeInfo wmRuntimeInfo) {
+    @DisplayName("Should retrieve agent transparency log with ATI-TL-V1 schema")
+    void shouldRetrieveAgentTransparencyLogAtiV1(WireMockRuntimeInfo wmRuntimeInfo) {
         String baseUrl = wmRuntimeInfo.getHttpBaseUrl();
 
         stubFor(get(urlEqualTo("/v1/agents/" + TEST_AGENT_ID))
             .willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
-                .withHeader("X-Schema-Version", "V1")
-                .withBody(v1TransparencyLogResponse())));
+                .withBody(atiV1TransparencyLogResponse())));
 
         TransparencyClient client = TransparencyClient.builder()
             .baseUrl(baseUrl)
@@ -66,45 +64,18 @@ class TransparencyClientTest {
 
         assertThat(result).isNotNull();
         assertThat(result.getStatus()).isEqualTo("ACTIVE");
-        assertThat(result.isV1()).isTrue();
-        assertThat(result.getV1Payload()).isNotNull();
+        assertThat(result.getSchemaVersion()).isEqualTo("ATI-TL-V1");
+        assertThat(result.getParsedPayload()).isNotNull();
 
-        TransparencyLogV1 v1 = result.getV1Payload();
-        assertThat(v1.getLogId()).isEqualTo("log-123");
-        assertThat(v1.getEventType()).isEqualTo(EventTypeV1.AGENT_REGISTERED);
-        assertThat(v1.getAtiName()).isEqualTo("ans://v1.0.0.agent.example.com");
+        TransparencyLogAtiV1 payload = result.getParsedPayload();
+        assertThat(payload.getLogId()).isEqualTo("log-123");
+        assertThat(payload.getEventType()).isEqualTo("AGENT_REGISTERED");
+        assertThat(payload.getAgentName()).isEqualTo("ati://v1.0.0.agent.example.com");
 
         // Test convenience methods
-        assertThat(result.getServerCertFingerprint()).isEqualTo("SHA256:a1b2c3d4");
-        assertThat(result.getIdentityCertFingerprint()).isEqualTo("SHA256:e5f6g7h8");
-        assertThat(result.getAtiName()).isEqualTo("ans://v1.0.0.agent.example.com");
-        assertThat(result.getAgentHost()).isEqualTo("agent.example.com");
-    }
-
-    @Test
-    @DisplayName("Should retrieve agent transparency log with V0 schema")
-    void shouldRetrieveAgentTransparencyLogV0(WireMockRuntimeInfo wmRuntimeInfo) {
-        String baseUrl = wmRuntimeInfo.getHttpBaseUrl();
-
-        stubFor(get(urlEqualTo("/v1/agents/" + TEST_AGENT_ID))
-            .willReturn(aResponse()
-                .withStatus(200)
-                .withHeader("Content-Type", "application/json")
-                .withBody(v0TransparencyLogResponse())));
-
-        TransparencyClient client = TransparencyClient.builder()
-            .baseUrl(baseUrl)
-            .build();
-
-        TransparencyLog result = client.getAgentTransparencyLog(TEST_AGENT_ID);
-
-        assertThat(result).isNotNull();
-        assertThat(result.isV0()).isTrue();
-        assertThat(result.getV0Payload()).isNotNull();
-
-        // Test V0 convenience methods
-        assertThat(result.getServerCertFingerprint()).isEqualTo("SHA256:server123");
-        assertThat(result.getIdentityCertFingerprint()).isEqualTo("SHA256:client456");
+        assertThat(result.getServerCertFingerprint()).isEqualTo("SHA-256:a1b2c3d4");
+        assertThat(result.getIdentityCertFingerprint()).isEqualTo("SHA-256:e5f6g7h8");
+        assertThat(result.getAtiName()).isEqualTo("ati://v1.0.0.agent.example.com");
         assertThat(result.getAgentHost()).isEqualTo("agent.example.com");
     }
 
@@ -312,7 +283,7 @@ class TransparencyClientTest {
             .willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
-                .withBody(v1TransparencyLogResponse())));
+                .withBody(atiV1TransparencyLogResponse())));
 
         TransparencyClient client = TransparencyClient.builder()
             .baseUrl(baseUrl)
@@ -321,7 +292,7 @@ class TransparencyClientTest {
         TransparencyLog result = client.getAgentTransparencyLogAsync(TEST_AGENT_ID).get();
 
         assertThat(result).isNotNull();
-        assertThat(result.isV1()).isTrue();
+        assertThat(result.getSchemaVersion()).isEqualTo("ATI-TL-V1");
     }
 
     @Test
@@ -530,29 +501,6 @@ class TransparencyClientTest {
     }
 
     @Test
-    @DisplayName("Should handle V0 schema version from header")
-    void shouldHandleV0SchemaVersionFromHeader(WireMockRuntimeInfo wmRuntimeInfo) {
-        String baseUrl = wmRuntimeInfo.getHttpBaseUrl();
-
-        // Response without schemaVersion in body, relies on header
-        stubFor(get(urlEqualTo("/v1/agents/" + TEST_AGENT_ID))
-            .willReturn(aResponse()
-                .withStatus(200)
-                .withHeader("Content-Type", "application/json")
-                .withHeader("X-Schema-Version", "V0")
-                .withBody(v0TransparencyLogWithoutSchemaVersion())));
-
-        TransparencyClient client = TransparencyClient.builder()
-            .baseUrl(baseUrl)
-            .build();
-
-        TransparencyLog result = client.getAgentTransparencyLog(TEST_AGENT_ID);
-
-        assertThat(result).isNotNull();
-        assertThat(result.isV0()).isTrue();
-    }
-
-    @Test
     @DisplayName("Should default to V0 when no schema version present")
     void shouldDefaultToV0WhenNoSchemaVersionPresent(WireMockRuntimeInfo wmRuntimeInfo) {
         String baseUrl = wmRuntimeInfo.getHttpBaseUrl();
@@ -562,7 +510,7 @@ class TransparencyClientTest {
             .willReturn(aResponse()
                 .withStatus(200)
                 .withHeader("Content-Type", "application/json")
-                .withBody(v0TransparencyLogWithoutSchemaVersion())));
+                .withBody(atiV1TransparencyLogWithoutSchemaVersion())));
 
         TransparencyClient client = TransparencyClient.builder()
             .baseUrl(baseUrl)
@@ -828,78 +776,26 @@ class TransparencyClientTest {
 
     // ==================== Test Data ====================
 
-    private String v1TransparencyLogResponse() {
+    private String atiV1TransparencyLogResponse() {
         return """
             {
               "status": "ACTIVE",
-              "schemaVersion": "V1",
+              "schemaVersion": "ATI-TL-V1",
               "payload": {
                 "logId": "log-123",
-                "producer": {
-                  "event": {
-                    "atiId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
-                    "atiName": "ans://v1.0.0.agent.example.com",
-                    "eventType": "AGENT_REGISTERED",
-                    "agent": {
-                      "host": "agent.example.com",
-                      "name": "Example Agent",
-                      "version": "v1.0.0"
-                    },
-                    "attestations": {
-                      "domainValidation": "ACME-DNS-01",
-                      "serverCert": {
-                        "fingerprint": "SHA256:a1b2c3d4",
-                        "type": "X509-DV-SERVER"
-                      },
-                      "identityCert": {
-                        "fingerprint": "SHA256:e5f6g7h8",
-                        "type": "X509-OV-CLIENT"
-                      }
-                    },
-                    "issuedAt": "2025-09-24T21:03:47.055Z",
-                    "expiresAt": "2026-09-24T21:03:47.055Z",
-                    "raId": "ra.example.com",
-                    "timestamp": "2025-09-24T21:03:47.055Z"
-                  },
-                  "keyId": "key-1",
-                  "signature": "sig123"
+                "eventType": "AGENT_REGISTERED",
+                "timestamp": "2026-01-15T10:00:00+08:00",
+                "agentName": "ati://v1.0.0.agent.example.com",
+                "agentHost": "agent.example.com",
+                "version": "1.0.0",
+                "agentId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
+                "agentStatus": "ACTIVE",
+                "certificates": {
+                  "serverCertFingerprint": "SHA-256:a1b2c3d4",
+                  "identityCertFingerprint": "SHA-256:e5f6g7h8"
                 }
               },
               "signature": "eyJhbGci..."
-            }
-            """;
-    }
-
-    private String v0TransparencyLogResponse() {
-        return """
-            {
-              "status": "ACTIVE",
-              "schemaVersion": "V0",
-              "payload": {
-                "logId": "log-v0-123",
-                "producer": {
-                  "event": {
-                    "agentFqdn": "agent.example.com",
-                    "agentId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
-                    "atiName": "ans://v1.0.0.agent.example.com",
-                    "eventType": "AGENT_ACTIVE",
-                    "protocol": "https",
-                    "raBadge": {
-                      "attestations": {
-                        "serverCertFingerprint": "SHA256:server123",
-                        "clientCertFingerprint": "SHA256:client456",
-                        "domainValidation": "ACME-DNS-01"
-                      },
-                      "badgeUrlStatus": "ACTIVE",
-                      "issuedAt": "2025-09-24T21:03:47.055Z",
-                      "raId": "ra.example.com"
-                    },
-                    "timestamp": "2025-09-24T21:03:47.055Z"
-                  },
-                  "keyId": "key-1",
-                  "signature": "sig456"
-                }
-              }
             }
             """;
     }
@@ -923,25 +819,16 @@ class TransparencyClientTest {
               "records": [
                 {
                   "status": "ACTIVE",
-                  "schemaVersion": "V1",
+                  "schemaVersion": "ATI-TL-V1",
                   "payload": {
                     "logId": "log-123",
-                    "producer": {
-                      "event": {
-                        "atiId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
-                        "atiName": "ans://v1.0.0.agent.example.com",
-                        "eventType": "AGENT_REGISTERED",
-                        "agent": {
-                          "host": "agent.example.com",
-                          "version": "v1.0.0"
-                        },
-                        "attestations": {},
-                        "issuedAt": "2025-09-24T21:03:47.055Z",
-                        "timestamp": "2025-09-24T21:03:47.055Z"
-                      },
-                      "keyId": "key-1",
-                      "signature": "sig"
-                    }
+                    "eventType": "AGENT_REGISTERED",
+                    "timestamp": "2026-01-15T10:00:00+08:00",
+                    "agentName": "ati://v1.0.0.agent.example.com",
+                    "agentHost": "agent.example.com",
+                    "version": "1.0.0",
+                    "agentId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
+                    "agentStatus": "ACTIVE"
                   }
                 }
               ]
@@ -969,34 +856,18 @@ class TransparencyClientTest {
             """;
     }
 
-    private String v0TransparencyLogWithoutSchemaVersion() {
+    private String atiV1TransparencyLogWithoutSchemaVersion() {
         return """
             {
               "status": "ACTIVE",
               "payload": {
-                "logId": "log-v0-123",
-                "producer": {
-                  "event": {
-                    "agentFqdn": "agent.example.com",
-                    "agentId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
-                    "atiName": "ans://v1.0.0.agent.example.com",
-                    "eventType": "AGENT_ACTIVE",
-                    "protocol": "https",
-                    "raBadge": {
-                      "attestations": {
-                        "serverCertFingerprint": "SHA256:server123",
-                        "clientCertFingerprint": "SHA256:client456",
-                        "domainValidation": "ACME-DNS-01"
-                      },
-                      "badgeUrlStatus": "ACTIVE",
-                      "issuedAt": "2025-09-24T21:03:47.055Z",
-                      "raId": "ra.example.com"
-                    },
-                    "timestamp": "2025-09-24T21:03:47.055Z"
-                  },
-                  "keyId": "key-1",
-                  "signature": "sig456"
-                }
+                "logId": "log-123",
+                "eventType": "AGENT_REGISTERED",
+                "agentName": "ati://v1.0.0.agent.example.com",
+                "agentHost": "agent.example.com",
+                "version": "1.0.0",
+                "agentId": "6bf2b7a9-1383-4e33-a945-845f34af7526",
+                "agentStatus": "ACTIVE"
               }
             }
             """;
