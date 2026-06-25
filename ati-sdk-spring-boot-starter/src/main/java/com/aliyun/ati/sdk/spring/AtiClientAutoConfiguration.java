@@ -44,7 +44,8 @@ public class AtiClientAutoConfiguration {
         LOG.info("Creating TransparencyClient with baseUrl={}", baseUrl);
 
         TransparencyClient.Builder builder = TransparencyClient.builder()
-            .baseUrl(baseUrl);
+            .baseUrl(baseUrl)
+            .skipTlsVerification(properties.getTransparency().isSkipTlsVerification());
 
         String connectTimeout = properties.getClient().getConnectTimeout();
         if (connectTimeout != null) {

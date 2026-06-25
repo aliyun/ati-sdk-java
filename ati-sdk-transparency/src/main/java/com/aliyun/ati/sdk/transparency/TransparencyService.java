@@ -25,13 +25,19 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * Internal service for handling transparency log API calls.
@@ -47,13 +53,18 @@ class TransparencyService implements AutoCloseable {
     private final Duration readTimeout;
     private final RootKeyManager rootKeyManager;
 
-    TransparencyService(String baseUrl, Duration connectTimeout, Duration readTimeout, Duration rootKeyCacheTtl) {
+    TransparencyService(String baseUrl, Duration connectTimeout, Duration readTimeout,
+                        Duration rootKeyCacheTtl, boolean skipTlsVerification) {
         this.baseUrl = baseUrl;
         this.readTimeout = readTimeout;
-        this.httpClient = HttpClient.newBuilder()
+        HttpClient.Builder clientBuilder = HttpClient.newBuilder()
             .connectTimeout(connectTimeout)
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+            .followRedirects(HttpClient.Redirect.NEVER);
+        if (skipTlsVerification) {
+            clientBuilder.sslContext(createTrustAllSslContext());
+            LOGGER.warn("TLS verification disabled for transparency log client — DO NOT use in production");
+        }
+        this.httpClient = clientBuilder.build();
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -265,6 +276,21 @@ class TransparencyService implements AutoCloseable {
      */
     CompletableFuture<RefreshDecision> refreshRootKeysIfNeeded(Instant artifactIssuedAt) {
         return rootKeyManager.refreshRootKeysIfNeeded(artifactIssuedAt);
+    }
+
+    private static SSLContext createTrustAllSslContext() {
+        try {
+            TrustManager[] trustAll = { new X509TrustManager() {
+                @Override public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                @Override public void checkClientTrusted(X509Certificate[] chain, String authType) { }
+                @Override public void checkServerTrusted(X509Certificate[] chain, String authType) { }
+            }};
+            SSLContext ctx = SSLContext.getInstance("TLS");
+            ctx.init(null, trustAll, null);
+            return ctx;
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new RuntimeException("Failed to create trust-all SSLContext", e);
+        }
     }
 
     @Override

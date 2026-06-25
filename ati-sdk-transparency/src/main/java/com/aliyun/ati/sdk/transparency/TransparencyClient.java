@@ -75,9 +75,10 @@ public final class TransparencyClient implements AutoCloseable {
     private final TransparencyService service;
 
     private TransparencyClient(String baseUrl, Duration connectTimeout, Duration readTimeout,
-                               Duration rootKeyCacheTtl) {
+                               Duration rootKeyCacheTtl, boolean skipTlsVerification) {
         this.baseUrl = baseUrl;
-        this.service = new TransparencyService(baseUrl, connectTimeout, readTimeout, rootKeyCacheTtl);
+        this.service = new TransparencyService(baseUrl, connectTimeout, readTimeout,
+                rootKeyCacheTtl, skipTlsVerification);
     }
 
     /**
@@ -413,6 +414,7 @@ public final class TransparencyClient implements AutoCloseable {
         private Duration connectTimeout = DEFAULT_CONNECT_TIMEOUT;
         private Duration readTimeout = DEFAULT_READ_TIMEOUT;
         private Duration rootKeyCacheTtl = DEFAULT_ROOT_KEY_CACHE_TTL;
+        private boolean skipTlsVerification = false;
 
         private Builder() {
         }
@@ -470,6 +472,20 @@ public final class TransparencyClient implements AutoCloseable {
         }
 
         /**
+         * Disables TLS certificate verification for the transparency log connection.
+         *
+         * <p><b>WARNING: For testing/development only.</b> This trusts all server certificates,
+         * making the connection vulnerable to MITM attacks. Never use in production.</p>
+         *
+         * @param skip true to skip TLS verification
+         * @return this builder
+         */
+        public Builder skipTlsVerification(boolean skip) {
+            this.skipTlsVerification = skip;
+            return this;
+        }
+
+        /**
          * Builds the TransparencyClient.
          *
          * @return a new TransparencyClient instance
@@ -482,7 +498,8 @@ public final class TransparencyClient implements AutoCloseable {
                     + "or .baseUrl(TransparencyClient.PRODUCTION_BASE_URL)");
             }
             validateTrustedDomain();
-            return new TransparencyClient(baseUrl, connectTimeout, readTimeout, rootKeyCacheTtl);
+            return new TransparencyClient(baseUrl, connectTimeout, readTimeout,
+                    rootKeyCacheTtl, skipTlsVerification);
         }
 
         private void validateTrustedDomain() {

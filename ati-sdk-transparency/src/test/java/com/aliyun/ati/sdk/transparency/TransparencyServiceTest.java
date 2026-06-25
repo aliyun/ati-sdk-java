@@ -50,7 +50,7 @@ class TransparencyServiceTest {
     }
 
     private TransparencyService createService(String baseUrl, Duration rootKeyCacheTtl) {
-        return new TransparencyService(baseUrl, Duration.ofSeconds(5), Duration.ofSeconds(10), rootKeyCacheTtl);
+        return new TransparencyService(baseUrl, Duration.ofSeconds(5), Duration.ofSeconds(10), rootKeyCacheTtl, false);
     }
 
     @Nested

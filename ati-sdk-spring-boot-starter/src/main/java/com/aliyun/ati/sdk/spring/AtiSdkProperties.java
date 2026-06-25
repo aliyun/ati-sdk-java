@@ -262,6 +262,7 @@ public class AtiSdkProperties {
      */
     public static class Transparency {
         private String baseUrl = "https://tl.ansagent.cn:8180";
+        private boolean skipTlsVerification = false;
 
         public String getBaseUrl() {
             return baseUrl;
@@ -269,6 +270,14 @@ public class AtiSdkProperties {
 
         public void setBaseUrl(String baseUrl) {
             this.baseUrl = baseUrl;
+        }
+
+        public boolean isSkipTlsVerification() {
+            return skipTlsVerification;
+        }
+
+        public void setSkipTlsVerification(boolean skipTlsVerification) {
+            this.skipTlsVerification = skipTlsVerification;
         }
     }
 
