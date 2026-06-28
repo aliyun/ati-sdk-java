@@ -87,7 +87,8 @@ class PreVerificationResultTest {
         fingerprints.add("fp1");
 
         PreVerificationResult result = new PreVerificationResult(
-            "test.com", 443, List.of(), false, null, fingerprints, false, null, null, Instant.now());
+            "test.com", 443, List.of(), false, null, fingerprints, false, null,
+            false, false, false, null, null, Instant.now());
 
         assertEquals(1, result.badgeFingerprints().size());
         // The list should be immutable
@@ -363,7 +364,8 @@ class PreVerificationResultTest {
         ScittPreVerifyResult scittResult = ScittPreVerifyResult.verified(expectation, null, null);
 
         PreVerificationResult result = new PreVerificationResult(
-            "test.com", 443, List.of(), false, null, List.of(), false, null, scittResult, Instant.now());
+            "test.com", 443, List.of(), false, null, List.of(), false, null,
+            false, false, false, null, scittResult, Instant.now());
 
         assertTrue(result.hasScittExpectation());
         assertTrue(result.scittPreVerifySucceeded());

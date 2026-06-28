@@ -367,11 +367,16 @@ public final class CertificateUtils {
 
     /**
      * Pattern to extract host from ATI name URI SAN.
-     * Matches: ati://v{version}.{host} or ati://{host} (also ans://)
-     * Example: ati://v1.client-agent.example.com -> client-agent.example.com
+     * Matches: ati://v{x.x.x}.{host} or ati://{host} (also ans://)
+     * <p>Version is always three-segment (e.g., v1.0.0, v1.1.2).
+     * Examples:
+     * <ul>
+     *   <li>ati://v1.0.0.client-agent.example.com -> client-agent.example.com</li>
+     *   <li>ati://v1.1.2.ats-client.asia -> ats-client.asia</li>
+     * </ul>
      */
     private static final Pattern ATI_NAME_HOST_PATTERN = Pattern.compile(
-        "^(?:ati|ans)://(?:v[^.]+\\.)?(.+)$",
+        "^(?:ati|ans)://(?:v\\d+\\.\\d+\\.\\d+\\.)?(.+)$",
         Pattern.CASE_INSENSITIVE
     );
 

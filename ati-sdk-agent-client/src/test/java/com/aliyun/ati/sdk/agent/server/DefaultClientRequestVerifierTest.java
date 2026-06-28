@@ -34,7 +34,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -196,7 +195,7 @@ class DefaultClientRequestVerifierTest {
         void shouldNotInvokeDaneForPkiOnly() throws Exception {
             verifier.verify(clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
 
-            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString(), anyInt());
+            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString());
         }
 
         @Test
@@ -340,7 +339,7 @@ class DefaultClientRequestVerifierTest {
 
             verifier.verify(clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
 
-            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString(), anyInt());
+            verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString());
         }
     }
 
@@ -363,7 +362,7 @@ class DefaultClientRequestVerifierTest {
             // DANE passes: TLSA expectation matches client cert public key SHA-256
             byte[] spkiHash = CryptoCache.sha256(clientCertWithAtiSan.getPublicKey().getEncoded());
             TlsaExpectation tlsaExpectation = new TlsaExpectation(1, 1, spkiHash);
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of(tlsaExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(
@@ -385,7 +384,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             // DANE: no TLSA records
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of());
 
             ClientRequestVerificationResult result = verifier.verify(
@@ -410,7 +409,7 @@ class DefaultClientRequestVerifierTest {
             byte[] wrongHash = new byte[32];
             wrongHash[0] = (byte) 0xFF;
             TlsaExpectation tlsaExpectation = new TlsaExpectation(1, 1, wrongHash);
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of(tlsaExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(
@@ -468,7 +467,7 @@ class DefaultClientRequestVerifierTest {
                 .build();
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenThrow(new RuntimeException("DNS timeout"));
 
             ClientRequestVerificationResult result = verifier.verify(
@@ -489,14 +488,14 @@ class DefaultClientRequestVerifierTest {
                 .build();
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of());
 
             verifier.verify(clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
 
             // Verify the correct DNS name was queried
             verify(mockDaneTlsaVerifier).getTlsaExpectations(
-                "_ati-identity._tls.client-agent.example.com", 0);
+                "_ati-identity._tls.client-agent.example.com");
         }
 
         @Test
@@ -518,7 +517,7 @@ class DefaultClientRequestVerifierTest {
             byte[] correctHash = CryptoCache.sha256(clientCertWithAtiSan.getPublicKey().getEncoded());
             TlsaExpectation correctExpectation = new TlsaExpectation(1, 1, correctHash);
 
-            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString(), anyInt()))
+            when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of(wrongExpectation, correctExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(

@@ -37,7 +37,7 @@ class TrustedDomainRegistryTest {
         @Test
         @DisplayName("Should accept CNNIC domain")
         void shouldAcceptCnnicDomain() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("tl.ansagent.cn")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("tl.atiagent.cn")).isTrue();
         }
 
         @Test
@@ -159,7 +159,7 @@ class TrustedDomainRegistryTest {
                 .contains(
                     "transparency.ati.aliyun.com",
                     "transparency.ati.ote-ati.aliyun.com",
-                    "tl.ansagent.cn"
+                    "tl.atiagent.cn"
                 );
         }
 

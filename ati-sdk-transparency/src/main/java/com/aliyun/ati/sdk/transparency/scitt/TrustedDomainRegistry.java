@@ -42,7 +42,7 @@ public final class TrustedDomainRegistry {
     public static final Set<String> DEFAULT_TRUSTED_DOMAINS = Set.of(
         "transparency.ati.aliyun.com",
         "transparency.ati.ote-ati.aliyun.com",
-        "tl.ansagent.cn"
+        "tl.atiagent.cn"
     );
 
     /**

@@ -847,7 +847,7 @@ class DaneVerifierTest {
         }
 
         @Override
-        protected List<TlsaRecordData> performDnsLookup(String hostname, int port) {
+        protected List<TlsaRecordData> performDnsLookup(String tlsaName) {
             dnsLookupCount++;
             // Return empty list to simulate no TLSA records found
             // This avoids real DNS lookups while still exercising the caching logic

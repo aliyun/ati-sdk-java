@@ -32,9 +32,9 @@ class RaBadgeLookupServiceTest {
         // Given - both _ati-badge and _ra-badge records exist
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
         dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -53,7 +53,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ati-badge record exists
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -72,7 +72,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ra-badge record exists (backward compatibility)
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -106,9 +106,9 @@ class RaBadgeLookupServiceTest {
         // Given - both _ati-badge and _ra-badge records exist
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
         dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -126,7 +126,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ati-badge exists
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -143,7 +143,7 @@ class RaBadgeLookupServiceTest {
         // Given - only _ra-badge exists (backward compatibility)
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -205,7 +205,7 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldNormalizeHostnameWithTrailingDot() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -221,9 +221,9 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldCombineAllBadgesFromBothPrefixes() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
         dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=2.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ra-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -239,7 +239,7 @@ class RaBadgeLookupServiceTest {
         Map<String, String> dnsRecords = new HashMap<>();
         // This has unsupported badge format
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=unsupported-format; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=unsupported-format; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -255,9 +255,9 @@ class RaBadgeLookupServiceTest {
         // TestableRaBadgeLookupService that supports multiple records per DNS name
         TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=2.0.0; url=https://tl.ansagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
 
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 

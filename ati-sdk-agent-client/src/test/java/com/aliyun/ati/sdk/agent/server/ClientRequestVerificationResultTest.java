@@ -27,7 +27,8 @@ class ClientRequestVerificationResultTest {
                 "agent.example.com",
                 null,
                 VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(100)
+                Duration.ofMillis(100),
+                null, null, null, null
             )).isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("errors cannot be null");
         }
@@ -41,7 +42,8 @@ class ClientRequestVerificationResultTest {
                 "agent.example.com",
                 List.of(),
                 null,
-                Duration.ofMillis(100)
+                Duration.ofMillis(100),
+                null, null, null, null
             )).isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("policyUsed cannot be null");
         }
@@ -55,7 +57,8 @@ class ClientRequestVerificationResultTest {
                 "agent.example.com",
                 List.of(),
                 VerificationPolicy.BADGE_REQUIRED,
-                null
+                null,
+                null, null, null, null
             )).isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("verificationDuration cannot be null");
         }
@@ -72,7 +75,8 @@ class ClientRequestVerificationResultTest {
                 null,
                 errors,
                 VerificationPolicy.BADGE_REQUIRED,
-                Duration.ofMillis(100)
+                Duration.ofMillis(100),
+                null, null, null, null
             );
 
             // Modify original list
@@ -91,7 +95,8 @@ class ClientRequestVerificationResultTest {
                 null,
                 List.of("some error"),
                 VerificationPolicy.PKI_ONLY,
-                Duration.ofMillis(50)
+                Duration.ofMillis(50),
+                null, null, null, null
             );
 
             assertThat(result.agentId()).isNull();

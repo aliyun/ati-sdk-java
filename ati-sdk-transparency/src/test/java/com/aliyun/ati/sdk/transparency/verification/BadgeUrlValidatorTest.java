@@ -259,9 +259,9 @@ class BadgeUrlValidatorTest {
     void shouldAcceptNonStandardPortForTrustedDomain() {
         // Given - trusted domain with non-standard port (e.g., CNNIC TL at :8180)
         BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
-            .addTrustedDomain("tl.ansagent.cn")
+            .addTrustedDomain("tl.atiagent.cn")
             .build();
-        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
+        String url = "https://tl.atiagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);
@@ -371,9 +371,9 @@ class BadgeUrlValidatorTest {
     void shouldAcceptCnnicTlPath() {
         // Given - CNNIC TL URL with /tl/agents/ path prefix
         BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
-            .addTrustedDomain("tl.ansagent.cn")
+            .addTrustedDomain("tl.atiagent.cn")
             .build();
-        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
+        String url = "https://tl.atiagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);
@@ -387,9 +387,9 @@ class BadgeUrlValidatorTest {
     void shouldAcceptCnnicTlPathWithSuffix() {
         // Given - CNNIC TL URL with additional path suffix
         BadgeUrlValidator cnnicValidator = BadgeUrlValidator.builder()
-            .addTrustedDomain("tl.ansagent.cn")
+            .addTrustedDomain("tl.atiagent.cn")
             .build();
-        String url = "https://tl.ansagent.cn:8180/tl/agents/" + VALID_AGENT_ID + "/logs/latest";
+        String url = "https://tl.atiagent.cn:8180/tl/agents/" + VALID_AGENT_ID + "/logs/latest";
 
         // When
         BadgeUrlValidator.ValidationResult result = cnnicValidator.validate(url);

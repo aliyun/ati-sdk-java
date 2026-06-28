@@ -72,12 +72,12 @@ public final class BadgeVerificationService implements ServerVerifier {
     private static final Set<String> INVALID_STATUSES = Set.of("REVOKED", "EXPIRED");
 
     /**
-     * Pattern to extract version from ANS name.
-     * ANS name format: ans://v{major}.{minor}.{patch}.{host} or ans://{version}.{host}
-     * Example: ans://v1.0.0.agent.example.com -> 1.0.0
+     * Pattern to extract version from ATI/ANS name.
+     * Format: ati://v{major}.{minor}.{patch}.{host} or ans://v{major}.{minor}.{patch}.{host}
+     * Example: ati://v1.1.2.ats-client.asia -> 1.1.2
      */
     private static final Pattern ATI_VERSION_PATTERN = Pattern.compile(
-        "^ans://v?(\\d+\\.\\d+\\.\\d+)\\.",
+        "^(?:ati|ans)://v?(\\d+\\.\\d+\\.\\d+)\\.",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -210,9 +210,6 @@ public final class BadgeVerificationService implements ServerVerifier {
                     .build();
             }
 
-            // Step 2: Extract CN from certificate (for agent.host matching per Section 4.4)
-            String certCn = CertificateUtils.getCommonName(clientCert);
-
             // Step 3: Extract version from ANS name for efficient badge filtering
             String certVersion = certAtiName.map(this::extractVersionFromAtiName).orElse(null);
 
@@ -249,8 +246,8 @@ public final class BadgeVerificationService implements ServerVerifier {
                     validBadges.size(), filteredBadges.size(), certVersion);
             }
 
-            // Step 8: Check each registration for matching fingerprint, CN, and ANS name
-            return findMatchingClientRegistration(filteredBadges, clientFingerprint, certAtiName.orElse(null), certCn);
+            // Step 8: Check each registration for matching fingerprint, agentHost, and ANS name
+            return findMatchingClientRegistration(filteredBadges, clientFingerprint, certAtiName.orElse(null), agentHost);
 
         } catch (Exception e) {
             LOG.error("Failed to verify client: {}", e.getMessage());
@@ -277,6 +274,9 @@ public final class BadgeVerificationService implements ServerVerifier {
         boolean hasWarning = false;
         String lastInvalidStatus = null;
         String lastErrorMessage = null;
+        boolean anySealVerified = false;
+        boolean anyMerkleVerified = false;
+        boolean anyFingerprintExtracted = false;
 
         for (FetchResult fetchResult : fetchResults) {
             if (!fetchResult.isSuccess()) {
@@ -287,14 +287,22 @@ public final class BadgeVerificationService implements ServerVerifier {
                 continue;
             }
 
+            if (fetchResult.sealVerified()) anySealVerified = true;
+            if (fetchResult.merkleVerified()) anyMerkleVerified = true;
+
             TransparencyLog registration = fetchResult.registration();
             String status = registration.getStatus();
             String fingerprint = registration.getServerCertFingerprint();
 
+            // Sub-step 3: Extract serverCertFingerprint
             if (fingerprint == null || fingerprint.isBlank()) {
+                LOG.info("预认证 Badge 子步骤3/3: 获取serverCertFingerprint - 失败 (注册记录中无指纹)");
                 LOG.debug("Skipping registration with no fingerprint");
                 continue;
             }
+
+            LOG.info("预认证 Badge 子步骤3/3: 获取serverCertFingerprint - 成功");
+            anyFingerprintExtracted = true;
 
             if (ACTIVE_STATUSES.contains(status)) {
                 activeFingerprints.add(fingerprint);
@@ -340,7 +348,10 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .status(VerificationStatus.VERIFIED)
                 .registration(firstActiveRegistration)
                 .expectedServerCertFingerprints(allFingerprints)
-                .expectedAgentHost(agentHost);
+                .expectedAgentHost(agentHost)
+                .sealVerified(anySealVerified)
+                .merkleVerified(anyMerkleVerified)
+                .fingerprintExtracted(anyFingerprintExtracted);
 
             if (hasWarning) {
                 builder.warningMessage("One or more registrations have WARNING status");
@@ -358,6 +369,9 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .expectedServerCertFingerprints(deprecatedFingerprints)
                 .expectedAgentHost(agentHost)
                 .warningMessage("All registrations are deprecated")
+                .sealVerified(anySealVerified)
+                .merkleVerified(anyMerkleVerified)
+                .fingerprintExtracted(anyFingerprintExtracted)
                 .build();
         }
 
@@ -371,6 +385,10 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .status(VerificationStatus.REGISTRATION_INVALID)
                 .registration(firstInvalidRegistration)
                 .warningMessage(warningMessage)
+                .sealVerified(anySealVerified)
+                .merkleVerified(anyMerkleVerified)
+                .fingerprintExtracted(anyFingerprintExtracted)
+                .failureStep(anyFingerprintExtracted ? null : "fingerprint")
                 .build();
         }
 
@@ -380,9 +398,22 @@ public final class BadgeVerificationService implements ServerVerifier {
             warningMessage += ": " + lastErrorMessage;
         }
 
+        // Determine failure step
+        String failureStep = "seal";
+        if (anySealVerified) {
+            failureStep = "merkle";
+            if (anyMerkleVerified) {
+                failureStep = "fingerprint";
+            }
+        }
+
         return ServerVerificationResult.builder()
             .status(VerificationStatus.LOOKUP_FAILED)
             .warningMessage(warningMessage)
+            .sealVerified(anySealVerified)
+            .merkleVerified(anyMerkleVerified)
+            .fingerprintExtracted(anyFingerprintExtracted)
+            .failureStep(failureStep)
             .build();
     }
 
@@ -392,14 +423,17 @@ public final class BadgeVerificationService implements ServerVerifier {
     private record FetchResult(
             RaBadgeRecord badge,
             TransparencyLog registration,
-            Exception error
+            Exception error,
+            boolean sealVerified,
+            boolean merkleVerified
     ) {
-        static FetchResult success(RaBadgeRecord badge, TransparencyLog registration) {
-            return new FetchResult(badge, registration, null);
+        static FetchResult success(RaBadgeRecord badge, TransparencyLog registration,
+                                   boolean sealVerified, boolean merkleVerified) {
+            return new FetchResult(badge, registration, null, sealVerified, merkleVerified);
         }
 
         static FetchResult failure(RaBadgeRecord badge, Exception error) {
-            return new FetchResult(badge, null, error);
+            return new FetchResult(badge, null, error, false, false);
         }
 
         boolean isSuccess() {
@@ -417,7 +451,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             List<RaBadgeRecord> badges,
             String clientFingerprint,
             String certAtiName,
-            String certCn) {
+            String agentHost) {
 
         // Filter badges with valid paths (spec 7.1: use full path)
         List<RaBadgeRecord> validBadges = badges.stream()
@@ -436,7 +470,7 @@ public final class BadgeVerificationService implements ServerVerifier {
         List<FetchResult> fetchResults = fetchRegistrationsInParallel(validBadges);
 
         // Process results in order to find the best match
-        return processFetchResults(fetchResults, clientFingerprint, certAtiName, certCn);
+        return processFetchResults(fetchResults, clientFingerprint, certAtiName, agentHost);
     }
 
     /**
@@ -459,15 +493,30 @@ public final class BadgeVerificationService implements ServerVerifier {
 
                     // Spec 8.2: verify seal signature and Merkle proof if present
                     SealVerifier.VerificationResult sealResult = SealVerifier.verify(registration);
-                    if (!sealResult.isValid()) {
-                        LOG.warn("Seal/Merkle verification failed for path {}: {}",
+
+                    // Sub-step 1: Seal signature verification
+                    boolean sealOk = sealResult.sealValid() == null || sealResult.sealValid();
+                    LOG.info("预认证 Badge 子步骤1/3: Seal签名验证 - {}", sealOk ? "成功" : "失败");
+                    if (!sealOk) {
+                        LOG.warn("Seal verification failed for path {}: {}",
                             badge.tlPath(), sealResult.failureReason());
                         return FetchResult.failure(badge,
-                            new SecurityException("TL response integrity check failed: "
+                            new SecurityException("Seal signature verification failed: "
                                 + sealResult.failureReason()));
                     }
 
-                    return FetchResult.success(badge, registration);
+                    // Sub-step 2: Merkle proof verification
+                    boolean merkleOk = sealResult.merkleValid() == null || sealResult.merkleValid();
+                    LOG.info("预认证 Badge 子步骤2/3: Merkle Proof验证 - {}", merkleOk ? "成功" : "失败");
+                    if (!merkleOk) {
+                        LOG.warn("Merkle proof verification failed for path {}: {}",
+                            badge.tlPath(), sealResult.failureReason());
+                        return FetchResult.failure(badge,
+                            new SecurityException("Merkle proof verification failed: "
+                                + sealResult.failureReason()));
+                    }
+
+                    return FetchResult.success(badge, registration, sealOk, merkleOk);
                 } catch (Exception e) {
                     LOG.debug("Failed to fetch registration for path {}: {}", badge.tlPath(), e.getMessage());
                     return FetchResult.failure(badge, e);
@@ -490,7 +539,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             List<FetchResult> fetchResults,
             String clientFingerprint,
             String certAtiName,
-            String certCn) {
+            String agentHost) {
 
         TransparencyLog activeMatch = null;
         TransparencyLog deprecatedMatch = null;
@@ -524,11 +573,11 @@ public final class BadgeVerificationService implements ServerVerifier {
                 continue;
             }
 
-            // Check CN matches agent.host (required per Section 4.4)
-            if (certCn != null && expectedAgentHost != null
-                    && !certCn.equalsIgnoreCase(expectedAgentHost)) {
+            // Check agentHost from URI SAN matches TL agentHost (required per Section 4.4)
+            if (agentHost != null && expectedAgentHost != null
+                    && !agentHost.equalsIgnoreCase(expectedAgentHost)) {
                 LOG.debug("Hostname mismatch for agent {}: expected={}, actual={}",
-                    agentId, expectedAgentHost, certCn);
+                    agentId, expectedAgentHost, agentHost);
                 lastMismatchReason = "hostname";
                 continue;
             }

@@ -39,9 +39,10 @@ public final class AtiDiscoveryClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(AtiDiscoveryClient.class);
     private static final String API_VERSION = "2015-01-09";
-    private static final String ACTION = "DescribeAgentRegisterInfoMarket";
+    private static final String ACTION = "DescribeAtiAgentRegisterInfoMarket";
 
     private final Client openApiClient;
+    private final String endpoint;
 
     /**
      * Creates a new discovery client.
@@ -59,6 +60,7 @@ public final class AtiDiscoveryClient {
         config.setAccessKeySecret(accessKeySecret);
         config.setEndpoint(endpoint);
         config.setProtocol("HTTPS");
+        this.endpoint = endpoint;
         this.openApiClient = new Client(config);
     }
 
@@ -71,6 +73,7 @@ public final class AtiDiscoveryClient {
      */
     public AgentDetail discover(String agentHost, String agentVersion) {
         Objects.requireNonNull(agentHost, "agentHost must not be null");
+        LOG.debug("[Discovery] Step 1/4: Resolving agent host '{}' (version='{}')", agentHost, agentVersion);
         try {
             Params params = new Params()
                 .setAction(ACTION)
@@ -89,6 +92,9 @@ public final class AtiDiscoveryClient {
                 queries.put("AgentVersion", agentVersion);
             }
 
+            LOG.debug("[Discovery] Step 2/4: Calling OpenAPI endpoint='{}' action='{}', version='{}', queries={}",
+                endpoint, ACTION, API_VERSION, queries);
+
             OpenApiRequest request = new OpenApiRequest().setQuery(
                 com.aliyun.openapiutil.Client.query(queries));
 
@@ -96,11 +102,19 @@ public final class AtiDiscoveryClient {
             Map<String, Object> response = (Map<String, Object>) openApiClient.callApi(
                 params, request, new RuntimeOptions());
 
-            LOG.debug("Discovery response for {}: {}", agentHost, response);
+            LOG.debug("[Discovery] Step 3/4: Received response for {}: {}", agentHost, response);
 
-            return parseResponse(response);
+            AgentDetail detail = parseResponse(response);
+            if (detail != null) {
+                LOG.debug("[Discovery] Step 4/4: Parsed agent detail — id='{}', host='{}', version='{}', endpoints={}",
+                    detail.getAgentId(), detail.getAgentHost(), detail.getAgentVersion(),
+                    detail.getEndpoints() != null ? detail.getEndpoints().size() : 0);
+            } else {
+                LOG.debug("[Discovery] Step 4/4: Parsed result is null (agent not registered or empty response)");
+            }
+            return detail;
         } catch (Exception e) {
-            LOG.error("Failed to discover agent: {}", agentHost, e);
+            LOG.error("[Discovery] Failed to discover agent: {}", agentHost, e);
             return null;
         }
     }

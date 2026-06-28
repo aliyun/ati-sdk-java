@@ -385,7 +385,7 @@ class DaneTlsaVerifierIntegrationTest {
         }
 
         @Override
-        protected List<TlsaRecordData> performDnsLookup(String hostname, int port) {
+        protected List<TlsaRecordData> performDnsLookup(String tlsaName) {
             return List.of(new TlsaRecordData(usage, selector, matchingType, certData));
         }
     }
@@ -402,7 +402,7 @@ class DaneTlsaVerifierIntegrationTest {
         }
 
         @Override
-        protected List<TlsaRecordData> performDnsLookup(String hostname, int port) {
+        protected List<TlsaRecordData> performDnsLookup(String tlsaName) {
             List<TlsaRecordData> result = new ArrayList<>();
             for (RecordInfo info : records) {
                 result.add(new TlsaRecordData(info.usage, info.selector, info.matchingType, info.certData));
@@ -420,7 +420,7 @@ class DaneTlsaVerifierIntegrationTest {
         }
 
         @Override
-        protected List<TlsaRecordData> performDnsLookup(String hostname, int port) {
+        protected List<TlsaRecordData> performDnsLookup(String tlsaName) {
             return List.of();
         }
     }
@@ -440,7 +440,7 @@ class DaneTlsaVerifierIntegrationTest {
         }
 
         @Override
-        protected List<TlsaRecordData> performDnsLookup(String hostname, int port) {
+        protected List<TlsaRecordData> performDnsLookup(String tlsaName) {
             dnsLookupCount++;
             return List.of(); // Return empty for simplicity
         }

@@ -196,10 +196,26 @@ public interface DaneTlsaVerifier {
      *   <li>Perform certificate matching</li>
      * </ul>
      *
+     * <p>The DNS name is constructed as {@code _{port}._tcp.{hostname}} per RFC 6698.
+     * This is used for server certificate TLSA verification.</p>
+     *
      * @param hostname the hostname to look up
      * @param port the port number (typically 443)
      * @return list of TLSA expectations (empty if no records found or DANE disabled)
      * @throws Exception if DNS query fails or DNSSEC validation fails
      */
     java.util.List<TlsaExpectation> getTlsaExpectations(String hostname, int port) throws Exception;
+
+    /**
+     * Gets TLSA record expectations from a pre-constructed DNS name.
+     *
+     * <p>This method is used for client identity certificate TLSA verification,
+     * where the DNS name follows a different convention (e.g.,
+     * {@code _ati-identity._tls.{host}}) and is constructed by the caller.</p>
+     *
+     * @param tlsaName the full TLSA DNS name (e.g., {@code _ati-identity._tls.host.com})
+     * @return list of TLSA expectations (empty if no records found or DANE disabled)
+     * @throws Exception if DNS query fails or DNSSEC validation fails
+     */
+    java.util.List<TlsaExpectation> getTlsaExpectations(String tlsaName) throws Exception;
 }

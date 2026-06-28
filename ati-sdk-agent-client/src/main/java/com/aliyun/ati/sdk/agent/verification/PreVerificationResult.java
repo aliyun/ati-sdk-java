@@ -42,6 +42,10 @@ public record PreVerificationResult(
     List<String> badgeFingerprints,
     boolean badgePreVerifyFailed,
     String badgeFailureReason,
+    boolean badgeSealVerified,
+    boolean badgeMerkleVerified,
+    boolean badgeFingerprintExtracted,
+    String badgeFailureStep,
     ScittPreVerifyResult scittPreVerifyResult,
     Instant timestamp
 ) {
@@ -121,6 +125,10 @@ public record PreVerificationResult(
             this.badgeFingerprints,
             this.badgePreVerifyFailed,
             this.badgeFailureReason,
+            this.badgeSealVerified,
+            this.badgeMerkleVerified,
+            this.badgeFingerprintExtracted,
+            this.badgeFailureStep,
             scittResult,
             this.timestamp
         );
@@ -138,6 +146,10 @@ public record PreVerificationResult(
         private List<String> badgeFingerprints = List.of();
         private boolean badgePreVerifyFailed;
         private String badgeFailureReason;
+        private boolean badgeSealVerified;
+        private boolean badgeMerkleVerified;
+        private boolean badgeFingerprintExtracted;
+        private String badgeFailureStep;
         private ScittPreVerifyResult scittPreVerifyResult;
 
         private Builder(String hostname, int port) {
@@ -228,6 +240,15 @@ public record PreVerificationResult(
             return this;
         }
 
+        public Builder badgeSubSteps(boolean sealVerified, boolean merkleVerified,
+                                     boolean fingerprintExtracted, String failureStep) {
+            this.badgeSealVerified = sealVerified;
+            this.badgeMerkleVerified = merkleVerified;
+            this.badgeFingerprintExtracted = fingerprintExtracted;
+            this.badgeFailureStep = failureStep;
+            return this;
+        }
+
         /**
          * Sets the SCITT pre-verification result.
          *
@@ -254,6 +275,10 @@ public record PreVerificationResult(
                 badgeFingerprints,
                 badgePreVerifyFailed,
                 badgeFailureReason,
+                badgeSealVerified,
+                badgeMerkleVerified,
+                badgeFingerprintExtracted,
+                badgeFailureStep,
                 scittPreVerifyResult,
                 Instant.now()
             );

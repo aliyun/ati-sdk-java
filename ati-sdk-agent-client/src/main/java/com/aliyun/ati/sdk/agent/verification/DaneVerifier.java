@@ -249,8 +249,15 @@ public class DaneVerifier {
             }
 
             // No match found
-            String actualFingerprint = CertificateUtils.computeSha256Fingerprint(serverCert);
-            String expectedFingerprint = TlsaUtils.bytesToHex(expectations.get(0).expectedData());
+            // Compute actual fingerprint using the same selector/matchingType as
+            // the first TLSA record, so actual and expected are comparable
+            DaneTlsaVerifier.TlsaExpectation firstExp = expectations.get(0);
+            byte[] actualData = TlsaUtils.computeCertificateData(
+                serverCert, firstExp.selector(), firstExp.matchingType());
+            String actualFingerprint = actualData != null
+                ? TlsaUtils.bytesToHex(actualData)
+                : CertificateUtils.computeSha256Fingerprint(serverCert);
+            String expectedFingerprint = TlsaUtils.bytesToHex(firstExp.expectedData());
             LOGGER.warn("DANE post-verify: Certificate did not match any of {} TLSA record(s) for {}",
                 expectations.size(), hostname);
             return VerificationResult.mismatch(

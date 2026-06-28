@@ -158,9 +158,13 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
                     if (badge.isRegisteredAgent()) {
                         // During version rotation, multiple badge records may exist
                         builder.badgeFingerprints(badge.expectedFingerprints());
+                        builder.badgeSubSteps(badge.sealVerified(), badge.merkleVerified(),
+                            badge.fingerprintExtracted(), badge.failureStep());
                     } else if (badge.preVerificationFailed()) {
                         // Capture pre-verification failure (e.g., revoked/expired registration)
                         builder.badgePreVerifyFailed(badge.warningMessage());
+                        builder.badgeSubSteps(badge.sealVerified(), badge.merkleVerified(),
+                            badge.fingerprintExtracted(), badge.failureStep());
                     }
                 }
 
@@ -211,6 +215,7 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
             LOGGER.warn("DANE DNS error for {}: {}", hostname, preResult.daneDnsErrorMessage());
         } else {
             daneResult = daneVerifier.postVerify(hostname, serverCert, preResult.daneExpectations());
+            LOGGER.debug("Post-verify (client): Server cert public key vs TLSA fingerprint - {}", daneResult.isSuccess() ? "matched" : "mismatch");
         }
 
         LOGGER.debug("DANE result for {}: {}", hostname, daneResult.status());
@@ -253,6 +258,8 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
 
         BadgeVerifier.BadgeExpectation badgeExpectation = buildBadgeExpectation(preResult);
         VerificationResult badgeResult = badgeVerifier.postVerify(hostname, serverCert, badgeExpectation);
+
+        LOGGER.debug("Post-verify (client): Server cert fingerprint vs TL cert fingerprint - {}", badgeResult.isSuccess() ? "matched" : "mismatch");
 
         LOGGER.debug("Badge result for {}: {}", hostname, badgeResult.status());
         return Optional.of(badgeResult);

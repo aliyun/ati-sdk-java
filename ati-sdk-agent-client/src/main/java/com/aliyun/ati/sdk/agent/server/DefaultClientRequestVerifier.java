@@ -60,11 +60,16 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
 
     /**
      * Pattern to extract host from ATI name URI SAN.
-     * Matches: ati://v{version}.{host} or ati://{host}
-     * Example: ati://v1.client-agent.example.com -> client-agent.example.com
+     * Matches: ati://v{x.x.x}.{host} or ati://{host}
+     * <p>Version is always three-segment (e.g., v1.0.0, v1.1.2).
+     * Examples:
+     * <ul>
+     *   <li>ati://v1.0.0.client-agent.example.com -> client-agent.example.com</li>
+     *   <li>ati://v1.1.2.ats-client.asia -> ats-client.asia</li>
+     * </ul>
      */
     private static final Pattern ATI_NAME_HOST_PATTERN = Pattern.compile(
-        "^(?:ati|ans)://(?:v[^.]+\\.)?(.+)$",
+        "^(?:ati|ans)://(?:v\\d+(?:\\.\\d+)*\\.)?(.+)$",
         Pattern.CASE_INSENSITIVE
     );
 
@@ -73,13 +78,6 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
      * Per ATI spec, client identity certs use _ati-identity._tls, NOT _443._tcp.
      */
     private static final String IDENTITY_TLSA_PREFIX = "_ati-identity._tls.";
-
-    /**
-     * Dummy port value for DANE TLSA lookup on identity records.
-     * The actual TLSA name is built as {@code _ati-identity._tls.{host}},
-     * so the port is not used in the DNS name, but the DaneTlsaVerifier API requires it.
-     */
-    private static final int IDENTITY_TLSA_PORT = 0;
 
     private final BadgeVerificationService badgeVerificationService;
     private final DaneTlsaVerifier daneTlsaVerifier; // nullable, only needed for DANE_AND_BADGE
@@ -171,6 +169,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
             String expectedFingerprint = badgeResult.getExpectedIdentityCertFingerprint();
             if (expectedFingerprint != null
                     && !CertificateUtils.fingerprintMatches(clientFingerprint, expectedFingerprint)) {
+                LOGGER.debug("Post-verify: Client IDCA vs TL - mismatch");
                 LOGGER.warn("Certificate fingerprint mismatch for {}: actual={}, expected={}",
                     agentHost,
                     CertificateUtils.truncateFingerprint(clientFingerprint),
@@ -183,24 +182,38 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
                     ),
                     agentHost,
                     policy,
-                    elapsed(startNanos)
+                    elapsed(startNanos),
+                    clientFingerprint,
+                    expectedFingerprint,
+                    null, null
                 );
             }
+            LOGGER.debug("Post-verify: Client IDCA vs TL - matched");
 
             LOGGER.debug("Badge verification succeeded for {} (agentId={})", agentHost, agentId);
 
             // Step 4: DANE verification (DANE_AND_BADGE only)
+            String daneActual = null;
+            String daneExpected = null;
             if (policy == VerificationPolicy.DANE_AND_BADGE) {
-                List<String> daneErrors = verifyDane(clientCert, agentHost);
-                if (!daneErrors.isEmpty()) {
-                    LOGGER.warn("DANE verification failed for {}: {}", agentHost, daneErrors);
+                DaneVerifyResult daneResult = verifyDane(clientCert, agentHost);
+                daneActual = daneResult.actualFingerprint;
+                daneExpected = daneResult.expectedFingerprint;
+                if (!daneResult.errors.isEmpty()) {
+                    LOGGER.debug("Post-verify: Client IDCA public key vs TLSA - mismatch");
+                    LOGGER.warn("DANE verification failed for {}: {}", agentHost, daneResult.errors);
                     return ClientRequestVerificationResult.failure(
-                        daneErrors,
+                        daneResult.errors,
                         agentHost,
                         policy,
-                        elapsed(startNanos)
+                        elapsed(startNanos),
+                        clientFingerprint,
+                        expectedFingerprint,
+                        daneActual,
+                        daneExpected
                     );
                 }
+                LOGGER.debug("Post-verify: Client IDCA public key vs TLSA - matched");
                 LOGGER.debug("DANE verification succeeded for {}", agentHost);
             }
 
@@ -211,7 +224,11 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
                 agentId,
                 agentHost,
                 policy,
-                elapsed(startNanos)
+                elapsed(startNanos),
+                clientFingerprint,
+                expectedFingerprint,
+                daneActual,
+                daneExpected
             );
 
         } catch (Exception e) {
@@ -228,6 +245,21 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
     // ==================== DANE Verification ====================
 
     /**
+     * Result of DANE verification, carrying both errors and fingerprint details.
+     */
+    private static class DaneVerifyResult {
+        final List<String> errors;
+        final String actualFingerprint;
+        final String expectedFingerprint;
+
+        DaneVerifyResult(List<String> errors, String actualFingerprint, String expectedFingerprint) {
+            this.errors = errors;
+            this.actualFingerprint = actualFingerprint;
+            this.expectedFingerprint = expectedFingerprint;
+        }
+    }
+
+    /**
      * Performs DANE TLSA verification for the client identity certificate.
      *
      * <p>Queries {@code _ati-identity._tls.{agentHost}} for TLSA records and
@@ -235,27 +267,37 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
      *
      * @param clientCert the client certificate
      * @param agentHost the agent hostname
-     * @return list of errors (empty if DANE verification passed)
+     * @return DaneVerifyResult with errors and fingerprint details
      */
-    private List<String> verifyDane(X509Certificate clientCert, String agentHost) {
+    private DaneVerifyResult verifyDane(X509Certificate clientCert, String agentHost) {
         List<String> errors = new ArrayList<>();
+        String actualFingerprint = null;
+        String expectedFingerprint = null;
 
         if (daneTlsaVerifier == null) {
             errors.add("DANE verification required but daneTlsaVerifier is not configured");
-            return errors;
+            return new DaneVerifyResult(errors, null, null);
         }
 
         try {
             // Query _ati-identity._tls.{agentHost} for TLSA expectations
             List<DaneTlsaVerifier.TlsaExpectation> expectations =
                 daneTlsaVerifier.getTlsaExpectations(
-                    IDENTITY_TLSA_PREFIX + agentHost,
-                    IDENTITY_TLSA_PORT
+                    IDENTITY_TLSA_PREFIX + agentHost
                 );
 
             if (expectations.isEmpty()) {
                 errors.add("No TLSA record found at _ati-identity._tls." + agentHost);
-                return errors;
+                return new DaneVerifyResult(errors, null, null);
+            }
+
+            // Capture expected fingerprint from first TLSA record as fallback for display
+            expectedFingerprint = TlsaUtils.bytesToHex(expectations.get(0).expectedData());
+            DaneTlsaVerifier.TlsaExpectation firstExp = expectations.get(0);
+            byte[] firstActualData = TlsaUtils.computeCertificateData(
+                clientCert, firstExp.selector(), firstExp.matchingType());
+            if (firstActualData != null) {
+                actualFingerprint = TlsaUtils.bytesToHex(firstActualData);
             }
 
             // Compare client certificate against each TLSA expectation
@@ -268,6 +310,9 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
                     LOGGER.debug("DANE TLSA match found for {} ({})",
                         agentHost,
                         TlsaUtils.describeMatchType(expectation.selector(), expectation.matchingType()));
+                    // Use the matching record's fingerprints for accurate display
+                    actualFingerprint = TlsaUtils.bytesToHex(certData);
+                    expectedFingerprint = TlsaUtils.bytesToHex(expectation.expectedData());
                     matched = true;
                     break;
                 }
@@ -282,7 +327,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
             errors.add("DANE TLSA lookup failed: " + e.getMessage());
         }
 
-        return errors;
+        return new DaneVerifyResult(errors, actualFingerprint, expectedFingerprint);
     }
 
     // ==================== Helper Methods ====================

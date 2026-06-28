@@ -61,7 +61,11 @@ public class BadgeVerifier {
         boolean isRegisteredAgent,
         boolean isDeprecated,
         String warningMessage,
-        boolean preVerificationFailed
+        boolean preVerificationFailed,
+        boolean sealVerified,
+        boolean merkleVerified,
+        boolean fingerprintExtracted,
+        String failureStep
     ) {
 
         /**
@@ -70,7 +74,8 @@ public class BadgeVerifier {
          * @return an expectation indicating not an ATI agent
          */
         public static BadgeExpectation notAtiAgent() {
-            return new BadgeExpectation(Collections.emptyList(), false, false, null, false);
+            return new BadgeExpectation(Collections.emptyList(), false, false, null, false,
+                false, false, false, null);
         }
 
         /**
@@ -84,7 +89,8 @@ public class BadgeVerifier {
         public static BadgeExpectation registered(String fingerprint, boolean deprecated, String warning) {
             return new BadgeExpectation(
                 fingerprint != null ? List.of(fingerprint) : Collections.emptyList(),
-                true, deprecated, warning, false);
+                true, deprecated, warning, false,
+                true, true, true, null);
         }
 
         /**
@@ -100,7 +106,20 @@ public class BadgeVerifier {
         public static BadgeExpectation registered(List<String> fingerprints, boolean deprecated, String warning) {
             return new BadgeExpectation(
                 fingerprints != null ? List.copyOf(fingerprints) : Collections.emptyList(),
-                true, deprecated, warning, false);
+                true, deprecated, warning, false,
+                true, true, true, null);
+        }
+
+        /**
+         * Creates expectation for a registered ATI agent with sub-step status.
+         */
+        public static BadgeExpectation registered(List<String> fingerprints, boolean deprecated, String warning,
+                                                   boolean sealVerified, boolean merkleVerified,
+                                                   boolean fingerprintExtracted) {
+            return new BadgeExpectation(
+                fingerprints != null ? List.copyOf(fingerprints) : Collections.emptyList(),
+                true, deprecated, warning, false,
+                sealVerified, merkleVerified, fingerprintExtracted, null);
         }
 
         /**
@@ -110,7 +129,17 @@ public class BadgeVerifier {
          * @return an expectation indicating failure
          */
         public static BadgeExpectation failed(String warning) {
-            return new BadgeExpectation(Collections.emptyList(), false, false, warning, true);
+            return new BadgeExpectation(Collections.emptyList(), false, false, warning, true,
+                false, false, false, null);
+        }
+
+        /**
+         * Creates expectation for a verification failure with sub-step status.
+         */
+        public static BadgeExpectation failed(String warning, boolean sealVerified, boolean merkleVerified,
+                                               boolean fingerprintExtracted, String failureStep) {
+            return new BadgeExpectation(Collections.emptyList(), false, false, warning, true,
+                sealVerified, merkleVerified, fingerprintExtracted, failureStep);
         }
     }
 
@@ -169,16 +198,20 @@ public class BadgeVerifier {
 
                     LOGGER.debug("Badge pre-verify: Found {} fingerprint(s) for {} (deprecated={})",
                             fingerprints.size(), hostname, deprecated);
-                    return BadgeExpectation.registered(fingerprints, deprecated, warning);
+                    return BadgeExpectation.registered(fingerprints, deprecated, warning,
+                        result.isSealVerified(), result.isMerkleVerified(), result.isFingerprintExtracted());
                 } else {
                     String warning = String.format("Verification failed: %s - %s",
                         result.getStatus(), result.getWarningMessage());
                     LOGGER.debug("Badge pre-verify: {} - {}", hostname, warning);
-                    return BadgeExpectation.failed(warning);
+                    return BadgeExpectation.failed(warning,
+                        result.isSealVerified(), result.isMerkleVerified(),
+                        result.isFingerprintExtracted(), result.getFailureStep());
                 }
             } catch (Exception e) {
                 LOGGER.warn("Badge pre-verify error for {}: {}", hostname, e.getMessage());
-                return BadgeExpectation.failed("Error querying transparency log: " + e.getMessage());
+                return BadgeExpectation.failed("Error querying transparency log: " + e.getMessage(),
+                    false, false, false, "seal");
             }
         }, executor);
     }

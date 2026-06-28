@@ -20,6 +20,10 @@ public final class ServerVerificationResult {
     private final List<String> expectedServerCertFingerprints;
     private final String expectedAgentHost;
     private final String warningMessage;
+    private final boolean sealVerified;
+    private final boolean merkleVerified;
+    private final boolean fingerprintExtracted;
+    private final String failureStep;
 
     private ServerVerificationResult(Builder builder) {
         this.status = Objects.requireNonNull(builder.status, "status is required");
@@ -29,6 +33,10 @@ public final class ServerVerificationResult {
             : Collections.emptyList();
         this.expectedAgentHost = builder.expectedAgentHost;
         this.warningMessage = builder.warningMessage;
+        this.sealVerified = builder.sealVerified;
+        this.merkleVerified = builder.merkleVerified;
+        this.fingerprintExtracted = builder.fingerprintExtracted;
+        this.failureStep = builder.failureStep;
     }
 
     /**
@@ -96,6 +104,22 @@ public final class ServerVerificationResult {
         return warningMessage;
     }
 
+    public boolean isSealVerified() {
+        return sealVerified;
+    }
+
+    public boolean isMerkleVerified() {
+        return merkleVerified;
+    }
+
+    public boolean isFingerprintExtracted() {
+        return fingerprintExtracted;
+    }
+
+    public String getFailureStep() {
+        return failureStep;
+    }
+
     /**
      * Returns true if the verification was successful.
      *
@@ -134,6 +158,10 @@ public final class ServerVerificationResult {
             + ", expectedServerCertFingerprints=" + expectedServerCertFingerprints
             + ", expectedAgentHost='" + expectedAgentHost + '\''
             + ", warningMessage='" + warningMessage + '\''
+            + ", sealVerified=" + sealVerified
+            + ", merkleVerified=" + merkleVerified
+            + ", fingerprintExtracted=" + fingerprintExtracted
+            + ", failureStep='" + failureStep + '\''
             + '}';
     }
 
@@ -146,6 +174,10 @@ public final class ServerVerificationResult {
         private List<String> expectedServerCertFingerprints;
         private String expectedAgentHost;
         private String warningMessage;
+        private boolean sealVerified;
+        private boolean merkleVerified;
+        private boolean fingerprintExtracted;
+        private String failureStep;
 
         private Builder() {
         }
@@ -193,6 +225,26 @@ public final class ServerVerificationResult {
 
         public Builder warningMessage(String message) {
             this.warningMessage = message;
+            return this;
+        }
+
+        public Builder sealVerified(boolean sealVerified) {
+            this.sealVerified = sealVerified;
+            return this;
+        }
+
+        public Builder merkleVerified(boolean merkleVerified) {
+            this.merkleVerified = merkleVerified;
+            return this;
+        }
+
+        public Builder fingerprintExtracted(boolean fingerprintExtracted) {
+            this.fingerprintExtracted = fingerprintExtracted;
+            return this;
+        }
+
+        public Builder failureStep(String failureStep) {
+            this.failureStep = failureStep;
             return this;
         }
 

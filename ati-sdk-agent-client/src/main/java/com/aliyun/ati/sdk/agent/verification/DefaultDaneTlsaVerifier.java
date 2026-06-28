@@ -224,9 +224,34 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
             return List.of();
         }
 
+        // Construct standard TLSA DNS name: _{port}._tcp.{hostname} per RFC 6698
+        String tlsaName = String.format("_%d._tcp.%s", port, hostname);
         LOGGER.debug("Getting TLSA expectations for {}:{} (DNS only, no TLS connection)", hostname, port);
 
-        List<TlsaRecordData> records = queryTlsaRecords(hostname, port);
+        return getTlsaExpectationsByDnsName(tlsaName);
+    }
+
+    @Override
+    public List<TlsaExpectation> getTlsaExpectations(String tlsaName) throws Exception {
+        if (policy == DanePolicy.DISABLED) {
+            LOGGER.debug("DANE verification disabled, returning empty expectations for {}", tlsaName);
+            return List.of();
+        }
+
+        LOGGER.debug("Getting TLSA expectations for {} (DNS only, no TLS connection)", tlsaName);
+
+        return getTlsaExpectationsByDnsName(tlsaName);
+    }
+
+    /**
+     * Internal method that queries TLSA records by DNS name and converts to expectations.
+     *
+     * @param tlsaName the full TLSA DNS name (e.g., {@code _443._tcp.host} or {@code _ati-identity._tls.host})
+     * @return list of TLSA expectations
+     * @throws Exception if DNS query or DNSSEC validation fails
+     */
+    private List<TlsaExpectation> getTlsaExpectationsByDnsName(String tlsaName) throws Exception {
+        List<TlsaRecordData> records = queryTlsaRecordsByDnsName(tlsaName);
 
         // Convert internal TlsaRecordData to public TlsaExpectation
         List<TlsaExpectation> expectations = new java.util.ArrayList<>();
@@ -238,29 +263,44 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
             ));
         }
 
-        LOGGER.debug("Found {} TLSA expectation(s) for {}:{}", expectations.size(), hostname, port);
+        LOGGER.debug("Found {} TLSA expectation(s) for {}", expectations.size(), tlsaName);
         return expectations;
     }
 
     /**
-     * Queries all TLSA records with DNSSEC validation.
-     * Results are cached according to the configured cacheTtl.
-     * Dispatches to appropriate method based on validation mode.
+     * Queries TLSA records by hostname and port.
+     * Constructs {@code _{port}._tcp.{hostname}} per RFC 6698 and delegates to
+     * {@link #queryTlsaRecordsByDnsName(String)}.
      *
+     * @param hostname the server hostname
+     * @param port the server port
      * @return list of TLSA records (may be empty if none found)
+     * @throws Exception if DNS query or DNSSEC validation fails
      */
     private List<TlsaRecordData> queryTlsaRecords(String hostname, int port) throws Exception {
+        String tlsaName = String.format("_%d._tcp.%s", port, hostname);
+        return queryTlsaRecordsByDnsName(tlsaName);
+    }
+
+    /**
+     * Queries TLSA records by DNS name with DNSSEC validation and caching.
+     *
+     * @param tlsaName the full TLSA DNS name
+     * @return list of TLSA records (may be empty if none found)
+     * @throws Exception if DNS query or DNSSEC validation fails
+     */
+    private List<TlsaRecordData> queryTlsaRecordsByDnsName(String tlsaName) throws Exception {
         // Check cache first
-        List<TlsaRecordData> cached = getCachedTlsaRecords(hostname, port);
+        List<TlsaRecordData> cached = getCachedTlsaRecords(tlsaName);
         if (cached != null) {
             return cached;
         }
 
         // Cache miss - perform DNS lookup
-        List<TlsaRecordData> records = performDnsLookup(hostname, port);
+        List<TlsaRecordData> records = performDnsLookup(tlsaName);
 
         // Cache the result (including empty results to avoid repeated lookups)
-        cacheTlsaRecords(hostname, port, records);
+        cacheTlsaRecords(tlsaName, records);
 
         return records;
     }
@@ -269,16 +309,15 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      * Performs the actual DNS lookup for TLSA records.
      * This method is protected to allow overriding in tests.
      *
-     * @param hostname the hostname to look up
-     * @param port the port number
+     * @param tlsaName the full TLSA DNS name
      * @return list of TLSA records (may be empty if none found)
      * @throws Exception if the DNS lookup fails
      */
-    protected List<TlsaRecordData> performDnsLookup(String hostname, int port) throws Exception {
+    protected List<TlsaRecordData> performDnsLookup(String tlsaName) throws Exception {
         if (validationMode == DnssecValidationMode.VALIDATE_IN_CODE) {
-            return queryTlsaRecordsValidating(hostname, port);
+            return queryTlsaRecordsValidating(tlsaName);
         } else {
-            return queryTlsaRecordsTrustResolver(hostname, port);
+            return queryTlsaRecordsTrustResolver(tlsaName);
         }
     }
 
@@ -287,8 +326,7 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      *
      * @return list of TLSA records (empty if none found)
      */
-    private List<TlsaRecordData> queryTlsaRecordsTrustResolver(String hostname, int port) throws Exception {
-        String tlsaName = String.format("_%d._tcp.%s", port, hostname);
+    private List<TlsaRecordData> queryTlsaRecordsTrustResolver(String tlsaName) throws Exception {
         LOGGER.debug("Querying DNS for TLSA: {} (trusting resolver AD flag)", tlsaName);
 
         // Create resolver with DNSSEC support
@@ -336,8 +374,7 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      *
      * @return list of TLSA records (empty if none found)
      */
-    private List<TlsaRecordData> queryTlsaRecordsValidating(String hostname, int port) throws Exception {
-        String tlsaName = String.format("_%d._tcp.%s", port, hostname);
+    private List<TlsaRecordData> queryTlsaRecordsValidating(String tlsaName) throws Exception {
         LOGGER.debug("Querying DNS for TLSA: {} (in-code DNSSEC validation)", tlsaName);
 
         // Create ValidatingResolver with base SimpleResolver
@@ -486,8 +523,8 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      * @param port the port
      */
     public void invalidate(String hostname, int port) {
-        String key = cacheKey(hostname, port);
-        tlsaCache.remove(key);
+        String tlsaName = String.format("_%d._tcp.%s", port, hostname);
+        tlsaCache.remove(tlsaName);
         LOGGER.debug("Invalidated TLSA cache for {}:{}", hostname, port);
     }
 
@@ -527,23 +564,23 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      *
      * @return the cached records, or null if not cached or expired
      */
-    private List<TlsaRecordData> getCachedTlsaRecords(String hostname, int port) {
+    private List<TlsaRecordData> getCachedTlsaRecords(String tlsaName) {
         if (cacheTtl.isZero()) {
             return null;
         }
 
-        String key = cacheKey(hostname, port);
+        String key = tlsaName;
         CachedTlsaRecords cached = tlsaCache.get(key);
 
         if (cached != null && !cached.isExpired()) {
-            LOGGER.debug("Using cached TLSA records for {}:{} ({} record(s))",
-                hostname, port, cached.records.size());
+            LOGGER.debug("Using cached TLSA records for {} ({} record(s))",
+                tlsaName, cached.records.size());
             return cached.records;
         }
 
         if (cached != null) {
             tlsaCache.remove(key);
-            LOGGER.debug("Expired TLSA cache entry removed for {}:{}", hostname, port);
+            LOGGER.debug("Expired TLSA cache entry removed for {}", tlsaName);
         }
 
         return null;
@@ -556,19 +593,14 @@ public class DefaultDaneTlsaVerifier implements DaneTlsaVerifier {
      * @param port the port
      * @param records the TLSA records to cache (may be empty)
      */
-    private void cacheTlsaRecords(String hostname, int port, List<TlsaRecordData> records) {
+    private void cacheTlsaRecords(String tlsaName, List<TlsaRecordData> records) {
         if (cacheTtl.isZero()) {
             return;
         }
 
-        String key = cacheKey(hostname, port);
-        tlsaCache.put(key, new CachedTlsaRecords(records, cacheTtl));
-        LOGGER.debug("Cached {} TLSA record(s) for {}:{} (ttl={})",
-            records.size(), hostname, port, cacheTtl);
-    }
-
-    private String cacheKey(String hostname, int port) {
-        return hostname + ":" + port;
+        tlsaCache.put(tlsaName, new CachedTlsaRecords(records, cacheTtl));
+        LOGGER.debug("Cached {} TLSA record(s) for {} (ttl={})",
+            records.size(), tlsaName, cacheTtl);
     }
 
     /**

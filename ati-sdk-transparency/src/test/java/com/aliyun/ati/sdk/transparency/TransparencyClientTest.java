@@ -37,7 +37,7 @@ class TransparencyClientTest {
     static void setUpClass() {
         // Include localhost for WireMock tests along with production domains
         System.setProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY,
-            "transparency.ati.aliyun.com,transparency.ati.ote-ati.aliyun.com,tl.ansagent.cn,localhost");
+            "transparency.ati.aliyun.com,transparency.ati.ote-ati.aliyun.com,tl.atiagent.cn,localhost");
     }
 
     @AfterAll

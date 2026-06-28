@@ -20,6 +20,10 @@ import java.util.Objects;
  * @param errors list of error messages (empty if verification succeeded)
  * @param policyUsed the verification policy that was applied
  * @param verificationDuration how long verification took
+ * @param badgeActualFingerprint actual SHA-256 fingerprint of the client certificate (for Badge/TL comparison)
+ * @param badgeExpectedFingerprint expected fingerprint from the transparency log (for Badge/TL comparison)
+ * @param daneActualFingerprint actual fingerprint used for DANE TLSA comparison
+ * @param daneExpectedFingerprint expected fingerprint from the TLSA record (for DANE comparison)
  */
 public record ClientRequestVerificationResult(
     boolean verified,
@@ -27,7 +31,11 @@ public record ClientRequestVerificationResult(
     String agentHost,
     List<String> errors,
     VerificationPolicy policyUsed,
-    Duration verificationDuration
+    Duration verificationDuration,
+    String badgeActualFingerprint,
+    String badgeExpectedFingerprint,
+    String daneActualFingerprint,
+    String daneExpectedFingerprint
 ) {
 
     /**
@@ -60,7 +68,44 @@ public record ClientRequestVerificationResult(
             agentHost,
             List.of(),
             policy,
-            duration
+            duration,
+            null, null, null, null
+        );
+    }
+
+    /**
+     * Creates a successful verification result with fingerprint details.
+     *
+     * @param agentId the verified agent ID (may be null for PKI_ONLY)
+     * @param agentHost the agent hostname from the certificate URI SAN
+     * @param policy the policy that was used
+     * @param duration how long verification took
+     * @param badgeActualFingerprint actual fingerprint for Badge/TL comparison
+     * @param badgeExpectedFingerprint expected fingerprint from TL
+     * @param daneActualFingerprint actual fingerprint for DANE comparison (null if DANE not performed)
+     * @param daneExpectedFingerprint expected fingerprint from TLSA (null if DANE not performed)
+     * @return a successful result
+     */
+    public static ClientRequestVerificationResult success(
+            String agentId,
+            String agentHost,
+            VerificationPolicy policy,
+            Duration duration,
+            String badgeActualFingerprint,
+            String badgeExpectedFingerprint,
+            String daneActualFingerprint,
+            String daneExpectedFingerprint) {
+        return new ClientRequestVerificationResult(
+            true,
+            agentId,
+            agentHost,
+            List.of(),
+            policy,
+            duration,
+            badgeActualFingerprint,
+            badgeExpectedFingerprint,
+            daneActualFingerprint,
+            daneExpectedFingerprint
         );
     }
 
@@ -84,7 +129,44 @@ public record ClientRequestVerificationResult(
             agentHost,
             errors,
             policy,
-            duration
+            duration,
+            null, null, null, null
+        );
+    }
+
+    /**
+     * Creates a failed verification result with fingerprint details.
+     *
+     * @param errors the error messages
+     * @param agentHost the agent hostname if extracted (may be null)
+     * @param policy the policy that was used
+     * @param duration how long verification took
+     * @param badgeActualFingerprint actual fingerprint for Badge/TL comparison
+     * @param badgeExpectedFingerprint expected fingerprint from TL
+     * @param daneActualFingerprint actual fingerprint for DANE comparison (null if DANE not performed)
+     * @param daneExpectedFingerprint expected fingerprint from TLSA (null if DANE not performed)
+     * @return a failed result
+     */
+    public static ClientRequestVerificationResult failure(
+            List<String> errors,
+            String agentHost,
+            VerificationPolicy policy,
+            Duration duration,
+            String badgeActualFingerprint,
+            String badgeExpectedFingerprint,
+            String daneActualFingerprint,
+            String daneExpectedFingerprint) {
+        return new ClientRequestVerificationResult(
+            false,
+            null,
+            agentHost,
+            errors,
+            policy,
+            duration,
+            badgeActualFingerprint,
+            badgeExpectedFingerprint,
+            daneActualFingerprint,
+            daneExpectedFingerprint
         );
     }
 
