@@ -28,7 +28,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       idca:
  *         trust-certificate: /path/to/idca-trust.pem
  *     transparency:
- *       base-url: https://tl.atiagent.cn:8180
+ *       base-url: https://ati-tl.cnnic.cn:8180
  *     verification:
  *       policy: BADGE_REQUIRED
  *     client:
@@ -261,7 +261,7 @@ public class AtiSdkProperties {
      * Transparency log configuration.
      */
     public static class Transparency {
-        private String baseUrl = "https://tl.atiagent.cn:8180";
+        private String baseUrl = "https://ati-tl.cnnic.cn:8180";
         private boolean skipTlsVerification = false;
 
         public String getBaseUrl() {

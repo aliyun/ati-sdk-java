@@ -57,7 +57,7 @@ class AtiAutoConfigurationTest {
         void shouldApplyCustomTransparencyBaseUrl() {
             contextRunner
                 .withPropertyValues(
-                    "ati.sdk.transparency.base-url=https://tl.atiagent.cn:8180"
+                    "ati.sdk.transparency.base-url=https://ati-tl.cnnic.cn:8180"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(TransparencyClient.class);
@@ -65,7 +65,7 @@ class AtiAutoConfigurationTest {
 
                     AtiSdkProperties props = context.getBean(AtiSdkProperties.class);
                     assertThat(props.getTransparency().getBaseUrl())
-                        .isEqualTo("https://tl.atiagent.cn:8180");
+                        .isEqualTo("https://ati-tl.cnnic.cn:8180");
                 });
         }
 
@@ -125,7 +125,7 @@ class AtiAutoConfigurationTest {
                     assertThat(context).hasSingleBean(TransparencyClient.class);
                     TransparencyClient client = context.getBean(TransparencyClient.class);
                     assertThat(client.getBaseUrl())
-                        .isEqualTo("https://tl.atiagent.cn:9090");
+                        .isEqualTo("https://ati-tl.cnnic.cn:9090");
                 });
         }
     }
@@ -180,7 +180,7 @@ class AtiAutoConfigurationTest {
         @Bean
         TransparencyClient transparencyClient() {
             return TransparencyClient.builder()
-                .baseUrl("https://tl.atiagent.cn:9090")
+                .baseUrl("https://ati-tl.cnnic.cn:9090")
                 .build();
         }
     }
