@@ -92,7 +92,7 @@ class BadgeUrlValidatorTest {
                 .addTrustedDomain("transparency.custom.com")
                 .build();
 
-            assertThat(customValidator.getTrustedDomains()).hasSize(4); // 3 ATI + 1 custom
+            assertThat(customValidator.getTrustedDomains()).hasSize(5); // 4 ATI + 1 custom
         }
 
         @Test
@@ -125,7 +125,8 @@ class BadgeUrlValidatorTest {
             assertThat(atiValidator.getTrustedDomains()).containsExactlyInAnyOrder(
                 "transparency.ati.aliyun.com",
                 "transparency.ati.ote-ati.aliyun.com",
-                "tl.atiagent.cn"
+                "tl.atiagent.cn",
+                "ati-tl.cnnic.cn"
             );
         }
 

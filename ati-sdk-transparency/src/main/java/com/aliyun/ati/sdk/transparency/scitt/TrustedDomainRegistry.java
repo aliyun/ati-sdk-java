@@ -42,7 +42,8 @@ public final class TrustedDomainRegistry {
     public static final Set<String> DEFAULT_TRUSTED_DOMAINS = Set.of(
         "transparency.ati.aliyun.com",
         "transparency.ati.ote-ati.aliyun.com",
-        "tl.atiagent.cn"
+        "tl.atiagent.cn",          // CNNIC TL (legacy)
+        "ati-tl.cnnic.cn"          // CNNIC TL (current)
     );
 
     /**

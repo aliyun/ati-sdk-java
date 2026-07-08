@@ -75,6 +75,7 @@ public class AtiVerifiedClient implements AutoCloseable {
     private final HttpClient httpClient;
     private final String agentId;
     private final CertificateCapturingTrustManager trustManager;
+    private final int tlsaPort;
 
     private static final String CACHE_KEY = "scitt";
 
@@ -107,6 +108,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         this.sslContext = builder.sslContext;
         this.agentId = builder.agentId;
         this.trustManager = builder.trustManager;
+        this.tlsaPort = builder.tlsaPort;
 
         // Build a Caffeine cache that respects token expiration
         this.scittHeaderCache = Caffeine.newBuilder()
@@ -322,8 +324,11 @@ public class AtiVerifiedClient implements AutoCloseable {
         LOGGER.debug("Connecting async to {}:{} with policy {}", hostname, port, policy);
 
         // Start DANE/Badge pre-verification asynchronously
+        // Use tlsaPort if configured (e.g., when connecting through a proxy),
+        // otherwise use the URL port (correct for direct server agent connections).
+        int preVerifyPort = tlsaPort > 0 ? tlsaPort : port;
         CompletableFuture<PreVerificationResult> daneAndBadgeFuture =
-            connectionVerifier.preVerify(hostname, port);
+            connectionVerifier.preVerify(hostname, preVerifyPort);
 
         // SCITT is not enabled in simplified policy - always skip preflight
         CompletableFuture<ScittPreVerifyResult> scittFuture =
@@ -382,6 +387,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         private SSLContext sslContext;
         private CertificateCapturingTrustManager trustManager;
         private DefaultConnectionVerifier connectionVerifier;
+        private int tlsaPort = -1;
 
         /**
          * Sets the agent ID for SCITT header generation.
@@ -450,6 +456,22 @@ public class AtiVerifiedClient implements AutoCloseable {
          */
         public Builder connectTimeout(Duration timeout) {
             this.connectTimeout = timeout;
+            return this;
+        }
+
+        /**
+         * Overrides the port used for DANE TLSA DNS lookup.
+         *
+         * <p>By default, the port from the server URL is used (correct for direct
+         * server agent connections). Set this when connecting through a proxy on
+         * a non-standard port — TLSA records are typically published at
+         * {@code _443._tcp.{hostname}} regardless of the proxy port.</p>
+         *
+         * @param port the TLSA lookup port (e.g., 443), or -1 to use URL port
+         * @return this builder
+         */
+        public Builder tlsaPort(int port) {
+            this.tlsaPort = port;
             return this;
         }
 

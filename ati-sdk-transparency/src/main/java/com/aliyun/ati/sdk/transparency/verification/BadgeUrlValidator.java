@@ -51,7 +51,8 @@ public final class BadgeUrlValidator {
     public static final List<String> ATI_TRUSTED_DOMAINS = List.of(
         "transparency.ati.aliyun.com",      // Production
         "transparency.ati.ote-ati.aliyun.com",   // OTE
-        "tl.atiagent.cn"
+        "tl.atiagent.cn",                   // CNNIC TL (legacy)
+        "ati-tl.cnnic.cn"                   // CNNIC TL (current)
     );
 
     /**
