@@ -37,6 +37,119 @@ graph TB
     H -->|指纹不匹配| F
 ```
 
+## 验证时序图
+
+### PKI_ONLY：标准 TLS
+
+```
+┌────────────┐                              ┌────────────┐                    ┌────────────┐
+│Client Agent│                              │Server Agent│                    │ System CA  │
+└─────┬──────┘                              └─────┬──────┘                    │Trust Store │
+      │                                           │                           └─────┬──────┘
+      │  1. TLS 握手 (ClientHello)                │                                 │
+      │──────────────────────────────────────────▶│                                 │
+      │                                           │                                 │
+      │  2. ServerHello + 证书链                  │                                 │
+      │◀──────────────────────────────────────────│                                 │
+      │                                           │                                 │
+      │  3. 根据 CA 信任库验证证书链              │                                 │
+      │─────────────────────────────────────────────────────────────────────────▶│
+      │                                           │                                 │
+      │  4. 链有效 ✓                              │                                 │
+      │◀─────────────────────────────────────────────────────────────────────────│
+      │                                           │                                 │
+      │  5. 完成 TLS 握手                         │                                 │
+      │◀─────────────────────────────────────────▶│                                 │
+      │                                           │                                 │
+      │  6. 加密应用数据                          │                                 │
+      │◀═════════════════════════════════════════▶│                                 │
+```
+
+### BADGE_REQUIRED：TLS + 透明日志验证
+
+```
+┌────────────┐         ┌────────────┐         ┌────────────┐         ┌────────────┐
+│Client Agent│         │ ATI 控制台  │         │  CNNIC TL  │         │Server Agent│
+│            │         │ (OpenAPI)  │         │            │         │            │
+└─────┬──────┘         └──────┬─────┘         └──────┬─────┘         └─────┬──────┘
+      │                       │                      │                     │
+      │  1. 发现 Agent        │                      │                     │
+      │   (hostname, version) │                      │                     │
+      │──────────────────────▶│                      │                     │
+      │                       │                      │                     │
+      │  2. AgentDescriptor    │                      │                     │
+      │   (host, badgeUrl)    │                      │                     │
+      │◀──────────────────────│                      │                     │
+      │                       │                      │                     │
+      │  3. 从 TL 获取 badge                         │                     │
+      │─────────────────────────────────────────────▶│                     │
+      │                       │                      │                     │
+      │  4. Badge + Seal + Merkle Proof              │                     │
+      │◀─────────────────────────────────────────────│                     │
+      │                       │                      │                     │
+      │  5. 验证 badge 签名和 seal                    │                     │
+      │     (使用 TL 根公钥)                         │                     │
+      │                       │                      │                     │
+      │  6. TLS 握手          │                      │                     │
+      │────────────────────────────────────────────────────────────────────▶│
+      │                       │                      │                     │
+      │  7. 服务器证书链      │                      │                     │
+      │◀────────────────────────────────────────────────────────────────────│
+      │                       │                      │                     │
+      │  8. 后验证：对比服务器证书哈希与 badge       │                     │
+      │     ┌─────────────────────────────────┐     │                     │
+      │     │ cert_hash == badge_hash ? ✓    │     │                     │
+      │     └─────────────────────────────────┘     │                     │
+      │                       │                      │                     │
+      │  9. 连接建立          │                      │                     │
+      │◀═══════════════════════════════════════════════════════════════════▶│
+```
+
+### DANE_AND_BADGE：完整验证
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│Client Agent│     │ DNS 服务器 │     │ ATI 控制台  │     │  CNNIC TL  │     │Server Agent│
+│            │     │            │     │ (OpenAPI)  │     │            │     │            │
+└─────┬──────┘     └─────┬──────┘     └──────┬─────┘     └──────┬─────┘     └─────┬──────┘
+      │                   │                   │                  │                  │
+      │ 1. 发现 Agent     │                   │                  │                  │
+      │──────────────────────────────────────▶│                  │                  │
+      │                   │                   │                  │                  │
+      │ 2. AgentDescriptor│                   │                  │                  │
+      │◀──────────────────────────────────────│                  │                  │
+      │                   │                   │                  │                  │
+      │ 3. 查询 TLSA      │                   │                  │                  │
+      │  _443._tcp.host   │                   │                  │                  │
+      │──────────────────▶│                   │                  │                  │
+      │                   │                   │                  │                  │
+      │ 4. TLSA: 3 1 1    │                   │                  │                  │
+      │   <cert-hash>     │                   │                  │                  │
+      │◀──────────────────│                   │                  │                  │
+      │                   │                   │                  │                  │
+      │ 5. 从 TL 获取 badge                    │                  │                  │
+      │──────────────────────────────────────────────────────────▶│                  │
+      │                   │                   │                  │                  │
+      │ 6. Badge + Seal + Merkle Proof         │                  │                  │
+      │◀──────────────────────────────────────────────────────────│                  │
+      │                   │                   │                  │                  │
+      │ 7. 验证 badge 和 DANE TLSA             │                  │                  │
+      │                   │                   │                  │                  │
+      │ 8. TLS 握手       │                   │                  │                  │
+      │───────────────────────────────────────────────────────────────────────────────▶│
+      │                   │                   │                  │                  │
+      │ 9. 服务器证书     │                   │                  │                  │
+      │◀───────────────────────────────────────────────────────────────────────────────│
+      │                   │                   │                  │                  │
+      │10. 后验证：DANE 哈希 + Badge 哈希匹配  │                  │                  │
+      │     ┌─────────────────────────────────┐              │                  │
+      │     │ DANE ✓  Badge ✓  Cert ✓        │              │                  │
+      │     └─────────────────────────────────┘              │                  │
+      │                   │                   │                  │                  │
+      │11. 连接建立        │                   │                  │                  │
+      │◀═══════════════════════════════════════════════════════════════════════════════▶│
+```
+
 ## 模块
 
 | 模块 | 说明 |
@@ -73,9 +186,100 @@ implementation("com.aliyun.ati:ati-sdk-transparency:0.1.0")      // 透明日志
 
 ## 快速开始
 
-### 客户端
+### Agent 注册
 
-`application.yml`：
+Agent 注册在[阿里云 ATI 控制台](https://ati.console.aliyun.com)完成。注册流程：
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  生成密钥   │───▶│  提交 CSR   │───▶│  ACME + DNS  │───▶│   ACTIVE    │
+│  和 CSR     │    │  到控制台   │    │  验证       │    │ (可发现)    │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+1. **生成密钥对** — 为身份证书和服务器证书创建 RSA/EC 密钥对
+2. **生成 CSR** — 创建证书签名请求（服务器 CSR + 包含 ATI Name 的身份 CSR）
+3. **提交注册** — 在 ATI 控制台注册 agentHost、version、endpoints 和 CSR
+4. **ACME 验证** — 添加 DNS TXT 记录证明域名所有权
+5. **证书签发** — ATI 签发身份证书和服务器证书
+6. **DNS 验证** — 添加 TLSA 和 badge DNS 记录
+7. **激活** — Agent 可通过 ATI Name 发现
+
+> **注意：** 所有步骤均在 ATI 控制台完成，注册过程不需要 SDK 代码。
+
+### Agent 发现
+
+通过阿里云 OpenAPI 解析 Agent 信息：
+
+```java
+import com.aliyun.ati.sdk.discovery.DnsAtiDiscoveryClient;
+import com.aliyun.ati.sdk.auth.AccessKeyCredentialsProvider;
+import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
+
+// 使用 AK/SK 创建发现客户端
+DnsAtiDiscoveryClient client = DnsAtiDiscoveryClient.builder()
+    .endpoint("alidns.aliyuncs.com")
+    .credentialsProvider(new AccessKeyCredentialsProvider(ak, sk))
+    .build();
+
+// 按 hostname 和版本约束解析
+AtiAgentDescriptor agent = client.discover("agent.example.com", "1.0.0");
+System.out.println("Agent host: " + agent.getAgentHost());
+System.out.println("Badge URL: " + agent.getBadgeUrl());
+
+// 解析最新版本
+AtiAgentDescriptor latest = client.discover("agent.example.com");
+
+// 异步解析
+CompletableFuture<AtiAgentDescriptor> future = client.discoverAsync("agent.example.com");
+```
+
+### Agent 间连接
+
+使用可配置的验证级别连接其他 Agent：
+
+```java
+import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
+import com.aliyun.ati.sdk.agent.ConnectOptions;
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.AtiConnection;
+
+// 创建客户端
+AtiVerifiedClient client = AtiVerifiedClient.builder()
+    .keyStorePath("/path/to/identity.p12", "password")
+    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .build();
+
+// 仅 PKI — 标准 HTTPS + CA 验证
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.PKI_ONLY)
+        .build());
+
+// Badge 验证（推荐）— 通过透明日志验证
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .build());
+
+// 完整验证 — DANE + Badge
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .build());
+
+// 使用 mTLS 客户端证书 + Bearer token
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
+        .authProvider(HttpAuthHeadersProvider.bearer("token"))
+        .build());
+```
+
+### Spring Boot 自动配置
+
+`application.yml`（客户端）：
 
 ```yaml
 ati:
@@ -97,23 +301,7 @@ ati:
       connect-timeout: 10s
 ```
 
-Java：
-
-```java
-AtiVerifiedClient client = AtiVerifiedClient.builder()
-    .keyStorePath("/path/to/identity.p12", "password")
-    .policy(VerificationPolicy.BADGE_REQUIRED)
-    .build();
-
-AtiConnection conn = client.connect("https://agent.example.com",
-    ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
-        .build());
-```
-
-### 服务端
-
-`application.yml`：
+`application.yml`（服务端）：
 
 ```yaml
 ati:
@@ -130,19 +318,6 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
-
-Java：
-
-```java
-@SpringBootApplication
-public class ServerApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ServerApplication.class, args);
-    }
-}
-```
-
-### Spring Boot 自动配置
 
 通过 `ati.sdk.mode` 控制启用哪一侧：
 

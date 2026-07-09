@@ -37,6 +37,119 @@ graph TB
     H -->|fingerprint mismatch| F
 ```
 
+## Verification Sequence Diagrams
+
+### PKI_ONLY: Standard TLS
+
+```
+┌────────────┐                              ┌────────────┐                    ┌────────────┐
+│Client Agent│                              │Server Agent│                    │ System CA  │
+└─────┬──────┘                              └─────┬──────┘                    │Trust Store │
+      │                                           │                           └─────┬──────┘
+      │  1. TLS Handshake (ClientHello)           │                                 │
+      │──────────────────────────────────────────▶│                                 │
+      │                                           │                                 │
+      │  2. ServerHello + Certificate Chain       │                                 │
+      │◀──────────────────────────────────────────│                                 │
+      │                                           │                                 │
+      │  3. Validate cert chain against CA store  │                                 │
+      │─────────────────────────────────────────────────────────────────────────▶│
+      │                                           │                                 │
+      │  4. Chain valid ✓                         │                                 │
+      │◀─────────────────────────────────────────────────────────────────────────│
+      │                                           │                                 │
+      │  5. Complete TLS Handshake                │                                 │
+      │◀─────────────────────────────────────────▶│                                 │
+      │                                           │                                 │
+      │  6. Encrypted Application Data            │                                 │
+      │◀═════════════════════════════════════════▶│                                 │
+```
+
+### BADGE_REQUIRED: TLS + Transparency Log Verification
+
+```
+┌────────────┐         ┌────────────┐         ┌────────────┐         ┌────────────┐
+│Client Agent│         │  ATI Console│         │  CNNIC TL  │         │Server Agent│
+│            │         │  (OpenAPI)  │         │            │         │            │
+└─────┬──────┘         └──────┬─────┘         └──────┬─────┘         └─────┬──────┘
+      │                       │                      │                     │
+      │  1. Discover agent    │                      │                     │
+      │   (hostname, version) │                      │                     │
+      │──────────────────────▶│                      │                     │
+      │                       │                      │                     │
+      │  2. AgentDescriptor    │                      │                     │
+      │   (host, badgeUrl)    │                      │                     │
+      │◀──────────────────────│                      │                     │
+      │                       │                      │                     │
+      │  3. Fetch badge from TL                      │                     │
+      │─────────────────────────────────────────────▶│                     │
+      │                       │                      │                     │
+      │  4. Badge + Seal + Merkle Proof              │                     │
+      │◀─────────────────────────────────────────────│                     │
+      │                       │                      │                     │
+      │  5. Verify badge signature & seal            │                     │
+      │     (using TL root key)                      │                     │
+      │                       │                      │                     │
+      │  6. TLS Handshake     │                      │                     │
+      │────────────────────────────────────────────────────────────────────▶│
+      │                       │                      │                     │
+      │  7. Server Certificate Chain                 │                     │
+      │◀────────────────────────────────────────────────────────────────────│
+      │                       │                      │                     │
+      │  8. Post-verify: compare server cert hash with badge               │
+      │     ┌─────────────────────────────────┐                            │
+      │     │ cert_hash == badge_hash ? ✓    │                            │
+      │     └─────────────────────────────────┘                            │
+      │                       │                      │                     │
+      │  9. Connection Established                     │                     │
+      │◀═══════════════════════════════════════════════════════════════════▶│
+```
+
+### DANE_AND_BADGE: Full Verification
+
+```
+┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
+│Client Agent│     │ DNS Server │     │  ATI Console│     │  CNNIC TL  │     │Server Agent│
+│            │     │            │     │  (OpenAPI)  │     │            │     │            │
+└─────┬──────┘     └─────┬──────┘     └──────┬─────┘     └──────┬─────┘     └─────┬──────┘
+      │                   │                   │                  │                  │
+      │ 1. Discover agent │                   │                  │                  │
+      │──────────────────────────────────────▶│                  │                  │
+      │                   │                   │                  │                  │
+      │ 2. AgentDescriptor│                   │                  │                  │
+      │◀──────────────────────────────────────│                  │                  │
+      │                   │                   │                  │                  │
+      │ 3. Query TLSA     │                   │                  │                  │
+      │  _443._tcp.host   │                   │                  │                  │
+      │──────────────────▶│                   │                  │                  │
+      │                   │                   │                  │                  │
+      │ 4. TLSA: 3 1 1    │                   │                  │                  │
+      │   <cert-hash>     │                   │                  │                  │
+      │◀──────────────────│                   │                  │                  │
+      │                   │                   │                  │                  │
+      │ 5. Fetch badge from TL                 │                  │                  │
+      │──────────────────────────────────────────────────────────▶│                  │
+      │                   │                   │                  │                  │
+      │ 6. Badge + Seal + Merkle Proof         │                  │                  │
+      │◀──────────────────────────────────────────────────────────│                  │
+      │                   │                   │                  │                  │
+      │ 7. Verify badge & DANE TLSA            │                  │                  │
+      │                   │                   │                  │                  │
+      │ 8. TLS Handshake  │                   │                  │                  │
+      │───────────────────────────────────────────────────────────────────────────────▶│
+      │                   │                   │                  │                  │
+      │ 9. Server Cert    │                   │                  │                  │
+      │◀───────────────────────────────────────────────────────────────────────────────│
+      │                   │                   │                  │                  │
+      │10. Post-verify: DANE hash + Badge hash match          │                  │
+      │     ┌─────────────────────────────────┐              │                  │
+      │     │ DANE ✓  Badge ✓  Cert ✓        │              │                  │
+      │     └─────────────────────────────────┘              │                  │
+      │                   │                   │                  │                  │
+      │11. Connection Established              │                  │                  │
+      │◀═══════════════════════════════════════════════════════════════════════════════▶│
+```
+
 ## Modules
 
 | Module | Description |
@@ -73,9 +186,100 @@ implementation("com.aliyun.ati:ati-sdk-transparency:0.1.0")      // transparency
 
 ## Quick Start
 
-### Client Side
+### Agent Registration
 
-`application.yml`:
+Agent registration is completed in the [Alibaba Cloud ATI Console](https://ati.console.aliyun.com). The registration flow:
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│  Generate   │───▶│  Submit CSR │───▶│  ACME + DNS  │───▶│   ACTIVE    │
+│  Keys & CSR │    │  to Console │    │  Verification│    │ (Discoverable)│
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+1. **Generate key pairs** — Create RSA/EC key pairs for identity and server certificates
+2. **Generate CSRs** — Create Certificate Signing Requests (server CSR + identity CSR with ATI Name)
+3. **Submit registration** — Register agent in ATI Console with agentHost, version, endpoints, and CSRs
+4. **ACME verification** — Add DNS TXT record for domain ownership proof
+5. **Certificate issuance** — ATI issues identity and server certificates
+6. **DNS verification** — Add TLSA and badge DNS records
+7. **Active** — Agent is discoverable via ATI Name
+
+> **Note:** All steps are performed in the ATI Console. No SDK code is needed for registration.
+
+### Agent Discovery
+
+Resolve agent information via Alibaba Cloud OpenAPI:
+
+```java
+import com.aliyun.ati.sdk.discovery.DnsAtiDiscoveryClient;
+import com.aliyun.ati.sdk.auth.AccessKeyCredentialsProvider;
+import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
+
+// Create discovery client with AK/SK
+DnsAtiDiscoveryClient client = DnsAtiDiscoveryClient.builder()
+    .endpoint("alidns.aliyuncs.com")
+    .credentialsProvider(new AccessKeyCredentialsProvider(ak, sk))
+    .build();
+
+// Resolve by hostname with version constraint
+AtiAgentDescriptor agent = client.discover("agent.example.com", "1.0.0");
+System.out.println("Agent host: " + agent.getAgentHost());
+System.out.println("Badge URL: " + agent.getBadgeUrl());
+
+// Resolve latest version
+AtiAgentDescriptor latest = client.discover("agent.example.com");
+
+// Async resolution
+CompletableFuture<AtiAgentDescriptor> future = client.discoverAsync("agent.example.com");
+```
+
+### Agent-to-Agent Connections
+
+Connect to another agent with configurable verification levels:
+
+```java
+import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
+import com.aliyun.ati.sdk.agent.ConnectOptions;
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.AtiConnection;
+
+// Create the client
+AtiVerifiedClient client = AtiVerifiedClient.builder()
+    .keyStorePath("/path/to/identity.p12", "password")
+    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .build();
+
+// PKI only — standard HTTPS with CA validation
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.PKI_ONLY)
+        .build());
+
+// Badge verification (recommended) — verifies against transparency log
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .build());
+
+// Full verification — DANE + Badge
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .build());
+
+// With mTLS client certificate + Bearer token
+AtiConnection conn = client.connect("https://agent.example.com",
+    ConnectOptions.builder()
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
+        .authProvider(HttpAuthHeadersProvider.bearer("token"))
+        .build());
+```
+
+### Spring Boot Auto-Configuration
+
+`application.yml` (client side):
 
 ```yaml
 ati:
@@ -97,23 +301,7 @@ ati:
       connect-timeout: 10s
 ```
 
-Java:
-
-```java
-AtiVerifiedClient client = AtiVerifiedClient.builder()
-    .keyStorePath("/path/to/identity.p12", "password")
-    .policy(VerificationPolicy.BADGE_REQUIRED)
-    .build();
-
-AtiConnection conn = client.connect("https://agent.example.com",
-    ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
-        .build());
-```
-
-### Server Side
-
-`application.yml`:
+`application.yml` (server side):
 
 ```yaml
 ati:
@@ -130,19 +318,6 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
-
-Java:
-
-```java
-@SpringBootApplication
-public class ServerApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ServerApplication.class, args);
-    }
-}
-```
-
-### Spring Boot Auto-Configuration
 
 Set `ati.sdk.mode` to control which side to enable:
 
