@@ -15,37 +15,41 @@
 
 ## Verification Policies
 
-| Policy | DANE | Badge | Description |
-|--------|------|-------|-------------|
-| `PKI_ONLY` | DISABLED | DISABLED | Standard TLS only |
-| `BADGE_REQUIRED` | DISABLED | REQUIRED | Badge verification required (default) |
-| `DANE_AND_BADGE` | REQUIRED | REQUIRED | Both DANE and Badge required |
+| Policy | TLS | DANE | Badge | Description |
+|--------|-----|------|-------|-------------|
+| `PKI_ONLY` | ✓ | - | - | Standard TLS only |
+| `BADGE_REQUIRED` | ✓ | - | ✓ | TLS + Badge verification (default) |
+| `DANE_AND_BADGE` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
 
 ## Verification Sequence Diagrams
 
-### PKI_ONLY: Standard TLS (+ IDCA on server side)
+### PKI_ONLY: Agent Discovery + Standard TLS (+ IDCA on server side)
 
 ```mermaid
 sequenceDiagram
     participant C as Client Agent
+    participant ATI as ATI Console (OpenAPI)
     participant S as Server Agent
     participant CA as System CA
     participant IDCA as IDCA Root CA
 
-    Note over C,S: Client-side verification
-    C->>S: 1. TLS Handshake (ClientHello)
-    S->>C: 2. ServerHello + Server Certificate Chain
-    C->>CA: 3. Validate server cert chain
-    CA->>C: 4. Chain valid ✓
-    C->>S: 5. Complete TLS Handshake
+    Note over C,S: Agent Discovery
+    C->>ATI: 1. Discover agent (hostname, version)
+    ATI->>C: 2. AgentDetail (endpoints: agentUrl, protocol, transports)
 
-    Note over C,S: Server-side verification (if IDCA configured)
-    C->>S: 6. Client identity certificate (mTLS)
-    S->>IDCA: 7. Validate client cert against IDCA root CA chain
-    IDCA->>S: 8. Client cert valid ✓
+    Note over C,S: TLS Handshake (with mTLS)
+    C->>S: 3. ClientHello → endpoint.agentUrl
+    S->>C: 4. ServerHello + Server Certificate Chain
+    C->>CA: 5. Validate server cert chain (system trust store)
+    CA->>C: 6. Chain valid ✓
+    S->>C: 7. CertificateRequest (client-auth=want)
+    C->>S: 8. Client identity certificate
+    S->>IDCA: 9. Validate client cert chain (if IDCA configured)
+    IDCA->>S: 10. Client cert valid ✓
 
-    Note over C,S: 9. Connection Established
-    C<->>S: Encrypted Application Data
+    Note over S: Application-layer: extract agentHost from cert URI SAN
+    Note over C,S: 11. Connection Established
+    C->>S: Encrypted Application Data (bidirectional)
 ```
 
 ### BADGE_REQUIRED: TLS + Transparency Log Verification
@@ -57,27 +61,39 @@ sequenceDiagram
     participant ATI as ATI Console (OpenAPI)
     participant TL as CNNIC TL
     participant S as Server Agent
+    participant CA as System CA
 
-    Note over C,S: Client-side verification
+    Note over C,S: Agent Discovery
     C->>ATI: 1. Discover agent (hostname, version)
-    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
-    C->>TL: 3. Fetch badge from TL
-    TL->>C: 4. Badge + Seal + Merkle Proof
-    Note over C: 5. Verify badge signature & seal
-    C->>S: 6. mTLS Handshake (client cert + server cert)
-    Note over C: 7. Post-verify: server cert hash == badge hash ✓
+    ATI->>C: 2. AgentDetail (endpoints: agentUrl, protocol, transports)
+
+    Note over C,S: Client Pre-verify (Badge)
+    C->>DNS: 3. Query _ati-badge.{serverHost} TXT
+    DNS->>C: 4. Badge URL(s)
+    C->>TL: 5. Fetch badge from TL
+    TL->>C: 6. Badge + Seal + Merkle Proof
+    Note over C: 7. Verify seal signature & Merkle proof
+
+    Note over C,S: TLS Handshake (with mTLS)
+    C->>S: 8. ClientHello → endpoint.agentUrl
+    S->>C: 9. ServerHello + Server Certificate Chain
+    C->>CA: 10. Validate server cert chain (system trust store)
+    CA->>C: 11. Chain valid ✓
+    S->>C: 12. CertificateRequest (client-auth=want)
+    C->>S: 13. Client identity certificate
+
+    Note over C: 14. Post-verify: server cert fingerprint == badge fingerprint ✓
 
     Note over C,S: Server-side verification
-    Note over S: 8. Receive client identity cert
-    Note over S: 9. Extract client agentHost from cert URI SAN
-    S->>DNS: 10. Query _ati-badge.{clientHost} TXT
-    DNS->>S: 11. Client badge URL
-    S->>TL: 12. Fetch client badge from TL
-    TL->>S: 13. Client Badge + Seal + Merkle Proof
-    Note over S: 14. Verify client cert fingerprint == badge hash ✓
+    Note over S: 15. Extract client agentHost from cert URI SAN
+    S->>DNS: 16. Query _ati-badge.{clientHost} TXT
+    DNS->>S: 17. Client badge URL
+    S->>TL: 18. Fetch client badge from TL
+    TL->>S: 19. Client Badge + Seal + Merkle Proof
+    Note over S: 20. Verify seal & client cert fingerprint == badge hash ✓
 
-    Note over C,S: 15. Connection Established
-    C<->>S: Encrypted Application Data
+    Note over C,S: 21. Connection Established
+    C->>S: Encrypted Application Data (bidirectional)
 ```
 
 ### DANE_AND_BADGE: Full Verification
@@ -89,32 +105,44 @@ sequenceDiagram
     participant ATI as ATI Console (OpenAPI)
     participant TL as CNNIC TL
     participant S as Server Agent
+    participant CA as System CA
 
-    Note over C,S: Client-side verification
+    Note over C,S: Agent Discovery
     C->>ATI: 1. Discover agent (hostname, version)
-    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
+    ATI->>C: 2. AgentDetail (endpoints: agentUrl, protocol, transports)
+
+    Note over C,S: Client Pre-verify (DANE + Badge)
     C->>DNS: 3. Query _443._tcp.{serverHost} TLSA
     DNS->>C: 4. TLSA: 3 1 1 <server-cert-hash>
-    C->>TL: 5. Fetch badge from TL
-    TL->>C: 6. Badge + Seal + Merkle Proof
-    Note over C: 7. Verify badge & DANE TLSA
-    C->>S: 8. mTLS Handshake (client cert + server cert)
-    Note over C: 9. Post-verify: DANE hash + Badge hash + Cert ✓
+    C->>DNS: 5. Query _ati-badge.{serverHost} TXT
+    DNS->>C: 6. Badge URL(s)
+    C->>TL: 7. Fetch badge from TL
+    TL->>C: 8. Badge + Seal + Merkle Proof
+    Note over C: 9. Verify seal signature & Merkle proof
+
+    Note over C,S: TLS Handshake (with mTLS)
+    C->>S: 10. ClientHello → endpoint.agentUrl
+    S->>C: 11. ServerHello + Server Certificate Chain
+    C->>CA: 12. Validate server cert chain (system trust store)
+    CA->>C: 13. Chain valid ✓
+    S->>C: 14. CertificateRequest (client-auth=want)
+    C->>S: 15. Client identity certificate
+
+    Note over C: 16. Post-verify: DANE hash + Badge fingerprint + Cert ✓
 
     Note over C,S: Server-side verification
-    Note over S: 10. Receive client identity cert
-    Note over S: 11. Extract client agentHost from cert URI SAN
-    S->>DNS: 12. Query _ati-badge.{clientHost} TXT
-    DNS->>S: 13. Client badge URL
-    S->>DNS: 14. Query _ati-identity._tls.{clientHost} TLSA
-    DNS->>S: 15. TLSA: 3 1 1 <client-cert-key-hash>
-    S->>TL: 16. Fetch client badge from TL
-    TL->>S: 17. Client Badge + Seal + Merkle Proof
-    Note over S: 18. Verify client cert fingerprint == badge hash ✓
-    Note over S: 19. Verify client cert public key == TLSA hash ✓
+    Note over S: 17. Extract client agentHost from cert URI SAN
+    S->>DNS: 18. Query _ati-badge.{clientHost} TXT
+    DNS->>S: 19. Client badge URL
+    S->>DNS: 20. Query _ati-identity._tls.{clientHost} TLSA
+    DNS->>S: 21. TLSA: 3 1 1 <client-cert-key-hash>
+    S->>TL: 22. Fetch client badge from TL
+    TL->>S: 23. Client Badge + Seal + Merkle Proof
+    Note over S: 24. Verify seal & client cert fingerprint == badge hash ✓
+    Note over S: 25. Verify client cert public key == TLSA hash ✓
 
-    Note over C,S: 20. Connection Established
-    C<->>S: Encrypted Application Data
+    Note over C,S: 26. Connection Established
+    C->>S: Encrypted Application Data (bidirectional)
 ```
 
 ## Modules
@@ -155,20 +183,20 @@ implementation("com.aliyun.ati:ati-sdk-transparency:0.1.0")      // transparency
 
 ### Agent Registration
 
-Agent registration is completed in the [Alibaba Cloud ATI Console](https://ati.console.aliyun.com). The registration flow:
+Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsnext.console.aliyun.com/ati/agents). The registration flow:
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  Generate   │───▶│  Submit CSR │───▶│  ACME + DNS  │───▶│   ACTIVE    │
-│  Keys & CSR │    │  to Console │    │  Verification│    │ (Discoverable)│
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Generate   │───▶│    Submit    │───▶│  ACME + DNS  │───▶│    ACTIVE    │
+│ Identity CSR │    │  to Console  │    │ Verification │    │(Discoverable)│
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
-1. **Generate key pairs** — Create RSA/EC key pairs for identity and server certificates
-2. **Generate CSRs** — Create Certificate Signing Requests (server CSR + identity CSR with ATI Name)
-3. **Submit registration** — Register agent in ATI Console with agentHost, version, endpoints, and CSRs
+1. **Generate identity key pair** — Create RSA/EC key pair for identity certificate (offline)
+2. **Generate identity CSR** — Create Certificate Signing Request with ATI Name URI SAN
+3. **Submit registration** — Input service certificate + identity CSR in ATI Console with agentHost, version, endpoints (service certificate is user-provided)
 4. **ACME verification** — Add DNS TXT record for domain ownership proof
-5. **Certificate issuance** — ATI issues identity and server certificates
+5. **Identity certificate issuance** — ATI issues identity certificate (service certificate is user-provided, not issued by ATI)
 6. **DNS verification** — Add TLSA and badge DNS records
 7. **Active** — Agent is discoverable via ATI Name
 
@@ -294,6 +322,217 @@ Set `ati.sdk.mode` to control which side to enable:
 | `server` | No | Yes |
 | `both` | Yes | Yes |
 
+## Configuration
+
+### Transparency Log
+
+The TransparencyClient connects to the ATI Transparency Log to verify agent badges and seals. Choose the environment that matches your deployment:
+
+```java
+// Default for production
+TransparencyClient tl = TransparencyClient.builder()
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://tl.atiagent.cn:8180
+    .build();
+
+// Custom timeouts and root key cache TTL
+TransparencyClient tl = TransparencyClient.builder()
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)
+    .connectTimeout(Duration.ofSeconds(5))
+    .readTimeout(Duration.ofSeconds(15))
+    .rootKeyCacheTtl(Duration.ofHours(12))   // default: 24 hours
+    .build();
+```
+
+### Verification Policy
+
+Configure the verification level via `ConnectOptions`:
+
+```java
+// PKI_ONLY — TLS with system CA only
+ConnectOptions opts = ConnectOptions.builder()
+    .verificationPolicy(VerificationPolicy.PKI_ONLY)
+    .build();
+
+// BADGE_REQUIRED — TLS + ATI Badge verification (recommended)
+ConnectOptions opts = ConnectOptions.builder()
+    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .transparencyClient(tl)
+    .build();
+
+// DANE_AND_BADGE — TLS + DANE TLSA + ATI Badge (highest assurance)
+ConnectOptions opts = ConnectOptions.builder()
+    .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+    .transparencyClient(tl)
+    .build();
+```
+
+### mTLS Client Certificate
+
+For mutual TLS authentication, provide a client certificate via `ConnectOptions`:
+
+```java
+// From PEM file paths
+ConnectOptions opts = ConnectOptions.builder()
+    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .transparencyClient(tl)
+    .clientCertPath(Path.of("/path/to/client.crt"))
+    .clientKeyPath(Path.of("/path/to/client.key"))
+    .build();
+
+// Or from in-memory objects
+ConnectOptions opts = ConnectOptions.builder()
+    .clientCertificate(x509Cert, privateKey)
+    .build();
+```
+
+For `AtiVerifiedClient`, use a PKCS12 keystore:
+
+```java
+AtiVerifiedClient client = AtiVerifiedClient.builder()
+    .keyStorePath("/path/to/keystore.p12", "password")
+    .transparencyClient(tl)
+    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .build();
+```
+
+### Authentication
+
+Add authentication headers to agent requests via `HttpAuthHeadersProvider`:
+
+```java
+// Bearer token
+ConnectOptions opts = ConnectOptions.builder()
+    .authProvider(HttpAuthHeadersProvider.bearer("eyJhbGciOiJSUzI1NiIs..."))
+    .build();
+
+// API key (sso-key format)
+ConnectOptions opts = ConnectOptions.builder()
+    .authProvider(HttpAuthHeadersProvider.apiKey("my-key", "my-secret"))
+    .build();
+
+// Custom header
+ConnectOptions opts = ConnectOptions.builder()
+    .authProvider(HttpAuthHeadersProvider.header("X-Custom-Auth", "value"))
+    .build();
+
+// Multiple headers
+ConnectOptions opts = ConnectOptions.builder()
+    .authProvider(HttpAuthHeadersProvider.headers(Map.of(
+        "X-Api-Key", "key123",
+        "X-Tenant-Id", "tenant456"
+    )))
+    .build();
+```
+
+### Timeouts and Retries
+
+```java
+AtiConfiguration config = AtiConfiguration.builder()
+    .environment(Environment.PROD)
+    .connectTimeout(Duration.ofSeconds(5))
+    .readTimeout(Duration.ofSeconds(30))
+    .enableRetry(3)  // Max 3 retry attempts
+    .build();
+```
+
+### TLSA Port Override
+
+When connecting through a proxy on a non-standard port, override the TLSA lookup port so DANE verification queries the correct DNS record:
+
+```java
+AtiVerifiedClient client = AtiVerifiedClient.builder()
+    .keyStorePath("/path/to/keystore.p12", "password")
+    .transparencyClient(tl)
+    .policy(VerificationPolicy.DANE_AND_BADGE)
+    .tlsaPort(443)  // Always query _443._tcp.{hostname} TLSA records
+    .build();
+```
+
+### Spring Boot
+
+When using `ati-sdk-spring-boot-starter`, configure via `application.yml` under the `ati.sdk` prefix:
+
+```yaml
+ati:
+  sdk:
+    mode: client
+    discovery:
+      endpoint: alidns.aliyuncs.com
+      access-key-id: your-ak
+      access-key-secret: your-sk
+    identity:
+      certificate: /path/to/identity.crt
+      private-key: /path/to/identity.key
+    transparency:
+      base-url: https://ati-tl.cnnic.cn:8180
+    verification:
+      policy: BADGE_REQUIRED
+    client:
+      dns-timeout: 5s
+      connect-timeout: 10s
+```
+
+| Property | Description | Default |
+|----------|-------------|--------|
+| `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
+| `ati.sdk.discovery.endpoint` | Alibaba Cloud OpenAPI endpoint | `alidns.aliyuncs.com` |
+| `ati.sdk.transparency.base-url` | Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
+| `ati.sdk.verification.policy` | Client verification policy | `BADGE_REQUIRED` |
+| `ati.sdk.client.dns-timeout` | DNS lookup timeout | `5s` |
+| `ati.sdk.client.connect-timeout` | HTTP connect timeout | `10s` |
+
+## Error Handling
+
+The SDK uses a hierarchy of exceptions for different error types:
+
+```java
+try {
+    AgentConnection conn = client.connect("https://agent.example.com", options);
+    String response = conn.httpApiAt("https://agent.example.com").get("/api/data");
+} catch (AtiNotFoundException e) {
+    // Agent or resource not found (404)
+    System.err.println("Not found: " + e.getResourceType() + ": " + e.getResourceId());
+} catch (AtiAuthenticationException e) {
+    // Authentication failed (401/403)
+    System.err.println("Auth error: " + e.getMessage());
+} catch (AtiValidationException e) {
+    // Request validation error (422)
+    System.err.println("Validation error: " + e.getMessage());
+    e.getFieldErrors().forEach((field, msg) ->
+        System.err.println("  " + field + ": " + msg));
+} catch (AtiConflictException e) {
+    // Resource conflict (409)
+    System.err.println("Conflict: " + e.getMessage());
+} catch (AtiServerException e) {
+    // Server error (5xx)
+    System.err.println("Server error (" + e.getStatusCode() + "): " + e.getMessage());
+    System.err.println("Request ID: " + e.getRequestId());
+    if (e.isRetryable()) {
+        // Retry after a delay
+    }
+} catch (AtiException e) {
+    // Any other SDK error (verification failure, TLS error, etc.)
+    System.err.println("Error: " + e.getMessage());
+}
+```
+
+| Exception | HTTP Status | Description |
+|-----------|-------------|-------------|
+| `AtiException` | — | Base exception for all SDK errors |
+| `AtiNotFoundException` | 404 | Agent or resource not found |
+| `AtiAuthenticationException` | 401/403 | Invalid or expired credentials |
+| `AtiValidationException` | 422 | Request validation failure (includes field errors) |
+| `AtiConflictException` | 409 | Resource already exists or conflicting operation |
+| `AtiServerException` | 5xx | Server-side error (retryable) |
+
+All exceptions extend `AtiException` and may carry a `requestId` for support purposes:
+
+```java
+} catch (AtiException e) {
+    String requestId = e.getRequestId();  // may be null for client-side errors
+}
+```
+
 ## Build
 
 ```bash
@@ -301,6 +540,36 @@ Set `ati.sdk.mode` to control which side to enable:
 ```
 
 Requirements: Java 17+, Gradle 8.5+
+
+## Version Constraints
+
+When discovering agents, you can specify a version constraint to select a specific agent version:
+
+| Constraint | Matches |
+|------------|--------|
+| `1.2.3` | Exact version 1.2.3 |
+| `^1.2.0` | Compatible with 1.2.0 (>=1.2.0 <2.0.0) |
+| `~1.2.0` | Approximately 1.2.0 (>=1.2.0 <1.3.0) |
+| `*` | Any version (latest) |
+
+```java
+AtiDiscoveryClient client = new AtiDiscoveryClient(
+    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
+
+// Exact version
+AgentDetail agent = client.discover("agent.example.com", "1.0.0");
+
+// Any 1.x version
+AgentDetail agent = client.discover("agent.example.com", "^1.0.0");
+
+// Any 1.2.x version
+AgentDetail agent = client.discover("agent.example.com", "~1.2.0");
+
+// Latest version (omit version parameter)
+AgentDetail latest = client.discover("agent.example.com");
+```
+
+Version constraints are resolved server-side by the ATI registry. The `agentVersion` parameter is passed directly to the `DescribeAtiAgentRegisterInfoMarket` API.
 
 ## License
 
