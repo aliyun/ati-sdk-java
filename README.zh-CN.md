@@ -21,133 +21,100 @@
 | `BADGE_REQUIRED` | 禁用 | 必须 | 需要 Badge 验证（默认） |
 | `DANE_AND_BADGE` | 必须 | 必须 | DANE 和 Badge 均需验证 |
 
-## 验证流程
-
-```mermaid
-graph TB
-    A[DNS 发现] --> B[预验证]
-    B --> C{DANE TLSA}
-    C -->|匹配| D[Badge 检查]
-    C -->|不匹配/建议| D
-    D -->|有效| E[mTLS 握手]
-    D -->|无效| F[连接拒绝]
-    E --> G[捕获服务器证书]
-    G --> H[后验证]
-    H -->|指纹匹配| I[连接建立]
-    H -->|指纹不匹配| F
-```
-
 ## 验证时序图
 
-### PKI_ONLY：标准 TLS
+### PKI_ONLY：标准 TLS（+ 服务端 IDCA 验证）
 
-```
-┌────────────┐                              ┌────────────┐                    ┌────────────┐
-│Client Agent│                              │Server Agent│                    │ System CA  │
-└─────┬──────┘                              └─────┬──────┘                    │Trust Store │
-      │                                           │                           └─────┬──────┘
-      │  1. TLS 握手 (ClientHello)                │                                 │
-      │──────────────────────────────────────────▶│                                 │
-      │                                           │                                 │
-      │  2. ServerHello + 证书链                  │                                 │
-      │◀──────────────────────────────────────────│                                 │
-      │                                           │                                 │
-      │  3. 根据 CA 信任库验证证书链              │                                 │
-      │─────────────────────────────────────────────────────────────────────────▶│
-      │                                           │                                 │
-      │  4. 链有效 ✓                              │                                 │
-      │◀─────────────────────────────────────────────────────────────────────────│
-      │                                           │                                 │
-      │  5. 完成 TLS 握手                         │                                 │
-      │◀─────────────────────────────────────────▶│                                 │
-      │                                           │                                 │
-      │  6. 加密应用数据                          │                                 │
-      │◀═════════════════════════════════════════▶│                                 │
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant S as Server Agent
+    participant CA as System CA
+    participant IDCA as IDCA Root CA
+
+    Note over C,S: 客户端验证
+    C->>S: 1. TLS 握手 (ClientHello)
+    S->>C: 2. ServerHello + 服务器证书链
+    C->>CA: 3. 验证服务器证书链
+    CA->>C: 4. 链有效 ✓
+    C->>S: 5. 完成 TLS 握手
+
+    Note over C,S: 服务端验证（配置了 IDCA 时）
+    C->>S: 6. 客户端身份证书 (mTLS)
+    S->>IDCA: 7. 根据 IDCA 根证书链验证客户端证书
+    IDCA->>S: 8. 客户端证书有效 ✓
+
+    Note over C,S: 9. 连接建立
+    C<->>S: 加密应用数据
 ```
 
 ### BADGE_REQUIRED：TLS + 透明日志验证
 
-```
-┌────────────┐         ┌────────────┐         ┌────────────┐         ┌────────────┐
-│Client Agent│         │ ATI 控制台  │         │  CNNIC TL  │         │Server Agent│
-│            │         │ (OpenAPI)  │         │            │         │            │
-└─────┬──────┘         └──────┬─────┘         └──────┬─────┘         └─────┬──────┘
-      │                       │                      │                     │
-      │  1. 发现 Agent        │                      │                     │
-      │   (hostname, version) │                      │                     │
-      │──────────────────────▶│                      │                     │
-      │                       │                      │                     │
-      │  2. AgentDescriptor    │                      │                     │
-      │   (host, badgeUrl)    │                      │                     │
-      │◀──────────────────────│                      │                     │
-      │                       │                      │                     │
-      │  3. 从 TL 获取 badge                         │                     │
-      │─────────────────────────────────────────────▶│                     │
-      │                       │                      │                     │
-      │  4. Badge + Seal + Merkle Proof              │                     │
-      │◀─────────────────────────────────────────────│                     │
-      │                       │                      │                     │
-      │  5. 验证 badge 签名和 seal                    │                     │
-      │     (使用 TL 根公钥)                         │                     │
-      │                       │                      │                     │
-      │  6. TLS 握手          │                      │                     │
-      │────────────────────────────────────────────────────────────────────▶│
-      │                       │                      │                     │
-      │  7. 服务器证书链      │                      │                     │
-      │◀────────────────────────────────────────────────────────────────────│
-      │                       │                      │                     │
-      │  8. 后验证：对比服务器证书哈希与 badge       │                     │
-      │     ┌─────────────────────────────────┐     │                     │
-      │     │ cert_hash == badge_hash ? ✓    │     │                     │
-      │     └─────────────────────────────────┘     │                     │
-      │                       │                      │                     │
-      │  9. 连接建立          │                      │                     │
-      │◀═══════════════════════════════════════════════════════════════════▶│
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS 服务器
+    participant ATI as ATI 控制台 (OpenAPI)
+    participant TL as CNNIC TL
+    participant S as Server Agent
+
+    Note over C,S: 客户端验证
+    C->>ATI: 1. 发现 Agent (hostname, version)
+    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
+    C->>TL: 3. 从 TL 获取 badge
+    TL->>C: 4. Badge + Seal + Merkle Proof
+    Note over C: 5. 验证 badge 签名和 seal
+    C->>S: 6. mTLS 握手（客户端证书 + 服务器证书）
+    Note over C: 7. 后验证：服务器证书哈希 == badge 哈希 ✓
+
+    Note over C,S: 服务端验证
+    Note over S: 8. 接收客户端身份证书
+    Note over S: 9. 从证书 URI SAN 提取客户端 agentHost
+    S->>DNS: 10. 查询 _ati-badge.{clientHost} TXT
+    DNS->>S: 11. 客户端 badge URL
+    S->>TL: 12. 从 TL 获取客户端 badge
+    TL->>S: 13. 客户端 Badge + Seal + Merkle Proof
+    Note over S: 14. 验证客户端证书指纹 == badge 哈希 ✓
+
+    Note over C,S: 15. 连接建立
+    C<->>S: 加密应用数据
 ```
 
 ### DANE_AND_BADGE：完整验证
 
-```
-┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
-│Client Agent│     │ DNS 服务器 │     │ ATI 控制台  │     │  CNNIC TL  │     │Server Agent│
-│            │     │            │     │ (OpenAPI)  │     │            │     │            │
-└─────┬──────┘     └─────┬──────┘     └──────┬─────┘     └──────┬─────┘     └─────┬──────┘
-      │                   │                   │                  │                  │
-      │ 1. 发现 Agent     │                   │                  │                  │
-      │──────────────────────────────────────▶│                  │                  │
-      │                   │                   │                  │                  │
-      │ 2. AgentDescriptor│                   │                  │                  │
-      │◀──────────────────────────────────────│                  │                  │
-      │                   │                   │                  │                  │
-      │ 3. 查询 TLSA      │                   │                  │                  │
-      │  _443._tcp.host   │                   │                  │                  │
-      │──────────────────▶│                   │                  │                  │
-      │                   │                   │                  │                  │
-      │ 4. TLSA: 3 1 1    │                   │                  │                  │
-      │   <cert-hash>     │                   │                  │                  │
-      │◀──────────────────│                   │                  │                  │
-      │                   │                   │                  │                  │
-      │ 5. 从 TL 获取 badge                    │                  │                  │
-      │──────────────────────────────────────────────────────────▶│                  │
-      │                   │                   │                  │                  │
-      │ 6. Badge + Seal + Merkle Proof         │                  │                  │
-      │◀──────────────────────────────────────────────────────────│                  │
-      │                   │                   │                  │                  │
-      │ 7. 验证 badge 和 DANE TLSA             │                  │                  │
-      │                   │                   │                  │                  │
-      │ 8. TLS 握手       │                   │                  │                  │
-      │───────────────────────────────────────────────────────────────────────────────▶│
-      │                   │                   │                  │                  │
-      │ 9. 服务器证书     │                   │                  │                  │
-      │◀───────────────────────────────────────────────────────────────────────────────│
-      │                   │                   │                  │                  │
-      │10. 后验证：DANE 哈希 + Badge 哈希匹配  │                  │                  │
-      │     ┌─────────────────────────────────┐              │                  │
-      │     │ DANE ✓  Badge ✓  Cert ✓        │              │                  │
-      │     └─────────────────────────────────┘              │                  │
-      │                   │                   │                  │                  │
-      │11. 连接建立        │                   │                  │                  │
-      │◀═══════════════════════════════════════════════════════════════════════════════▶│
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS 服务器
+    participant ATI as ATI 控制台 (OpenAPI)
+    participant TL as CNNIC TL
+    participant S as Server Agent
+
+    Note over C,S: 客户端验证
+    C->>ATI: 1. 发现 Agent (hostname, version)
+    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
+    C->>DNS: 3. 查询 _443._tcp.{serverHost} TLSA
+    DNS->>C: 4. TLSA: 3 1 1 <server-cert-hash>
+    C->>TL: 5. 从 TL 获取 badge
+    TL->>C: 6. Badge + Seal + Merkle Proof
+    Note over C: 7. 验证 badge 和 DANE TLSA
+    C->>S: 8. mTLS 握手（客户端证书 + 服务器证书）
+    Note over C: 9. 后验证：DANE 哈希 + Badge 哈希 + 证书 ✓
+
+    Note over C,S: 服务端验证
+    Note over S: 10. 接收客户端身份证书
+    Note over S: 11. 从证书 URI SAN 提取客户端 agentHost
+    S->>DNS: 12. 查询 _ati-badge.{clientHost} TXT
+    DNS->>S: 13. 客户端 badge URL
+    S->>DNS: 14. 查询 _ati-identity._tls.{clientHost} TLSA
+    DNS->>S: 15. TLSA: 3 1 1 <client-cert-key-hash>
+    S->>TL: 16. 从 TL 获取客户端 badge
+    TL->>S: 17. 客户端 Badge + Seal + Merkle Proof
+    Note over S: 18. 验证客户端证书指纹 == badge 哈希 ✓
+    Note over S: 19. 验证客户端证书公钥 == TLSA 哈希 ✓
+
+    Note over C,S: 20. 连接建立
+    C<->>S: 加密应用数据
 ```
 
 ## 模块

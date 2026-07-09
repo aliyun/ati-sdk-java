@@ -21,133 +21,100 @@
 | `BADGE_REQUIRED` | DISABLED | REQUIRED | Badge verification required (default) |
 | `DANE_AND_BADGE` | REQUIRED | REQUIRED | Both DANE and Badge required |
 
-## Verification Flow
-
-```mermaid
-graph TB
-    A[DNS Discovery] --> B[Pre-verification]
-    B --> C{DANE TLSA}
-    C -->|match| D[Badge Check]
-    C -->|mismatch/ADVISORY| D
-    D -->|valid| E[mTLS Handshake]
-    D -->|invalid| F[Connection Rejected]
-    E --> G[Capture Server Cert]
-    G --> H[Post-verification]
-    H -->|fingerprint match| I[Connection Established]
-    H -->|fingerprint mismatch| F
-```
-
 ## Verification Sequence Diagrams
 
-### PKI_ONLY: Standard TLS
+### PKI_ONLY: Standard TLS (+ IDCA on server side)
 
-```
-┌────────────┐                              ┌────────────┐                    ┌────────────┐
-│Client Agent│                              │Server Agent│                    │ System CA  │
-└─────┬──────┘                              └─────┬──────┘                    │Trust Store │
-      │                                           │                           └─────┬──────┘
-      │  1. TLS Handshake (ClientHello)           │                                 │
-      │──────────────────────────────────────────▶│                                 │
-      │                                           │                                 │
-      │  2. ServerHello + Certificate Chain       │                                 │
-      │◀──────────────────────────────────────────│                                 │
-      │                                           │                                 │
-      │  3. Validate cert chain against CA store  │                                 │
-      │─────────────────────────────────────────────────────────────────────────▶│
-      │                                           │                                 │
-      │  4. Chain valid ✓                         │                                 │
-      │◀─────────────────────────────────────────────────────────────────────────│
-      │                                           │                                 │
-      │  5. Complete TLS Handshake                │                                 │
-      │◀─────────────────────────────────────────▶│                                 │
-      │                                           │                                 │
-      │  6. Encrypted Application Data            │                                 │
-      │◀═════════════════════════════════════════▶│                                 │
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant S as Server Agent
+    participant CA as System CA
+    participant IDCA as IDCA Root CA
+
+    Note over C,S: Client-side verification
+    C->>S: 1. TLS Handshake (ClientHello)
+    S->>C: 2. ServerHello + Server Certificate Chain
+    C->>CA: 3. Validate server cert chain
+    CA->>C: 4. Chain valid ✓
+    C->>S: 5. Complete TLS Handshake
+
+    Note over C,S: Server-side verification (if IDCA configured)
+    C->>S: 6. Client identity certificate (mTLS)
+    S->>IDCA: 7. Validate client cert against IDCA root CA chain
+    IDCA->>S: 8. Client cert valid ✓
+
+    Note over C,S: 9. Connection Established
+    C<->>S: Encrypted Application Data
 ```
 
 ### BADGE_REQUIRED: TLS + Transparency Log Verification
 
-```
-┌────────────┐         ┌────────────┐         ┌────────────┐         ┌────────────┐
-│Client Agent│         │  ATI Console│         │  CNNIC TL  │         │Server Agent│
-│            │         │  (OpenAPI)  │         │            │         │            │
-└─────┬──────┘         └──────┬─────┘         └──────┬─────┘         └─────┬──────┘
-      │                       │                      │                     │
-      │  1. Discover agent    │                      │                     │
-      │   (hostname, version) │                      │                     │
-      │──────────────────────▶│                      │                     │
-      │                       │                      │                     │
-      │  2. AgentDescriptor    │                      │                     │
-      │   (host, badgeUrl)    │                      │                     │
-      │◀──────────────────────│                      │                     │
-      │                       │                      │                     │
-      │  3. Fetch badge from TL                      │                     │
-      │─────────────────────────────────────────────▶│                     │
-      │                       │                      │                     │
-      │  4. Badge + Seal + Merkle Proof              │                     │
-      │◀─────────────────────────────────────────────│                     │
-      │                       │                      │                     │
-      │  5. Verify badge signature & seal            │                     │
-      │     (using TL root key)                      │                     │
-      │                       │                      │                     │
-      │  6. TLS Handshake     │                      │                     │
-      │────────────────────────────────────────────────────────────────────▶│
-      │                       │                      │                     │
-      │  7. Server Certificate Chain                 │                     │
-      │◀────────────────────────────────────────────────────────────────────│
-      │                       │                      │                     │
-      │  8. Post-verify: compare server cert hash with badge               │
-      │     ┌─────────────────────────────────┐                            │
-      │     │ cert_hash == badge_hash ? ✓    │                            │
-      │     └─────────────────────────────────┘                            │
-      │                       │                      │                     │
-      │  9. Connection Established                     │                     │
-      │◀═══════════════════════════════════════════════════════════════════▶│
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS Server
+    participant ATI as ATI Console (OpenAPI)
+    participant TL as CNNIC TL
+    participant S as Server Agent
+
+    Note over C,S: Client-side verification
+    C->>ATI: 1. Discover agent (hostname, version)
+    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
+    C->>TL: 3. Fetch badge from TL
+    TL->>C: 4. Badge + Seal + Merkle Proof
+    Note over C: 5. Verify badge signature & seal
+    C->>S: 6. mTLS Handshake (client cert + server cert)
+    Note over C: 7. Post-verify: server cert hash == badge hash ✓
+
+    Note over C,S: Server-side verification
+    Note over S: 8. Receive client identity cert
+    Note over S: 9. Extract client agentHost from cert URI SAN
+    S->>DNS: 10. Query _ati-badge.{clientHost} TXT
+    DNS->>S: 11. Client badge URL
+    S->>TL: 12. Fetch client badge from TL
+    TL->>S: 13. Client Badge + Seal + Merkle Proof
+    Note over S: 14. Verify client cert fingerprint == badge hash ✓
+
+    Note over C,S: 15. Connection Established
+    C<->>S: Encrypted Application Data
 ```
 
 ### DANE_AND_BADGE: Full Verification
 
-```
-┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐     ┌────────────┐
-│Client Agent│     │ DNS Server │     │  ATI Console│     │  CNNIC TL  │     │Server Agent│
-│            │     │            │     │  (OpenAPI)  │     │            │     │            │
-└─────┬──────┘     └─────┬──────┘     └──────┬─────┘     └──────┬─────┘     └─────┬──────┘
-      │                   │                   │                  │                  │
-      │ 1. Discover agent │                   │                  │                  │
-      │──────────────────────────────────────▶│                  │                  │
-      │                   │                   │                  │                  │
-      │ 2. AgentDescriptor│                   │                  │                  │
-      │◀──────────────────────────────────────│                  │                  │
-      │                   │                   │                  │                  │
-      │ 3. Query TLSA     │                   │                  │                  │
-      │  _443._tcp.host   │                   │                  │                  │
-      │──────────────────▶│                   │                  │                  │
-      │                   │                   │                  │                  │
-      │ 4. TLSA: 3 1 1    │                   │                  │                  │
-      │   <cert-hash>     │                   │                  │                  │
-      │◀──────────────────│                   │                  │                  │
-      │                   │                   │                  │                  │
-      │ 5. Fetch badge from TL                 │                  │                  │
-      │──────────────────────────────────────────────────────────▶│                  │
-      │                   │                   │                  │                  │
-      │ 6. Badge + Seal + Merkle Proof         │                  │                  │
-      │◀──────────────────────────────────────────────────────────│                  │
-      │                   │                   │                  │                  │
-      │ 7. Verify badge & DANE TLSA            │                  │                  │
-      │                   │                   │                  │                  │
-      │ 8. TLS Handshake  │                   │                  │                  │
-      │───────────────────────────────────────────────────────────────────────────────▶│
-      │                   │                   │                  │                  │
-      │ 9. Server Cert    │                   │                  │                  │
-      │◀───────────────────────────────────────────────────────────────────────────────│
-      │                   │                   │                  │                  │
-      │10. Post-verify: DANE hash + Badge hash match          │                  │
-      │     ┌─────────────────────────────────┐              │                  │
-      │     │ DANE ✓  Badge ✓  Cert ✓        │              │                  │
-      │     └─────────────────────────────────┘              │                  │
-      │                   │                   │                  │                  │
-      │11. Connection Established              │                  │                  │
-      │◀═══════════════════════════════════════════════════════════════════════════════▶│
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS Server
+    participant ATI as ATI Console (OpenAPI)
+    participant TL as CNNIC TL
+    participant S as Server Agent
+
+    Note over C,S: Client-side verification
+    C->>ATI: 1. Discover agent (hostname, version)
+    ATI->>C: 2. AgentDescriptor (host, badgeUrl)
+    C->>DNS: 3. Query _443._tcp.{serverHost} TLSA
+    DNS->>C: 4. TLSA: 3 1 1 <server-cert-hash>
+    C->>TL: 5. Fetch badge from TL
+    TL->>C: 6. Badge + Seal + Merkle Proof
+    Note over C: 7. Verify badge & DANE TLSA
+    C->>S: 8. mTLS Handshake (client cert + server cert)
+    Note over C: 9. Post-verify: DANE hash + Badge hash + Cert ✓
+
+    Note over C,S: Server-side verification
+    Note over S: 10. Receive client identity cert
+    Note over S: 11. Extract client agentHost from cert URI SAN
+    S->>DNS: 12. Query _ati-badge.{clientHost} TXT
+    DNS->>S: 13. Client badge URL
+    S->>DNS: 14. Query _ati-identity._tls.{clientHost} TLSA
+    DNS->>S: 15. TLSA: 3 1 1 <client-cert-key-hash>
+    S->>TL: 16. Fetch client badge from TL
+    TL->>S: 17. Client Badge + Seal + Merkle Proof
+    Note over S: 18. Verify client cert fingerprint == badge hash ✓
+    Note over S: 19. Verify client cert public key == TLSA hash ✓
+
+    Note over C,S: 20. Connection Established
+    C<->>S: Encrypted Application Data
 ```
 
 ## Modules
