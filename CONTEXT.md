@@ -30,13 +30,17 @@ The registration state of an agent in the RA, following the state machine: `PEND
 - `ACTIVE` — fully registered, discoverable, and safe for production connections.
 - `DEPRECATED` — still connectable with a warning; callers should migrate to a newer version.
 - `REVOKED` — registration revoked; connections must be rejected.
+
+Returned as `status` on `AgentDetail` from Discovery. TL Badge Entry payload may also carry a snapshot as `payload.agentStatus` — semantically related, but Connection verification uses TL top-level **Registration Status**, not RA lifecycle status or `payload.agentStatus`.
 _Avoid_: status (alone), agent state (prefer Agent Lifecycle Status)
 
 **Registration Status**:
-The status field on a TL Badge entry, used during Badge verification to decide pass/reject. Related to but not identical to Agent Lifecycle Status. Badge verification additionally recognizes:
+The top-level `status` field on a TL Badge Entry, used during Badge verification to decide pass/reject. Related to but not identical to Agent Lifecycle Status. Badge verification additionally recognizes:
 - `WARNING` — passes with a warning (treated like `ACTIVE`).
 - `EXPIRED` — rejected (treated like `REVOKED`).
-_Avoid_: badge status (prefer Registration Status when referring to TL entries)
+
+The SDK reads this via `TransparencyLog.getStatus()` — not `payload.agentStatus`, which is a lifecycle snapshot inside the payload that the verification logic does not use as the authority.
+_Avoid_: badge status (prefer Registration Status when referring to TL entries), agentStatus (ambiguous — use Registration Status for TL top-level `status`, Agent Lifecycle Status for RA `AgentDetail.status`)
 
 **Protocol**:
 The communication protocol declared on an Endpoint. Discovery returns one or more Endpoints per agent; the client agent selects the appropriate Protocol to connect. An agent may publish multiple Endpoints, each with a different Protocol.
@@ -135,7 +139,7 @@ The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tl
 _Avoid_: Token, credential (alone — too generic)
 
 **Badge Entry**:
-The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status, ATI Name (`agentName` field), `agentHost`, `agentId`, certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
+The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status (top-level `status`), ATI Name (`payload.agentName`), `payload.agentHost`, `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
 _Avoid_: TL record (too vague), badge payload (prefer Badge Entry)
 
 **Evidence Ref**:
@@ -159,8 +163,12 @@ A periodically published Merkle tree state snapshot from the Transparency Log (R
 _Avoid_: snapshot (alone), log state (too vague)
 
 **Transparency Log (TL)**:
-The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
+The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Badge URLs and `TransparencyClient.baseUrl` must resolve to a **Trusted TL Domain**. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
 _Avoid_: TL (alone — spell out on first use), audit log, Alibaba Cloud TL (TL is CNNIC-operated, not Alibaba Cloud)
+
+**Trusted TL Domain**:
+A CNNIC transparency log hostname allowed in Badge URL pointers and `TransparencyClient.baseUrl`. Prevents a tampered `_ati-badge` TXT record from redirecting verification to a malicious log. Default trusted domains: `ati-tl.cnnic.cn` (production) and `tl.atiagent.cn` (legacy). Enforced by `BadgeUrlValidator` (Badge TXT `url` field) and `TrustedDomainRegistry` (`TransparencyClient` construction). Legacy Alibaba Cloud TL hostnames (e.g. `transparency.ati.aliyun.com`) are not trusted. Custom domains may be added via `BadgeUrlValidator` builder or the `ati.transparency.trusted.domains` system property for testing.
+_Avoid_: trusted domain (alone — specify Trusted TL Domain), TL URL (too vague)
 
 **Verification Policy**:
 The trust verification level applied when establishing an agent-to-agent connection. Policies are progressive — each level includes all checks from the previous level.
@@ -179,7 +187,7 @@ The phase after the TLS handshake that synchronously compares the captured serve
 _Avoid_: Post-check (too vague), cert validation (ambiguous with PKI)
 
 **Certificate Fingerprint**:
-The SHA-256 hash of a certificate, formatted as `SHA256:{hex}`. Used in post-verification to confirm the presented certificate matches the value recorded in the TL Badge entry.
+The SHA-256 hash of a certificate, formatted as `SHA256:{64-char hex}` when computed by the SDK (`CertificateUtils.computeSha256Fingerprint`). TL Badge entries may use `SHA-256:{hex}` instead — both prefixes are equivalent; `CertificateUtils.fingerprintMatches()` normalizes prefix and case before comparison.
 
 - **Server Cert Fingerprint** — fingerprint of the Server Certificate; compared during client-side post-verification of a server agent.
 - **Identity Cert Fingerprint** — fingerprint of the Identity Certificate; compared during server-side verification of a client agent.
@@ -216,8 +224,8 @@ The unique registration ID assigned by the RA to an agent (UUID), returned in Ag
 _Avoid_: agent UUID (prefer agentId — matches the RA field name), ATI Name (different identifier)
 
 **ATI Name**:
-The canonical URI identifier for an agent, including version: `ati://v{version}.{agentHost}`. Embedded in the Identity Certificate's URI SAN.
-_Avoid_: agent URI (prefer ATI Name), ANS name (out of scope — ANS uses `ans://`)
+The canonical URI identifier for an agent, including version: `ati://v{version}.{agentHost}` (e.g. `ati://v1.0.0.agent.example.com`). Embedded in the Identity Certificate's URI SAN. In TL Badge Entry payload, the same value appears under the field name `agentName` — use **ATI Name** in discussion, `agentName` when referencing TL JSON.
+_Avoid_: agent URI (prefer ATI Name), ANS name (out of scope — ANS uses `ans://`), agentName (alone — prefer ATI Name unless citing TL schema field names)
 
 **agentVersion**:
 The SemVer version of an agent as recorded in the RA registration — e.g. `1.0.0`. Also embedded in the ATI Name and optionally in Badge DNS TXT records during version rotation.
@@ -240,5 +248,11 @@ DNS Security Extensions — cryptographic signing of DNS responses (DNSKEY/RRSIG
 _Avoid_: DNS security (too vague), DNS signing (implementation detail)
 
 **TLSA Record**:
-A DNS record binding a domain to an expected certificate or public key fingerprint. Server agents publish under `_443._tcp.{agentHost}`; identity certificates publish under `_ati-identity._tls.{agentHost}`. These prefixes must not be mixed.
+A DNS record binding a domain to an expected certificate or public key fingerprint. Requires DNSSEC when used for DANE verification (unlike Badge TXT lookup).
+
+ATI publishes TLSA at two distinct prefixes — must not be mixed:
+- **Server Certificate** — `_443._tcp.{agentHost}`; used in client-side DANE verification during Server Verification.
+- **Identity Certificate** — `_ati-identity._tls.{agentHost}`; used in server-side Client Verification.
+
+ATI's default TLSA convention is **`3 1 1`** (RFC 6698): Usage 3 (Domain-issued certificate, coexists with PKI), Selector 1 (SPKI/public key), Matching Type 1 (SHA-256 hash). The SDK's `TlsaUtils` can handle other selector/matching-type combinations if published, but registration docs and examples assume `3 1 1`.
 _Avoid_: DNS record (alone), TLS record
