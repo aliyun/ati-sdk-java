@@ -22,6 +22,40 @@ _Avoid_: Server (alone — ambiguous with HTTP server or host machine)
 A protocol-specific service surface published by an agent — e.g. MCP or A2A — identified by an `agentUrl` in the registry record.
 _Avoid_: URL (alone), API (when the protocol is MCP or A2A)
 
+**Agent Lifecycle Status**:
+The registration state of an agent in the RA, following the state machine: `PENDING` → `PENDING_DNS` → `ACTIVE` → `DEPRECATED` → `REVOKED`.
+
+- `PENDING` — registration in progress, verification not yet complete.
+- `PENDING_DNS` — awaiting DNS record verification (TLSA, Badge TXT).
+- `ACTIVE` — fully registered, discoverable, and safe for production connections.
+- `DEPRECATED` — still connectable with a warning; callers should migrate to a newer version.
+- `REVOKED` — registration revoked; connections must be rejected.
+_Avoid_: status (alone), agent state (prefer Agent Lifecycle Status)
+
+**Protocol**:
+The communication protocol declared on an Endpoint. Discovery returns one or more Endpoints per agent; the client agent selects the appropriate Protocol to connect. An agent may publish multiple Endpoints, each with a different Protocol.
+_Avoid_: transport (too vague), API type
+
+**HTTP-API**:
+Standard REST/HTTP interface exposed by an agent endpoint. Used with the SDK's `HttpApiClient` for request/response calls.
+_Avoid_: REST (alone — HTTP-API is the ATI protocol name), HTTP (alone)
+
+**A2A**:
+Agent-to-Agent protocol — a dedicated inter-agent communication protocol exposed as an Endpoint.
+_Avoid_: agent protocol (too vague)
+
+**MCP**:
+Model Context Protocol — an endpoint protocol for tool invocation, resource access, and prompt exchange between agents.
+_Avoid_: model protocol, MCP server (MCP is the protocol; the agent is still an Agent)
+
+**agentUrl**:
+The connectable HTTPS URL of an Endpoint — e.g. `https://agent.example.com/mcp`. The target address for Connection after Discovery selects an Endpoint.
+_Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field name)
+
+**metaDataUrl**:
+An optional URL on an Endpoint pointing to the agent's capability metadata (e.g. an Agent Card or service descriptor). Not used for TLS connection — informational only.
+_Avoid_: metadata endpoint, description URL
+
 **RA (Registration Authority)**:
 The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA.
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
@@ -37,6 +71,10 @@ _Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS re
 **Connection**:
 Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`.
 _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
+
+**mTLS (Mutual TLS)**:
+A TLS connection where both parties present certificates — the server agent presents its Server Certificate, the client agent presents its Identity Certificate. ATI agent-to-agent connections use mTLS by default; the server agent validates the client's Identity Certificate via IDCA. Pre/Post-verification (Badge/DANE) runs on top of mTLS.
+_Avoid_: two-way TLS (prefer mTLS), client-auth (implementation detail, not the domain concept)
 
 **Server Certificate**:
 The TLS certificate a server agent uses to serve HTTPS — proves the server's identity to connecting clients. User-provided or ACME-issued; not signed by ATI.
