@@ -67,8 +67,12 @@ A self-published metadata document describing an agent's capabilities, skills, a
 _Avoid_: agent metadata (too vague), capability descriptor (prefer Agent Card when referring to A2A-style documents)
 
 **RA (Registration Authority)**:
-The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA.
+The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA — providing ATI Console, Discovery OpenAPI, endpoint metadata, and `trustLevel`. Distinct from CNNIC, which operates the trust infrastructure (Transparency Log and Identity Certificate issuance). Badge verification links the two: DNS `_ati-badge` points to TL entries (CNNIC) that attest RA registration records.
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
+
+**CNNIC**:
+China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
+_Avoid_: TL operator (alone — CNNIC also operates IDCA), CA provider (prefer CNNIC when referring to the institutional role)
 
 **ATI Console**:
 The RA's web UI for registering agents, completing ACME/DNS verification, and managing lifecycle.
@@ -81,6 +85,10 @@ _Avoid_: domain validation (too vague), Let's Encrypt (ACME is the protocol; ATI
 **DNS Verification**:
 The final registration-phase step — adding TLSA and Badge TXT DNS records so the agent becomes `ACTIVE`. Distinct from Badge/DANE verification at Connection time.
 _Avoid_: DNS check (too vague), record verification (ambiguous with Connection-time DANE)
+
+**Identity CSR**:
+The certificate signing request submitted during RA registration to obtain an Identity Certificate. Must include the agent's ATI Name as a URI SAN (`ati://v{version}.{agentHost}`). CNNIC — the national regulatory authority — issues the resulting Identity Certificate from this CSR, operating the private identity CA that underpins ATI agent identity. Distinct from the Server Certificate, which is user-provided or ACME-issued. Completed via ATI Console, not by the SDK.
+_Avoid_: client CSR (ambiguous), server CSR (that is for the Server Certificate)
 
 **Discovery**:
 Querying the RA's OpenAPI to resolve a registered agent's details (host, version, endpoints, badge URL) by `agentHost` and optional version constraint.
@@ -102,22 +110,28 @@ _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
 Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge/DANE expectations from DNS and TL) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
 _Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
 
+**Verification Result**:
+The outcome of Server Verification or Client Verification that determines whether a connection proceeds. Maps Registration Status from the TL Badge entry: `ACTIVE` → pass; `WARNING` / `DEPRECATED` → pass with warning; `REVOKED` / `EXPIRED` → reject. Lookup failures (missing Badge, DNS/TL errors) also produce a failed result. The SDK exposes specific status codes (e.g. `VERIFIED`, `DEPRECATED_OK`, `REGISTRATION_INVALID`) as implementations of this outcome.
+_Avoid_: verification status (prefer Verification Result for the connection-time conclusion), trust result
+
 **mTLS (Mutual TLS)**:
 A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates depends on IDCA configuration. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
 _Avoid_: two-way TLS (prefer mTLS), client-auth (implementation detail, not the domain concept)
 
 **Server Certificate**:
-The TLS certificate a server agent uses to serve HTTPS — proves the server's identity to connecting clients. User-provided or ACME-issued; not signed by ATI.
+The TLS certificate a server agent uses to serve HTTPS — proves the server's identity to connecting clients. Not issued by CNNIC or the RA — the agent operator provides it (bring-your-own certificate) or obtains it via ACME during registration. Used only for the transport layer; Identity Certificate handles mTLS agent identity.
 _Avoid_: Service cert (prefer Server Certificate), TLS cert (alone — ambiguous with client-side TLS material)
 
 **Identity Certificate**:
-An ATI-issued, privately signed certificate that proves an agent's identity in mTLS. Every registered agent receives one at registration, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation of a caller's Identity Certificate requires IDCA to be configured on the server agent; without IDCA, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
-_Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert
+A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC operates the identity CA and issues one to every registered agent, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation of a caller's Identity Certificate requires IDCA to be configured on the server agent; without IDCA, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
+_Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert, ATI-issued (identity certs are CNNIC-issued)
 
 ### Trust & Verification
 
 **Badge**:
 A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
+
+The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tlUrl}` — where `v` is the badge format version (e.g. `ati-badge1`), `version` is optional (the agent's SemVer, used during version rotation), and `url` points to the agent's entry in the TL. During version rotation, multiple TXT records may coexist under the same host.
 _Avoid_: Token, credential (alone — too generic)
 
 **Seal**:
@@ -129,7 +143,7 @@ Evidence that a Badge entry exists in the TL's append-only Merkle tree, preventi
 _Avoid_: Proof (alone), hash chain
 
 **Transparency Log (TL)**:
-The append-only public log where Badges are stored. Only CNNIC operates the TL service for ATI (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints.
+The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
 _Avoid_: TL (alone — spell out on first use), audit log, Alibaba Cloud TL (TL is CNNIC-operated, not Alibaba Cloud)
 
 **Verification Policy**:
@@ -156,8 +170,8 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{hex}`. Used in post-ver
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private certificate authority used by ATI to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring `idca.trust-certificate` enables mTLS client Identity Certificate chain validation; omitting IDCA skips client identity certificate verification to reduce integration complexity.
-_Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA
+The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring `idca.trust-certificate` enables mTLS client Identity Certificate chain validation against CNNIC's identity CA; omitting IDCA skips client identity certificate verification to reduce integration complexity.
+_Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA, ATI CA (IDCA is CNNIC-operated)
 
 **Client Verification**:
 Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. When IDCA is configured, the server agent validates the caller's Identity Certificate chain (IDCA) and applies Badge/DANE checks per Verification Policy — extracting the caller's ATI Name from the certificate URI SAN, then verifying via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
@@ -166,6 +180,14 @@ _Avoid_: client auth (too vague), inbound verification (prefer Client Verificati
 **SCITT Header**:
 HTTP headers carrying Transparency Log artifacts (Receipt, Status Token) for auditable attestation. Planned capability — **not supported in the current SDK version**; may be added in a future release. When supported, a client agent would attach its own SCITT artifacts to outgoing requests. Server-side client verification in ATI does not rely on SCITT headers — it uses Identity Certificate + Badge + DANE instead.
 _Avoid_: Transparency header (prefer SCITT Header), SCITT (alone — spell out on first use)
+
+**Receipt**:
+A SCITT transparency receipt proving an agent's TL registration entry exists and has not been tampered with — the HTTP-transportable counterpart to Merkle Proof evidence. When SCITT Header support is added, a client agent may attach its Receipt to outbound requests for auditable attestation.
+_Avoid_: SCITT receipt (prefer Receipt when context is SCITT), proof token
+
+**Status Token**:
+A SCITT token carrying an agent's Registration Status from the Transparency Log. Paired with Receipt in SCITT Header artifacts. Planned capability — not supported in the current SDK version.
+_Avoid_: status header, badge token
 
 ### Identity
 
