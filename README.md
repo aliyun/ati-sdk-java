@@ -8,7 +8,7 @@
 
 - **DNS-based agent discovery** — resolve agents by ATI Name (`ati://v{version}.{agentHost}`)
 - **DANE TLSA verification** — verify server certificates via DNS TLSA records
-- **Badge verification** — cryptographically verify agent registration via transparency log
+- **Badge verification** — cryptographically verify agent registration via the CNNIC Transparency Log
 - **mTLS secure connections** — mutual TLS with identity certificate support
 - **SCITT transparency headers** — signed transparency headers for auditable agent interactions
 - **Spring Boot auto-configuration** — zero-config integration with `ati.sdk.*` properties
@@ -326,12 +326,14 @@ Set `ati.sdk.mode` to control which side to enable:
 
 ### Transparency Log
 
-The TransparencyClient connects to the ATI Transparency Log to verify agent badges and seals. Choose the environment that matches your deployment:
+The Transparency Log (TL) stores agent Badges and is **operated by CNNIC only** — there is no separate Alibaba Cloud TL service. RA (Alibaba Cloud ATI) handles registration; CNNIC TL holds the append-only Badge records used for verification.
+
+`TransparencyClient` connects to CNNIC TL to verify agent badges and seals:
 
 ```java
-// Default for production
+// Production default — CNNIC TL
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://tl.atiagent.cn:8180
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
     .build();
 
 // Custom timeouts and root key cache TTL
@@ -476,7 +478,7 @@ ati:
 |----------|-------------|--------|
 | `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
 | `ati.sdk.discovery.endpoint` | Alibaba Cloud OpenAPI endpoint | `alidns.aliyuncs.com` |
-| `ati.sdk.transparency.base-url` | Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
+| `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | Client verification policy | `BADGE_REQUIRED` |
 | `ati.sdk.client.dns-timeout` | DNS lookup timeout | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP connect timeout | `10s` |

@@ -35,8 +35,14 @@ class TrustedDomainRegistryTest {
         }
 
         @Test
-        @DisplayName("Should accept CNNIC domain")
-        void shouldAcceptCnnicDomain() {
+        @DisplayName("Should accept current CNNIC domain")
+        void shouldAcceptCurrentCnnicDomain() {
+            assertThat(TrustedDomainRegistry.isTrustedDomain("ati-tl.cnnic.cn")).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should accept legacy CNNIC domain")
+        void shouldAcceptLegacyCnnicDomain() {
             assertThat(TrustedDomainRegistry.isTrustedDomain("tl.atiagent.cn")).isTrue();
         }
 
@@ -155,11 +161,12 @@ class TrustedDomainRegistryTest {
         @DisplayName("Should contain expected default domains")
         void shouldContainExpectedDefaultDomains() {
             assertThat(TrustedDomainRegistry.DEFAULT_TRUSTED_DOMAINS)
-                .hasSize(3)
+                .hasSize(4)
                 .contains(
                     "transparency.ati.aliyun.com",
                     "transparency.ati.ote-ati.aliyun.com",
-                    "tl.atiagent.cn"
+                    "tl.atiagent.cn",
+                    "ati-tl.cnnic.cn"
                 );
         }
 

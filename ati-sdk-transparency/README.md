@@ -1,30 +1,32 @@
 # ati-sdk-transparency
 
-Transparency log module — fetches and verifies transparency log entries and SCITT headers from the ATI Transparency Log (TL) service.
+Transparency log module — fetches and verifies transparency log entries and SCITT headers from the CNNIC Transparency Log (TL) service.
 
 ## Key Classes
 
-- `AtiTransparencyClient` — TL service client (fetch badges, seals, Merkle proofs)
+- `TransparencyClient` — TL service client (fetch badges, seals, Merkle proofs)
 - `RootKeyManager` — Manages TL root public key for verification
 - `BadgeUrlValidator` — Validates badge URLs against trusted domains
 - `TrustedDomainRegistry` — Registry of trusted TL domains
 
-## Trusted Domains
+## Transparency Log
 
-- `transparency.ati.aliyun.com` (Production)
-- `transparency.ati.ote-ati.aliyun.com` (OTE)
-- `tl.atiagent.cn` (CNNIC TL — legacy)
-- `ati-tl.cnnic.cn` (CNNIC TL — current)
+The TL is **operated by CNNIC only** — there is no separate Alibaba Cloud TL service. Agent registration is managed by RA (Alibaba Cloud ATI); Badge records are stored in CNNIC TL.
+
+Trusted CNNIC TL domains:
+
+- `ati-tl.cnnic.cn` — current production (see `TransparencyClient.CNNIC_BASE_URL`)
+- `tl.atiagent.cn` — legacy CNNIC hostname
 
 ## Usage
 
 ```java
-AtiTransparencyClient client = AtiTransparencyClient.builder()
-    .baseUrl("https://ati-tl.cnnic.cn:8180")
+TransparencyClient client = TransparencyClient.builder()
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
     .skipTlsVerification(false)
     .build();
 
-TransparencyLogResponse response = client.getTransparencyLog(badgeUrl);
+TransparencyLog log = client.getAgentTransparencyLog(agentId);
 ```
 
 ## Dependencies

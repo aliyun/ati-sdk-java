@@ -8,7 +8,7 @@
 
 - **基于 DNS 的 Agent 发现** — 通过 ATI Name（`ati://v{version}.{agentHost}`）解析 Agent
 - **DANE TLSA 验证** — 通过 DNS TLSA 记录验证服务器证书
-- **Badge 验证** — 通过透明日志加密验证 Agent 注册信息
+- **Badge 验证** — 通过 CNNIC 透明日志（Transparency Log）加密验证 Agent 注册信息
 - **mTLS 安全连接** — 支持身份证书的双向 TLS
 - **SCITT 透明性头** — 签名的透明性头，用于可审计的 Agent 交互
 - **Spring Boot 自动配置** — 通过 `ati.sdk.*` 属性实现零配置集成
@@ -326,12 +326,14 @@ ati:
 
 ### 透明日志（Transparency Log）
 
-TransparencyClient 用于连接 ATI 透明日志，验证 Agent Badge 和 Seal。根据部署环境选择对应的地址：
+透明日志（TL）存储 Agent 的 Badge，**由 CNNIC 独家运营** — 不存在阿里云自建的 TL 服务。RA（阿里云 ATI 服务）负责 Agent 注册；CNNIC TL 提供用于验证的 append-only Badge 记录。
+
+`TransparencyClient` 连接 CNNIC TL，验证 Agent Badge 和 Seal：
 
 ```java
-// 生产环境默认
+// 生产环境默认 — CNNIC TL
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://tl.atiagent.cn:8180
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
     .build();
 
 // 自定义超时和根密钥缓存 TTL
@@ -476,7 +478,7 @@ ati:
 |------|------|--------|
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
 | `ati.sdk.discovery.endpoint` | 阿里云 OpenAPI endpoint | `alidns.aliyuncs.com` |
-| `ati.sdk.transparency.base-url` | 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
+| `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `BADGE_REQUIRED` |
 | `ati.sdk.client.dns-timeout` | DNS 查询超时 | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP 连接超时 | `10s` |

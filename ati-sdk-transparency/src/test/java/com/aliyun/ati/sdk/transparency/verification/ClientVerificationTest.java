@@ -114,36 +114,32 @@ class ClientVerificationTest {
     // ==================== DNS SAN Mismatch ====================
 
     @Test
-    @DisplayName("Should reject when CN (hostname) does not match agent.host")
-    void shouldRejectWhenCnMismatchesAgentHost() {
+    @DisplayName("Should reject when URI SAN agentHost does not match registration agent.host")
+    void shouldRejectWhenAgentHostMismatchesRegistration() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
-            // Given - mock certificate with DIFFERENT hostname in CN
-            String differentHostname = "different-agent.example.com";
+            // Given - URI SAN resolves to a different agentHost than the registration record
+            String differentAtiName = "ati://v1.0.0.different-agent.example.com";
+            String differentAgentHost = "different-agent.example.com";
             certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
-                .thenReturn(Optional.of(TEST_ANS_NAME));
-            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
-                .thenReturn(TEST_HOSTNAME);
-            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
-                .thenReturn(differentHostname);
+                .thenReturn(Optional.of(differentAtiName));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(differentAtiName))
+                .thenReturn(differentAgentHost);
             certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
                 .thenReturn(TEST_FINGERPRINT);
             certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
                 .thenReturn(true);
 
-            // Mock badge lookup using agentHost from URI SAN
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
-            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
+                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/v1/agents/" + TEST_AGENT_ID);
+            when(raBadgeLookupService.lookupBadges(differentAgentHost)).thenReturn(List.of(badge));
 
-            // Mock registration with DIFFERENT agent.host
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
-            // agent.host in registration is TEST_HOSTNAME but cert CN has different-agent.example.com
             when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
 
             // When
             ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
 
-            // Then - should fail with hostname mismatch
+            // Then
             assertThat(result.getStatus()).isEqualTo(VerificationStatus.HOSTNAME_MISMATCH);
         }
     }
