@@ -91,8 +91,8 @@ The certificate signing request submitted during RA registration to obtain an Id
 _Avoid_: client CSR (ambiguous), server CSR (that is for the Server Certificate)
 
 **Discovery**:
-Querying the RA's OpenAPI to resolve a registered agent's details (host, version, endpoints, badge URL) by `agentHost` and optional version constraint.
-_Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS resolution of agent records)
+Querying the RA's OpenAPI to resolve a registered agent's details (host, version, endpoints) by `agentHost` and optional version constraint. Returns `AgentDetail`. DNS lookups for `_ati-badge` TXT and TLSA records happen during Connection pre-verification, not during Discovery.
+_Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS resolution of agent records), DNS-based discovery (inaccurate for this SDK — use registry-based or OpenAPI-based discovery)
 
 **AgentDetail**:
 The result returned by Discovery — a snapshot of an agent's RA registration record, including `agentId`, `agentHost`, `agentVersion`, `status`, `trustLevel`, and `endpoints`. Used by a client agent to select an Endpoint and initiate a Connection. The SDK also uses the name `AgentDetails` in some modules for the same concept.
@@ -134,13 +134,29 @@ A registration credential issued by the RA for an agent, stored in the Transpare
 The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tlUrl}` — where `v` is the badge format version (e.g. `ati-badge1`), `version` is optional (the agent's SemVer, used during version rotation), and `url` points to the agent's entry in the TL. During version rotation, multiple TXT records may coexist under the same host.
 _Avoid_: Token, credential (alone — too generic)
 
+**Badge Entry**:
+The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status, ATI Name (`agentName` field), `agentHost`, `agentId`, certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
+_Avoid_: TL record (too vague), badge payload (prefer Badge Entry)
+
+**Evidence Ref**:
+Metadata in a Badge Entry referencing the RA's original registration submission evidence (schema `ATI-EVIDENCE-V1`). Contains `evidenceId`, `submitterId` (RA, e.g. `aliyun`), `evidenceType`, `evidenceUri`, and `evidenceHash`. Used for audit traceability — Connection verification does not separately fetch or validate the evidence bytes, but `evidenceRef` is included in the Seal's JCS-signed content alongside `status`, `schemaVersion`, and `payload`.
+_Avoid_: evidence (alone — too generic), submission record (prefer Evidence Ref when referring to TL metadata)
+
 **Seal**:
-The cryptographic signature on a Badge entry in the Transparency Log, verifiable against the TL root public key during pre-verification.
+The cryptographic signature on a Badge Entry in the Transparency Log. Verified during Badge pre-verification using the `publicKey` embedded in the Seal object (SHA-256withECDSA over RFC 8785 JCS-canonicalized content: `status`, `schemaVersion`, `payload`, `evidenceRef`). Related to but distinct from TL Root Key — the current SDK verifies Seal signatures with the per-response embedded key, not by fetching `/root-keys`.
 _Avoid_: Signature (alone — too generic)
 
+**TL Root Key**:
+A root public key published by CNNIC at the TL `/root-keys` endpoint (C2SP format, keyed by hex key ID). Trust anchor for verifying SCITT Receipt and Status Token signatures when SCITT Header support is added. Cached by `RootKeyManager` in the SDK. Not the same as IDCA — TL Root Key attests log artifacts; IDCA issues Identity Certificates. The current Badge Seal verification path uses the `publicKey` embedded in each Seal response rather than `/root-keys`.
+_Avoid_: root key (alone — specify TL Root Key), TL CA (TL signs log artifacts; IDCA is the identity CA)
+
 **Merkle Proof**:
-Evidence that a Badge entry exists in the TL's append-only Merkle tree, preventing forgery or tampering. Validated alongside the Seal during Badge pre-verification.
+Evidence that a Badge entry exists in the TL's append-only Merkle tree, preventing forgery or tampering. Validated alongside the Seal during Badge pre-verification. Proves a single entry's inclusion — distinct from Checkpoint, which captures the whole tree's state.
 _Avoid_: Proof (alone), hash chain
+
+**Checkpoint**:
+A periodically published Merkle tree state snapshot from the Transparency Log (RFC 6962-style), signed by the TL operator. Used to verify log consistency and detect fork or rollback — a TL audit/monitoring capability, not a required step in agent-to-agent Connection verification. The SDK exposes `TransparencyClient.getCheckpoint()` for consumers who want to monitor log integrity. Distinct from Merkle Proof, which proves a single Badge Entry's inclusion during Badge pre-verification.
+_Avoid_: snapshot (alone), log state (too vague)
 
 **Transparency Log (TL)**:
 The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.

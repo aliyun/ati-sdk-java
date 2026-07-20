@@ -1,16 +1,16 @@
 # ATI Java SDK
 
-> Agent Trust Infrastructure (ATI) Java SDK — secure agent-to-agent communication with DNS-based discovery, DANE TLSA verification, and transparency log attestation.
+> Agent Trust Infrastructure (ATI) Java SDK — secure agent-to-agent communication with registry-based discovery, DANE TLSA verification, and transparency log attestation.
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 ## Features
 
-- **DNS-based agent discovery** — resolve agents by ATI Name (`ati://v{version}.{agentHost}`)
+- **Registry-based agent discovery** — resolve agents via RA OpenAPI by `agentHost` and optional version constraint
 - **DANE TLSA verification** — verify server certificates via DNS TLSA records
 - **Badge verification** — cryptographically verify agent registration via the CNNIC Transparency Log
 - **mTLS secure connections** — mutual TLS with identity certificate support
-- **SCITT transparency headers** — signed transparency headers for auditable agent interactions
+- **SCITT transparency headers (planned)** — auditable HTTP attestation via Receipt and Status Token; low-level infrastructure exists in `ati-sdk-transparency`, not yet wired into Connection verification
 - **Spring Boot auto-configuration** — zero-config integration with `ati.sdk.*` properties
 
 ## Verification Policies
@@ -150,8 +150,8 @@ sequenceDiagram
 | Module | Description |
 |--------|-------------|
 | [`ati-sdk-core`](ati-sdk-core/README.md) | Configuration, authentication, HTTP, utilities |
-| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | Agent resolution via DNS |
-| [`ati-sdk-transparency`](ati-sdk-transparency/README.md) | Transparency log + SCITT verification |
+| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | Agent resolution via RA OpenAPI |
+| [`ati-sdk-transparency`](ati-sdk-transparency/README.md) | Transparency log verification (+ SCITT infrastructure, planned) |
 | [`ati-sdk-agent-client`](ati-sdk-agent-client/README.md) | Secure agent-to-agent connections |
 | [`ati-sdk-spring-boot-starter`](ati-sdk-spring-boot-starter/README.md) | Spring Boot auto-configuration |
 
@@ -196,7 +196,7 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 2. **Generate identity CSR** — Create Certificate Signing Request with ATI Name URI SAN
 3. **Submit registration** — Input service certificate + identity CSR in ATI Console with agentHost, version, endpoints (service certificate is user-provided)
 4. **ACME verification** — Add DNS TXT record for domain ownership proof
-5. **Identity certificate issuance** — ATI issues identity certificate (service certificate is user-provided, not issued by ATI)
+5. **Identity certificate issuance** — CNNIC issues the identity certificate via IDCA (service certificate is user-provided, not issued by CNNIC or the RA)
 6. **DNS verification** — Add TLSA and badge DNS records
 7. **Active** — Agent is discoverable via ATI Name
 
@@ -204,29 +204,23 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 
 ### Agent Discovery
 
-Resolve agent information via Alibaba Cloud OpenAPI:
+Resolve agent information via the RA OpenAPI:
 
 ```java
-import com.aliyun.ati.sdk.discovery.DnsAtiDiscoveryClient;
-import com.aliyun.ati.sdk.auth.AccessKeyCredentialsProvider;
-import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
+import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
+import com.aliyun.ati.sdk.discovery.AgentDetail;
 
 // Create discovery client with AK/SK
-DnsAtiDiscoveryClient client = DnsAtiDiscoveryClient.builder()
-    .endpoint("alidns.aliyuncs.com")
-    .credentialsProvider(new AccessKeyCredentialsProvider(ak, sk))
-    .build();
+AtiDiscoveryClient client = new AtiDiscoveryClient(
+    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
 
 // Resolve by hostname with version constraint
-AtiAgentDescriptor agent = client.discover("agent.example.com", "1.0.0");
+AgentDetail agent = client.discover("agent.example.com", "1.0.0");
 System.out.println("Agent host: " + agent.getAgentHost());
-System.out.println("Badge URL: " + agent.getBadgeUrl());
+System.out.println("Endpoints: " + agent.getEndpoints());
 
 // Resolve latest version
-AtiAgentDescriptor latest = client.discover("agent.example.com");
-
-// Async resolution
-CompletableFuture<AtiAgentDescriptor> future = client.discoverAsync("agent.example.com");
+AgentDetail latest = client.discover("agent.example.com");
 ```
 
 ### Agent-to-Agent Connections

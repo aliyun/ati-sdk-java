@@ -1,6 +1,6 @@
 # ati-sdk-transparency
 
-Transparency log module — fetches and verifies transparency log entries and SCITT headers from the CNNIC Transparency Log (TL) service.
+Transparency log module — fetches and verifies Badge entries (Seal, Merkle proof) from the CNNIC Transparency Log (TL) service. SCITT Receipt/Status Token verification infrastructure is present but **not yet integrated** into agent Connection flows.
 
 ## Key Classes
 

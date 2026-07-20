@@ -63,7 +63,7 @@ docs: update README installation section
 | Module | Path | Description |
 |--------|------|-------------|
 | ati-sdk-core | `ati-sdk-core/` | Configuration, auth, HTTP, utilities |
-| ati-sdk-discovery | `ati-sdk-discovery/` | Agent resolution via DNS |
-| ati-sdk-transparency | `ati-sdk-transparency/` | Transparency log + SCITT verification |
+| ati-sdk-discovery | `ati-sdk-discovery/` | Agent resolution via RA OpenAPI |
+| ati-sdk-transparency | `ati-sdk-transparency/` | Transparency log verification (+ SCITT infrastructure, planned) |
 | ati-sdk-agent-client | `ati-sdk-agent-client/` | Secure agent-to-agent connections |
 | ati-sdk-spring-boot-starter | `ati-sdk-spring-boot-starter/` | Spring Boot auto-configuration |

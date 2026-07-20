@@ -1,26 +1,24 @@
 # ati-sdk-discovery
 
-Agent discovery module — resolves agent information (host, version, badge URL) via DNS and Alibaba Cloud OpenAPI.
+Agent discovery module — resolves agent information (host, version, endpoints) via the RA OpenAPI.
 
 ## Key Classes
 
-- `DnsAtiDiscoveryClient` — DNS-based agent discovery client
-- `AtiAgentDescriptor` — Resolved agent descriptor (host, version, endpoints)
-- `AtiName` — ATI Name parser (`ati://v{version}.{agentHost}`)
-- `AtiBadgeRecord` — Badge DNS record model
-- `AtiDiscoveryRecord` — Discovery DNS record model
+- `AtiDiscoveryClient` — OpenAPI-based agent discovery client
+- `AgentDetail` — Resolved agent registration record (host, version, endpoints, status)
+- `AgentEndpoint` — Protocol-specific endpoint (`agentUrl`, `protocol`, `metadataUrl`)
 
 ## Usage
 
 ```java
-DnsAtiDiscoveryClient client = DnsAtiDiscoveryClient.builder()
-    .endpoint("alidns.aliyuncs.com")
-    .credentialsProvider(new AccessKeyCredentialsProvider(ak, sk))
-    .build();
+AtiDiscoveryClient client = new AtiDiscoveryClient(
+    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
 
-AtiAgentDescriptor agent = client.discover("agent.example.com", "1.0.0");
-String badgeUrl = agent.getBadgeUrl();
+AgentDetail agent = client.discover("agent.example.com", "1.0.0");
+String agentUrl = agent.getEndpoints().get(0).getAgentUrl();
 ```
+
+> Badge TXT and TLSA DNS lookups happen during Connection pre-verification, not in this module.
 
 ## Dependencies
 

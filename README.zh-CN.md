@@ -1,16 +1,16 @@
 # ATI Java SDK
 
-> Agent 信任基础设施 (ATI) Java SDK — 通过 DNS 发现、DANE TLSA 验证和透明日志认证，实现安全的 Agent 间通信。
+> Agent 信任基础设施 (ATI) Java SDK — 通过注册表 OpenAPI 发现、DANE TLSA 验证和透明日志认证，实现安全的 Agent 间通信。
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 ## 特性
 
-- **基于 DNS 的 Agent 发现** — 通过 ATI Name（`ati://v{version}.{agentHost}`）解析 Agent
+- **基于注册表的 Agent 发现** — 通过 RA OpenAPI 按 `agentHost` 和可选版本约束解析 Agent
 - **DANE TLSA 验证** — 通过 DNS TLSA 记录验证服务器证书
 - **Badge 验证** — 通过 CNNIC 透明日志（Transparency Log）加密验证 Agent 注册信息
 - **mTLS 安全连接** — 支持身份证书的双向 TLS
-- **SCITT 透明性头** — 签名的透明性头，用于可审计的 Agent 交互
+- **SCITT 透明性头（计划中）** — 通过 Receipt 与 Status Token 实现可审计的 HTTP 证明；`ati-sdk-transparency` 已有底层基础设施，尚未接入 Connection 验证流程
 - **Spring Boot 自动配置** — 通过 `ati.sdk.*` 属性实现零配置集成
 
 ## 验证策略
@@ -150,8 +150,8 @@ sequenceDiagram
 | 模块 | 说明 |
 |------|------|
 | [`ati-sdk-core`](ati-sdk-core/README.md) | 配置、认证、HTTP、工具类 |
-| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | 基于 DNS 的 Agent 解析 |
-| [`ati-sdk-transparency`](ati-sdk-transparency/README.md) | 透明日志 + SCITT 验证 |
+| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | 通过 RA OpenAPI 解析 Agent |
+| [`ati-sdk-transparency`](ati-sdk-transparency/README.md) | 透明日志验证（+ SCITT 基础设施，计划中） |
 | [`ati-sdk-agent-client`](ati-sdk-agent-client/README.md) | 安全的 Agent 间连接 |
 | [`ati-sdk-spring-boot-starter`](ati-sdk-spring-boot-starter/README.md) | Spring Boot 自动配置 |
 
@@ -196,7 +196,7 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 2. **生成身份 CSR** — 创建包含 ATI Name URI SAN 的证书签名请求
 3. **提交注册** — 在 ATI 控制台输入服务证书 + 身份 CSR，并注册 agentHost、version、endpoints（服务证书由用户提供）
 4. **ACME 验证** — 添加 DNS TXT 记录证明域名所有权
-5. **身份证书签发** — ATI 签发身份证书（服务证书由用户提供，非 ATI 签发）
+5. **身份证书签发** — CNNIC 通过 IDCA 签发身份证书（服务证书由用户提供，非 CNNIC 或 RA 签发）
 6. **DNS 验证** — 添加 TLSA 和 badge DNS 记录
 7. **激活** — Agent 可通过 ATI Name 发现
 
@@ -204,29 +204,23 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 
 ### Agent 发现
 
-通过阿里云 OpenAPI 解析 Agent 信息：
+通过 RA OpenAPI 解析 Agent 信息：
 
 ```java
-import com.aliyun.ati.sdk.discovery.DnsAtiDiscoveryClient;
-import com.aliyun.ati.sdk.auth.AccessKeyCredentialsProvider;
-import com.aliyun.ati.sdk.discovery.AtiAgentDescriptor;
+import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
+import com.aliyun.ati.sdk.discovery.AgentDetail;
 
 // 使用 AK/SK 创建发现客户端
-DnsAtiDiscoveryClient client = DnsAtiDiscoveryClient.builder()
-    .endpoint("alidns.aliyuncs.com")
-    .credentialsProvider(new AccessKeyCredentialsProvider(ak, sk))
-    .build();
+AtiDiscoveryClient client = new AtiDiscoveryClient(
+    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
 
 // 按 hostname 和版本约束解析
-AtiAgentDescriptor agent = client.discover("agent.example.com", "1.0.0");
+AgentDetail agent = client.discover("agent.example.com", "1.0.0");
 System.out.println("Agent host: " + agent.getAgentHost());
-System.out.println("Badge URL: " + agent.getBadgeUrl());
+System.out.println("Endpoints: " + agent.getEndpoints());
 
 // 解析最新版本
-AtiAgentDescriptor latest = client.discover("agent.example.com");
-
-// 异步解析
-CompletableFuture<AtiAgentDescriptor> future = client.discoverAsync("agent.example.com");
+AgentDetail latest = client.discover("agent.example.com");
 ```
 
 ### Agent 间连接
