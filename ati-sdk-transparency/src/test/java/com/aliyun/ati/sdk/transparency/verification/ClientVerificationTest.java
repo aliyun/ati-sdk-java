@@ -74,7 +74,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with matching fingerprint
@@ -130,7 +130,7 @@ class ClientVerificationTest {
                 .thenReturn(true);
 
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(differentAgentHost)).thenReturn(List.of(badge));
 
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
@@ -165,7 +165,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT atiName
@@ -203,7 +203,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT fingerprint
@@ -238,7 +238,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DEPRECATED status
@@ -274,7 +274,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with EXPIRED status (even though fingerprint matches)
@@ -293,7 +293,7 @@ class ClientVerificationTest {
     // ==================== No Badge Record ====================
 
     @Test
-    @DisplayName("Should return NOT_ATI_AGENT when no ra-badge record exists")
+    @DisplayName("Should return NOT_ATI_AGENT when no _ati-badge record exists")
     void shouldReturnNotAnsAgentWhenNoBadgeRecord() {
         try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
             // Given

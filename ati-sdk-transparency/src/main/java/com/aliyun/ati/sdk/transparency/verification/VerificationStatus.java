@@ -17,7 +17,7 @@ public enum VerificationStatus {
     DEPRECATED_OK,
 
     /**
-     * The host does not have an ra-badge DNS record, indicating
+     * The host does not have an _ati-badge DNS record, indicating
      * it is not an ATI-registered agent.
      */
     NOT_ATI_AGENT,

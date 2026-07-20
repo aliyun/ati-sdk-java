@@ -8,14 +8,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RaBadgeRecordTest {
 
     @Test
-    @DisplayName("Should parse valid ra-badge TXT record without agent version")
+    @DisplayName("Should parse valid _ati-badge TXT record without agent version")
     void shouldParseValidRaBadgeRecordWithoutAgentVersion() {
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
+        assertThat(record.badgeVersion()).isEqualTo("ati-badge1");
         assertThat(record.agentVersion()).isNull();
         assertThat(record.url()).isEqualTo("https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.agentId()).isEqualTo("6bf2b7a9-1383-4e33-a945-845f34af7526");
@@ -23,14 +23,14 @@ class RaBadgeRecordTest {
     }
 
     @Test
-    @DisplayName("Should parse valid ra-badge TXT record with agent version")
+    @DisplayName("Should parse valid _ati-badge TXT record with agent version")
     void shouldParseValidRaBadgeRecordWithAgentVersion() {
-        String txtValue = "v=ra-badge1; version=1.2.3; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ati-badge1; version=1.2.3; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
+        assertThat(record.badgeVersion()).isEqualTo("ati-badge1");
         assertThat(record.agentVersion()).isEqualTo("1.2.3");
         assertThat(record.url()).isEqualTo("https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526");
         assertThat(record.agentId()).isEqualTo("6bf2b7a9-1383-4e33-a945-845f34af7526");
@@ -38,9 +38,9 @@ class RaBadgeRecordTest {
     }
 
     @Test
-    @DisplayName("Should parse ra-badge record without trailing slash")
+    @DisplayName("Should parse _ati-badge record without trailing slash")
     void shouldParseRecordWithoutTrailingSlash() {
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123";
+        String txtValue = "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -49,9 +49,9 @@ class RaBadgeRecordTest {
     }
 
     @Test
-    @DisplayName("Should parse ra-badge record with trailing slash")
+    @DisplayName("Should parse _ati-badge record with trailing slash")
     void shouldParseRecordWithTrailingSlash() {
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123/";
+        String txtValue = "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123/";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -62,35 +62,35 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should handle different badge format versions")
     void shouldHandleDifferentBadgeFormatVersions() {
-        String txtValue = "v=ra-badge2; url=https://example.com/v1/agents/test-id";
+        String txtValue = "v=ati-badge2; url=https://example.com/v1/agents/test-id";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge2");
+        assertThat(record.badgeVersion()).isEqualTo("ati-badge2");
         assertThat(record.isSupportedBadgeFormat()).isTrue();
     }
 
     @Test
     @DisplayName("Should be case insensitive")
     void shouldBeCaseInsensitive() {
-        String txtValue = "V=RA-BADGE1; URL=https://ati-tl.cnnic.cn:8180/tl/agents/test-id";
+        String txtValue = "V=ATI-BADGE1; URL=https://ati-tl.cnnic.cn:8180/tl/agents/test-id";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("RA-BADGE1");
+        assertThat(record.badgeVersion()).isEqualTo("ATI-BADGE1");
     }
 
     @Test
     @DisplayName("Should handle extra whitespace")
     void shouldHandleExtraWhitespace() {
-        String txtValue = "  v=ra-badge1  ;  url=https://ati-tl.cnnic.cn:8180/tl/agents/test-id  ";
+        String txtValue = "  v=ati-badge1  ;  url=https://ati-tl.cnnic.cn:8180/tl/agents/test-id  ";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
+        assertThat(record.badgeVersion()).isEqualTo("ati-badge1");
     }
 
     @Test
@@ -120,7 +120,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should return null for invalid format")
     void shouldReturnNullForInvalidFormat() {
-        RaBadgeRecord record = RaBadgeRecord.parse("not a valid ra-badge record");
+        RaBadgeRecord record = RaBadgeRecord.parse("not a valid _ati-badge record");
 
         assertThat(record).isNull();
     }
@@ -128,7 +128,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should return null for missing url")
     void shouldReturnNullForMissingUrl() {
-        RaBadgeRecord record = RaBadgeRecord.parse("v=ra-badge1");
+        RaBadgeRecord record = RaBadgeRecord.parse("v=ati-badge1");
 
         assertThat(record).isNull();
     }
@@ -147,7 +147,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should implement equals and hashCode")
     void shouldImplementEqualsAndHashCode() {
-        String txtValue = "v=ra-badge1; url=https://example.com/v1/agents/test-id";
+        String txtValue = "v=ati-badge1; url=https://example.com/v1/agents/test-id";
 
         RaBadgeRecord record1 = RaBadgeRecord.parse(txtValue);
         RaBadgeRecord record2 = RaBadgeRecord.parse(txtValue);
@@ -159,12 +159,12 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should have meaningful toString")
     void shouldHaveMeaningfulToString() {
-        String txtValue = "v=ra-badge1; version=1.0.0; url=https://example.com/v1/agents/test-id";
+        String txtValue = "v=ati-badge1; version=1.0.0; url=https://example.com/v1/agents/test-id";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record.toString())
-            .contains("badgeVersion='ra-badge1'")
+            .contains("badgeVersion='ati-badge1'")
             .contains("agentVersion='1.0.0'")
             .contains("test-id");
     }
@@ -172,43 +172,26 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should parse with extra whitespace around version")
     void shouldParseWithWhitespaceAroundVersion() {
-        String txtValue = "v=ra-badge1;  version=2.0.0  ;  url=https://example.com/v1/agents/abc-def-123";
+        String txtValue = "v=ati-badge1;  version=2.0.0  ;  url=https://example.com/v1/agents/abc-def-123";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
+        assertThat(record.badgeVersion()).isEqualTo("ati-badge1");
         assertThat(record.agentVersion()).isEqualTo("2.0.0");
         assertThat(record.agentId()).isEqualTo("abc-def-123");
     }
 
     @Test
-    @DisplayName("Should parse legacy ra-badge record with v=ra-badge1 format")
-    void shouldParseLegacyRaBadgeWithRaBadge1Format() {
-        String txtValue = "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+    @DisplayName("Should reject legacy ra-badge1 format")
+    void shouldRejectLegacyRaBadgeFormat() {
+        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/test-id";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
         assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
-        assertThat(record.agentVersion()).isEqualTo("1.0.0");
-        assertThat(record.agentId()).isEqualTo("6bf2b7a9-1383-4e33-a945-845f34af7526");
-        assertThat(record.isSupportedBadgeFormat()).isTrue();
-    }
-
-    @Test
-    @DisplayName("Should parse legacy ra-badge record without version field")
-    void shouldParseLegacyRaBadgeWithoutVersionField() {
-        // Older ra-badge records may not have a version field
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc123-def456-789012";
-
-        RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
-
-        assertThat(record).isNotNull();
-        assertThat(record.badgeVersion()).isEqualTo("ra-badge1");
-        assertThat(record.agentVersion()).isNull(); // No version in legacy records
-        assertThat(record.agentId()).isEqualTo("abc123-def456-789012");
-        assertThat(record.isSupportedBadgeFormat()).isTrue();
+        assertThat(record.isSupportedBadgeFormat()).isFalse();
     }
 
     @Test
@@ -217,7 +200,7 @@ class RaBadgeRecordTest {
         // Legacy records may have bare semver (1.0.0) instead of v-prefixed (v1.0.0)
         // Note: The RaBadgeRecord stores the version as-is. Normalization to v-prefixed
         // format is expected to happen at the comparison level (BadgeVerificationService).
-        String txtValue = "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/bare-semver-agent";
+        String txtValue = "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/bare-semver-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -231,7 +214,7 @@ class RaBadgeRecordTest {
     @DisplayName("Should accept v-prefixed semver")
     void shouldAcceptVPrefixedSemver() {
         // Modern records should have v-prefixed version
-        String txtValue = "v=ra-badge1; version=v1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/v-prefixed-agent";
+        String txtValue = "v=ati-badge1; version=v1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/v-prefixed-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -240,22 +223,21 @@ class RaBadgeRecordTest {
     }
 
     @Test
-    @DisplayName("Should support ans-badge format version")
-    void shouldSupportAnsBadgeFormatVersion() {
-        // Future: ans-badge format
+    @DisplayName("Should reject ans-badge format version")
+    void shouldRejectAnsBadgeFormatVersion() {
         String txtValue = "v=ans-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/ans-badge-agent";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
         assertThat(record).isNotNull();
         assertThat(record.badgeVersion()).isEqualTo("ans-badge1");
-        assertThat(record.agentVersion()).isEqualTo("1.0.0");
+        assertThat(record.isSupportedBadgeFormat()).isFalse();
     }
 
     @Test
     @DisplayName("Should extract tlPath from URL")
     void shouldExtractTlPathFromUrl() {
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
+        String txtValue = "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 
@@ -279,7 +261,7 @@ class RaBadgeRecordTest {
     @Test
     @DisplayName("Should extract tlPath with trailing slash")
     void shouldExtractTlPathWithTrailingSlash() {
-        String txtValue = "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123/";
+        String txtValue = "v=ati-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/abc-123/";
 
         RaBadgeRecord record = RaBadgeRecord.parse(txtValue);
 

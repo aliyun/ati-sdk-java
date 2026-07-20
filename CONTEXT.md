@@ -19,7 +19,7 @@ An agent that accepts incoming connections from other agents — the called part
 _Avoid_: Server (alone — ambiguous with HTTP server or host machine)
 
 **Endpoint**:
-A protocol-specific service surface published by an agent — e.g. MCP or A2A — identified by an `agentUrl` in the registry record.
+A protocol-specific service surface published by an agent — e.g. MCP or A2A — identified by an `agentUrl`, a **Protocol**, and optional **Transport** list in the registry record.
 _Avoid_: URL (alone), API (when the protocol is MCP or A2A)
 
 **Agent Lifecycle Status**:
@@ -43,8 +43,12 @@ The SDK reads this via `TransparencyLog.getStatus()` — not `payload.agentStatu
 _Avoid_: badge status (prefer Registration Status when referring to TL entries), agentStatus (ambiguous — use Registration Status for TL top-level `status`, Agent Lifecycle Status for RA `AgentDetail.status`)
 
 **Protocol**:
-The communication protocol declared on an Endpoint. Discovery returns one or more Endpoints per agent; the client agent selects the appropriate Protocol to connect. An agent may publish multiple Endpoints, each with a different Protocol.
-_Avoid_: transport (too vague), API type
+The communication protocol declared on an Endpoint — e.g. `MCP`, `A2A`, `HTTP-API`. Answers *what interface* to connect to. Discovery returns one or more Endpoints per agent; the client agent selects the appropriate Protocol to connect. An agent may publish multiple Endpoints, each with a different Protocol. Orthogonal to **Transport**, which declares the HTTP transport mode for a given Protocol.
+_Avoid_: API type (prefer Protocol — matches RA field name)
+
+**Transport**:
+The HTTP transport mode declared on an Endpoint — e.g. `STREAMABLE-HTTP` for MCP. Answers *how* to carry the Protocol over HTTP. Returned in `AgentEndpoint.transports` from Discovery. The client agent uses Transport to select an SDK transport implementation (e.g. `HttpClientStreamableHttpTransport` for MCP). Does not participate in Badge/DANE trust verification.
+_Avoid_: transport layer (ambiguous with TLS), protocol (Transport is not Protocol)
 
 **HTTP-API**:
 Standard REST/HTTP interface exposed by an agent endpoint. Used with the SDK's `HttpApiClient` for request/response calls.
@@ -63,8 +67,8 @@ The connectable HTTPS URL of an Endpoint — e.g. `https://agent.example.com/mcp
 _Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field name)
 
 **metaDataUrl**:
-An optional URL on an Endpoint pointing to the agent's capability metadata (e.g. an Agent Card or service descriptor). Not used for TLS connection — informational only.
-_Avoid_: metadata endpoint, description URL
+An optional URL on an Endpoint pointing to the agent's capability metadata (e.g. an Agent Card or service descriptor). Not used for TLS connection — informational only. RA OpenAPI field name: `MetadataUrl`. The discovery module's `AgentEndpoint.metadataUrl` is the same field — use **metaDataUrl** in discussion, `getMetadataUrl()` when referencing discovery module Java code.
+_Avoid_: metadata endpoint, description URL, metadataUrl (alone — prefer metaDataUrl unless citing discovery module field names)
 
 **Agent Card**:
 A self-published metadata document describing an agent's capabilities, skills, and interfaces — typically JSON, often used with the A2A protocol. Discovered via an Endpoint's `metaDataUrl`. Complements AgentDetail: AgentDetail answers who is registered and where to connect; Agent Card answers what the agent can do after connecting. Does not participate in Badge/DANE trust verification.
@@ -99,8 +103,8 @@ Querying the RA's OpenAPI to resolve a registered agent's details (host, version
 _Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS resolution of agent records), DNS-based discovery (inaccurate for this SDK — use registry-based or OpenAPI-based discovery)
 
 **AgentDetail**:
-The result returned by Discovery — a snapshot of an agent's RA registration record, including `agentId`, `agentHost`, `agentVersion`, `status`, `trustLevel`, and `endpoints`. Used by a client agent to select an Endpoint and initiate a Connection. The SDK also uses the name `AgentDetails` in some modules for the same concept.
-_Avoid_: agent record (too vague), discovery response (prefer AgentDetail)
+The result returned by Discovery — a snapshot of an agent's RA registration record, including `agentId`, `agentHost`, `agentVersion`, `status`, `trustLevel`, and `endpoints`. Used by a client agent to select an Endpoint and initiate a Connection. The discovery module exposes this as `com.aliyun.ati.sdk.discovery.AgentDetail`. The generated model `AgentDetails` in `ati-sdk-core` represents the same RA snapshot — prefer `AgentDetail` in new code; use `AgentDetails` only when working with `AtiClient` internals.
+_Avoid_: agent record (too vague), discovery response (prefer AgentDetail), AgentDetails (alone — prefer AgentDetail unless citing the core generated class)
 
 **trustLevel**:
 A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`), returned in AgentDetail. Informational — it does not automatically change the client agent's Verification Policy choice.
@@ -110,13 +114,47 @@ _Avoid_: trust score, security level (prefer trustLevel — matches the RA field
 Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`. Encompasses Server Verification when initiated by a client agent.
 _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
 
+**AtiClient**:
+SDK client class for the simplified integration path — `connect(agentUrl, ConnectOptions)` returns an `AgentConnection` for HTTP-API request/response. Encapsulates Badge/DANE pre/post-verification internally. Recommended for quick HTTP-API integrations. Not an Agent — it is the client agent's SDK entry point.
+_Avoid_: ATI client (alone — ambiguous with any SDK module), client (alone)
+
+**AtiVerifiedClient**:
+SDK client class for advanced integration — configures mTLS keystore, `VerificationPolicy`, and optional `agentId`. Produces `SSLContext` and `AtiConnection` for MCP/A2A transport integration. Use when the application owns the TLS handshake (e.g. MCP SDK) and needs explicit `verifyServer()` after connect. Not an Agent — it is the client agent's SDK entry point.
+_Avoid_: verified client (alone), mTLS client (implementation detail)
+
+**AgentConnection**:
+SDK connection handle returned by `AtiClient.connect()` — represents an established **Connection** to a server agent's `agentUrl`. Server Verification completes during connect; the handle exposes `HttpApiClient` for HTTP-API requests. Not an Agent.
+_Avoid_: connection (alone — ambiguous with domain Connection concept or TLS session)
+
+**AtiConnection**:
+SDK connection handle returned by `AtiVerifiedClient.connect()` — represents a **Connection** in progress to a server agent. Holds pre-verification results (Badge/DANE expectations); the caller runs TLS via an external transport (MCP/A2A), then calls `verifyServer()` for post-verification. Not an Agent.
+_Avoid_: ATI connection (alone), verified connection (too vague)
+
+**ConnectOptions**:
+SDK configuration object passed to `AtiClient.connect()` when a client agent initiates a **Connection**. Carries the runtime **Verification Policy**, optional mTLS Identity Certificate material, TLSA lookup port (default 443), custom `TransparencyClient`, and HTTP auth headers. Not an ATI protocol field — the SDK API wrapper for connection-time settings. Default policy: `BADGE_REQUIRED`.
+_Avoid_: connect config (too vague), connection options (prefer ConnectOptions — matches the SDK class name)
+
 **Server Verification**:
 Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge/DANE expectations from DNS and TL) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
 _Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
 
 **Verification Result**:
-The outcome of Server Verification or Client Verification that determines whether a connection proceeds. Maps Registration Status from the TL Badge entry: `ACTIVE` → pass; `WARNING` / `DEPRECATED` → pass with warning; `REVOKED` / `EXPIRED` → reject. Lookup failures (missing Badge, DNS/TL errors) also produce a failed result. The SDK exposes specific status codes (e.g. `VERIFIED`, `DEPRECATED_OK`, `REGISTRATION_INVALID`) as implementations of this outcome.
+The outcome of Server Verification or Client Verification that determines whether a connection proceeds. Maps Registration Status from the TL Badge entry: `ACTIVE` → pass; `WARNING` / `DEPRECATED` → pass with warning; `REVOKED` / `EXPIRED` → reject. Lookup failures (missing Badge, DNS/TL errors) and fingerprint/name mismatches also produce a failed result. Implemented in the SDK as the `VerificationStatus` enum — use **Verification Result** for the domain conclusion, `VerificationStatus` when reading code or logs.
 _Avoid_: verification status (prefer Verification Result for the connection-time conclusion), trust result
+
+**VerificationStatus**:
+SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) implementing **Verification Result**. Key values:
+
+- `VERIFIED` — ACTIVE registration, fingerprints match.
+- `DEPRECATED_OK` — WARNING or DEPRECATED registration; connection allowed with warning.
+- `REGISTRATION_INVALID` — REVOKED or EXPIRED registration.
+- `FINGERPRINT_MISMATCH` — presented certificate fingerprint ≠ TL Badge entry.
+- `ATI_NAME_MISMATCH` — Identity Certificate URI SAN ≠ Badge Entry `agentName`.
+- `HOSTNAME_MISMATCH` — certificate CN ≠ Badge Entry `agentHost` (client verification path).
+- `NOT_ATI_AGENT` — no `_ati-badge` TXT record found.
+- `LOOKUP_FAILED` — DNS or TL fetch error.
+- `SEAL_VERIFICATION_FAILED` — Seal signature or Merkle proof invalid.
+_Avoid_: status code (alone — specify VerificationStatus when referring to the enum)
 
 **mTLS (Mutual TLS)**:
 A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates depends on IDCA configuration. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
@@ -135,7 +173,7 @@ _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTL
 **Badge**:
 A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
 
-The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tlUrl}` — where `v` is the badge format version (e.g. `ati-badge1`), `version` is optional (the agent's SemVer, used during version rotation), and `url` points to the agent's entry in the TL. During version rotation, multiple TXT records may coexist under the same host.
+The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tlUrl}` — where `v` is the **Badge Format Version** (currently `ati-badge1` only; legacy `ra-badge*` formats are rejected by the SDK), `version` is optional (the agent's SemVer, used during version rotation), and `url` points to the agent's entry in the TL. During version rotation, multiple TXT records may coexist under the same host.
 _Avoid_: Token, credential (alone — too generic)
 
 **Badge Entry**:
@@ -200,6 +238,10 @@ _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), r
 **Client Verification**:
 Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. When IDCA is configured, the server agent validates the caller's Identity Certificate chain (IDCA) and applies Badge/DANE checks per Verification Policy — extracting the caller's ATI Name from the certificate URI SAN, then verifying via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
+
+**ClientRequestVerifier**:
+SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and `agentHost`, returns `ClientVerificationResult` with a `VerificationStatus`. Requires IDCA trust configuration and Verification Policy. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
+_Avoid_: client verifier (alone), inbound verifier (too vague)
 
 **SCITT Header**:
 HTTP headers carrying Transparency Log artifacts (Receipt, Status Token) for auditable attestation. Planned capability — **not supported in the current SDK version**; may be added in a future release. When supported, a client agent would attach its own SCITT artifacts to outgoing requests. Server-side client verification in ATI does not rely on SCITT headers — it uses Identity Certificate + Badge + DANE instead.

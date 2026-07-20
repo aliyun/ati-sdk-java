@@ -80,9 +80,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1 both ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both registrations are ACTIVE
@@ -124,10 +124,10 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 DEPRECATED, v1.0.1 ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
+                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
@@ -166,7 +166,7 @@ class VersionChangeHandlingTest {
 
             // Only v1.0.1 badge exists in DNS
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2));
 
             // v1.0.1 registration doesn't match the cert
@@ -220,9 +220,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2, badgeV1));
 
             // v1.0.1 fetch fails (5xx), but v1.0.0 succeeds
@@ -256,9 +256,9 @@ class VersionChangeHandlingTest {
 
             // Two badges exist
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both fetch attempts fail

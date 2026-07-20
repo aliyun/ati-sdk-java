@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * from the agent ID. This ensures that even if DNS is compromised, the SDK only talks to
  * the configured transparency log.</p>
  *
- * @param badgeVersion the badge format version (e.g., "ra-badge1")
+ * @param badgeVersion the badge format version (e.g., "ati-badge1")
  * @param agentVersion the agent's semantic version (e.g., "1.0.0"), may be null
  * @param url the full transparency log URL
  * @param agentId the extracted agent ID from the URL (kept for backwards compatibility)
@@ -37,7 +37,7 @@ public record RaBadgeRecord(
     String agentId,
     String tlPath
 ) {
-    // Pattern to parse ra-badge TXT record
+    // Pattern to parse _ati-badge TXT record
     // Matches: v=ati-badge1; version=1.0.0; url=https://... (version is optional)
     private static final Pattern BADGE_PATTERN = Pattern.compile(
         "v=([^;\\s]+)\\s*;\\s*(?:version=([^;\\s]+)\\s*;\\s*)?url=([^\\s]+)",
@@ -119,14 +119,13 @@ public record RaBadgeRecord(
     /**
      * Checks if this badge format version is supported.
      *
-     * @return true if the badge format is supported (e.g., "ra-badge1" or "ati-badge1")
+     * @return true if the badge format is supported (e.g., "ati-badge1")
      */
     public boolean isSupportedBadgeFormat() {
         if (badgeVersion == null) {
             return false;
         }
-        String lowerVersion = badgeVersion.toLowerCase();
-        return lowerVersion.startsWith("ra-badge") || lowerVersion.startsWith("ati-badge");
+        return badgeVersion.toLowerCase().startsWith("ati-badge");
     }
 
     @Override

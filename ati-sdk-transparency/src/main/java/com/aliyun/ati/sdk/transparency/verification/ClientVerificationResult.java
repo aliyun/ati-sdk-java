@@ -105,7 +105,7 @@ public final class ClientVerificationResult {
     }
 
     /**
-     * Returns true if the client is not an ATI agent (no ra-badge record).
+     * Returns true if the client is not an ATI agent (no _ati-badge record).
      *
      * @return true if not an ATI agent
      */

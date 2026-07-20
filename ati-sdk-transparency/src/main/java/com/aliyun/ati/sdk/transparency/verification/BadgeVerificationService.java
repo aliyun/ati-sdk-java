@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
  * <p>This service implements the verification flows described in AGENT_TO_AGENT_FLOW.md:</p>
  * <ul>
  *   <li><b>Server verification</b>: Verifies that a server is a registered ATI agent
- *       by looking up its ra-badge DNS record and checking the transparency log.</li>
+ *       by looking up its _ati-badge DNS record and checking the transparency log.</li>
  *   <li><b>Client verification</b>: Verifies that an mTLS client certificate belongs
  *       to a registered ATI agent.</li>
  * </ul>
