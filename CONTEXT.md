@@ -52,6 +52,14 @@ _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTL
 A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record.
 _Avoid_: Token, credential (alone — too generic)
 
+**Seal**:
+The cryptographic signature on a Badge entry in the Transparency Log, verifiable against the TL root public key during pre-verification.
+_Avoid_: Signature (alone — too generic)
+
+**Merkle Proof**:
+Evidence that a Badge entry exists in the TL's append-only Merkle tree, preventing forgery or tampering. Validated alongside the Seal during Badge pre-verification.
+_Avoid_: Proof (alone), hash chain
+
 **Transparency Log (TL)**:
 The append-only public log where Badges are stored. Only CNNIC operates the TL service for ATI (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints.
 _Avoid_: TL (alone — spell out on first use), audit log, Alibaba Cloud TL (TL is CNNIC-operated, not Alibaba Cloud)
@@ -64,6 +72,22 @@ The trust verification level applied when establishing an agent-to-agent connect
 - **DANE and Badge** (`DANE_AND_BADGE`) — 最高认证: PKI + Badge + DANE TLSA verification. Requires DNSSEC infrastructure.
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
 
+**Pre-verification**:
+The phase before the TLS handshake that asynchronously gathers verification expectations — DANE TLSA hashes and/or Badge fingerprints from DNS and the Transparency Log. Does not require the server's certificate yet.
+_Avoid_: Pre-check (too vague), upfront validation
+
+**Post-verification**:
+The phase after the TLS handshake that synchronously compares the captured server certificate against the expectations collected during pre-verification. Fails the connection if fingerprints do not match.
+_Avoid_: Post-check (too vague), cert validation (ambiguous with PKI)
+
+**IDCA (Identity CA)**:
+The private certificate authority used by ATI to issue Identity Certificates. Distinct from public CAs used for Server Certificates. A server agent configures `idca.trust-certificate` to accept only client Identity Certificates signed by IDCA during mTLS.
+_Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA
+
+**SCITT Header**:
+HTTP headers carrying Transparency Log artifacts (Receipt, Status Token) for auditable attestation. Planned capability — **not supported in the current SDK version**; may be added in a future release. When supported, a client agent would attach its own SCITT artifacts to outgoing requests. Server-side client verification in ATI does not rely on SCITT headers — it uses Identity Certificate + Badge + DANE instead.
+_Avoid_: Transparency header (prefer SCITT Header), SCITT (alone — spell out on first use)
+
 ### Identity
 
 **agentHost**:
@@ -73,6 +97,14 @@ _Avoid_: hostname (alone — ambiguous with machine hostname), domain (too vague
 **ATI Name**:
 The canonical URI identifier for an agent, including version: `ati://v{version}.{agentHost}`. Embedded in the Identity Certificate's URI SAN.
 _Avoid_: agent URI (prefer ATI Name), ANS name (out of scope — ANS uses `ans://`)
+
+**agentVersion**:
+The SemVer version of an agent as recorded in the RA registration — e.g. `1.0.0`. Also embedded in the ATI Name and optionally in Badge DNS TXT records during version rotation.
+_Avoid_: version (alone — ambiguous with version constraint or ATI Name prefix)
+
+**Version Constraint**:
+A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate), `*` (latest). Resolved server-side by the RA OpenAPI.
+_Avoid_: version filter, semver query
 
 **DANE**:
 DNS-based Authentication of Named Entities — verification that a presented certificate or public key matches a DNSSEC-secured TLSA record published for the agent's domain.
