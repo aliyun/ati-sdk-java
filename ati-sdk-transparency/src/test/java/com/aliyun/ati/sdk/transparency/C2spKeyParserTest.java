@@ -98,7 +98,7 @@ class C2spKeyParserTest {
         @Test
         @DisplayName("Should return map with one entry for a single valid EC key line")
         void shouldParseSingleValidKeyLine() {
-            String line = c2spLine("transparency.ati.aliyun.com", "abcd1234", keyPair1.getPublic());
+            String line = c2spLine("ati-tl.cnnic.cn", "abcd1234", keyPair1.getPublic());
             Map<String, PublicKey> keys = C2spKeyParser.parsePublicKeysResponse(line);
 
             assertThat(keys).hasSize(1);

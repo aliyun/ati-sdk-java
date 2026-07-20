@@ -31,8 +31,8 @@ class VersionChangeHandlingTest {
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID_V1 = "6bf2b7a9-1383-4e33-a945-845f34af7526";
     private static final String TEST_AGENT_ID_V2 = "7cf3c8b0-2494-5f44-b056-956f45bf8637";
-    private static final String TEST_TL_PATH_V1 = "/v1/agents/" + TEST_AGENT_ID_V1;
-    private static final String TEST_TL_PATH_V2 = "/v1/agents/" + TEST_AGENT_ID_V2;
+    private static final String TEST_TL_PATH_V1 = "/tl/agents/" + TEST_AGENT_ID_V1;
+    private static final String TEST_TL_PATH_V2 = "/tl/agents/" + TEST_AGENT_ID_V2;
     private static final String TEST_ANS_NAME_V1 = "ati://v1.0.0.agent.example.com";
     private static final String TEST_ANS_NAME_V2 = "ati://v1.0.1.agent.example.com";
     private static final String TEST_FINGERPRINT_V1 =
@@ -80,9 +80,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1 both ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V1);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V2);
+                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both registrations are ACTIVE
@@ -124,10 +124,10 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 DEPRECATED, v1.0.1 ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/"
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/"
+                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
@@ -166,7 +166,7 @@ class VersionChangeHandlingTest {
 
             // Only v1.0.1 badge exists in DNS
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V2);
+                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2));
 
             // v1.0.1 registration doesn't match the cert
@@ -220,9 +220,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V1);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V2);
+                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2, badgeV1));
 
             // v1.0.1 fetch fails (5xx), but v1.0.0 succeeds
@@ -256,9 +256,9 @@ class VersionChangeHandlingTest {
 
             // Two badges exist
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V1);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID_V2);
+                "v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both fetch attempts fail

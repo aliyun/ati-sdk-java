@@ -37,7 +37,7 @@ import java.util.function.Predicate;
  * <h2>Usage</h2>
  * <pre>{@code
  * BadgeVerificationService verifier = CachingBadgeVerificationService.builder()
- *     .delegate(BadgeVerificationService.create(TransparencyClient.createOte()))
+ *     .delegate(BadgeVerificationService.create(TransparencyClient.createDefault()))
  *     .cacheTtl(Duration.ofMinutes(15))
  *     .build();
  *

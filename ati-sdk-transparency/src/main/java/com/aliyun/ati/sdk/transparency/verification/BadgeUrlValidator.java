@@ -28,8 +28,8 @@ import java.util.regex.Pattern;
  * <pre>{@code
  * // Create validator with specific trusted domains
  * BadgeUrlValidator validator = BadgeUrlValidator.builder()
- *     .addTrustedDomain("transparency.ati.aliyun.com")
- *     .addTrustedDomain("transparency.ati.ote-ati.aliyun.com")
+ *     .addTrustedDomain("ati-tl.cnnic.cn")
+ *     .addTrustedDomain("tl.atiagent.cn")
  *     .build();
  *
  * // Or use ATI defaults
@@ -49,8 +49,6 @@ public final class BadgeUrlValidator {
      * ATI transparency log domains (for use with {@link #withAtiDefaults()}).
      */
     public static final List<String> ATI_TRUSTED_DOMAINS = List.of(
-        "transparency.ati.aliyun.com",      // Production
-        "transparency.ati.ote-ati.aliyun.com",   // OTE
         "tl.atiagent.cn",                   // CNNIC TL (legacy)
         "ati-tl.cnnic.cn"                   // CNNIC TL (current)
     );
@@ -80,7 +78,7 @@ public final class BadgeUrlValidator {
      * Creates a validator configured with the standard ATI transparency log domains.
      *
      * <p>This is a convenience factory method for the common case of using the
-     * ATI transparency logs (production, OTE, and development).</p>
+     * ATI transparency logs (CNNIC production and legacy hostnames).</p>
      *
      * @return a validator with ATI domains
      */
@@ -125,7 +123,7 @@ public final class BadgeUrlValidator {
         /**
          * Adds a trusted domain to the validator.
          *
-         * @param domain the domain to trust (e.g., "transparency.ati.aliyun.com")
+         * @param domain the domain to trust (e.g., "ati-tl.cnnic.cn")
          * @return this builder
          * @throws IllegalArgumentException if domain is null or blank
          */

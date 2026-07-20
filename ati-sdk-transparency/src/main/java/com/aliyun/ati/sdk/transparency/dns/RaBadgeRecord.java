@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
  *
  * <p>The _ati-badge TXT record format is:</p>
  * <pre>
- * v=ati-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/{uuid}
+ * v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/{uuid}
  * </pre>
  *
  * <p>Where:</p>

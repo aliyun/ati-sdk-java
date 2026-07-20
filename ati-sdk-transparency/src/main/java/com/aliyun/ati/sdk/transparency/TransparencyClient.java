@@ -27,7 +27,7 @@ import java.util.concurrent.CompletableFuture;
  * <p>Example usage:</p>
  * <pre>{@code
  * TransparencyClient client = TransparencyClient.builder()
- *     .baseUrl("https://transparency.ati.aliyun.com")
+ *     .baseUrl(TransparencyClient.CNNIC_BASE_URL)
  *     .build();
  *
  * // Get current registration
@@ -43,16 +43,6 @@ import java.util.concurrent.CompletableFuture;
  * }</pre>
  */
 public final class TransparencyClient implements AutoCloseable {
-
-    /**
-     * OTE base URL for the transparency log.
-     */
-    public static final String OTE_BASE_URL = "https://transparency.ati.ote-ati.aliyun.com";
-
-    /**
-     * Production base URL for the transparency log.
-     */
-    public static final String PRODUCTION_BASE_URL = "https://transparency.ati.aliyun.com";
 
     /**
      * CNNIC transparency log base URL (default for ATI).
@@ -91,21 +81,12 @@ public final class TransparencyClient implements AutoCloseable {
     }
 
     /**
-     * Creates a TransparencyClient for the OTE environment.
+     * Creates a TransparencyClient using the default CNNIC transparency log.
      *
-     * @return a new TransparencyClient pointing at OTE
+     * @return a new TransparencyClient pointing at {@link #CNNIC_BASE_URL}
      */
-    public static TransparencyClient createOte() {
-        return builder().baseUrl(OTE_BASE_URL).build();
-    }
-
-    /**
-     * Creates a TransparencyClient for the production environment.
-     *
-     * @return a new TransparencyClient pointing at production
-     */
-    public static TransparencyClient createProduction() {
-        return builder().baseUrl(PRODUCTION_BASE_URL).build();
+    public static TransparencyClient createDefault() {
+        return builder().baseUrl(CNNIC_BASE_URL).build();
     }
 
     // ==================== Agent Log Operations (Sync) ====================
@@ -427,7 +408,7 @@ public final class TransparencyClient implements AutoCloseable {
          * root key substitution attacks where a malicious transparency log could
          * provide a forged root key.</p>
          *
-         * @param baseUrl the base URL (e.g., {@link #OTE_BASE_URL} or {@link #PRODUCTION_BASE_URL})
+         * @param baseUrl the base URL (e.g., {@link #CNNIC_BASE_URL})
          * @return this builder
          */
         public Builder baseUrl(String baseUrl) {
@@ -494,8 +475,7 @@ public final class TransparencyClient implements AutoCloseable {
         public TransparencyClient build() {
             if (baseUrl == null || baseUrl.isBlank()) {
                 throw new IllegalStateException(
-                    "baseUrl is required. Use .baseUrl(TransparencyClient.OTE_BASE_URL) "
-                    + "or .baseUrl(TransparencyClient.PRODUCTION_BASE_URL)");
+                    "baseUrl is required. Use .baseUrl(TransparencyClient.CNNIC_BASE_URL)");
             }
             validateTrustedDomain();
             return new TransparencyClient(baseUrl, connectTimeout, readTimeout,

@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  * <p>Example usage:</p>
  * <pre>{@code
  * BadgeVerificationService verifier = BadgeVerificationService.builder()
- *     .transparencyClient(TransparencyClient.createOte())
+ *     .transparencyClient(TransparencyClient.createDefault())
  *     .build();
  *
  * // Verify a server before connecting

@@ -33,7 +33,7 @@ class BadgeVerificationServiceTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
-    private static final String TEST_TL_PATH = "/v1/agents/" + TEST_AGENT_ID;
+    private static final String TEST_TL_PATH = "/tl/agents/" + TEST_AGENT_ID;
     private static final String TEST_FINGERPRINT = "SHA256:a1b2c3d4e5f6g7h8";
     private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
 
@@ -58,7 +58,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should verify server and return expectedAgentHost")
     void shouldVerifyServerAndReturnExpectedAgentHost() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("ACTIVE");
@@ -75,7 +75,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should return DEPRECATED_OK status for deprecated registration")
     void shouldReturnDeprecatedOkForDeprecatedRegistration() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("DEPRECATED");
@@ -102,7 +102,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should return REGISTRATION_INVALID for revoked registration")
     void shouldReturnRegistrationInvalidForRevokedRegistration() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("REVOKED");
@@ -117,7 +117,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should return LOOKUP_FAILED when transparency client throws exception")
     void shouldReturnLookupFailedOnException() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
         when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("Network error"));
@@ -134,7 +134,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should verify server with WARNING status and proceed")
     void shouldVerifyServerWithWarningStatus() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("WARNING");
@@ -154,7 +154,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should reject server with EXPIRED status")
     void shouldRejectServerWithExpiredStatus() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("EXPIRED");
@@ -172,7 +172,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should apply failure policy when TL returns connection timeout")
     void shouldApplyFailurePolicyWhenTlConnectionTimeout() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
         when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("Connection timeout"));
@@ -187,7 +187,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should apply failure policy when TL returns 5xx error")
     void shouldApplyFailurePolicyWhenTlReturns5xx() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
         when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("HTTP 503 Service Unavailable"));
@@ -204,7 +204,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should apply failure policy when badge URL returns 404")
     void shouldApplyFailurePolicyWhenBadgeUrlReturns404() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
         when(transparencyClient.getTransparencyLogByPath(anyString()))
             .thenThrow(new RuntimeException("HTTP 404 Not Found"));
@@ -222,7 +222,7 @@ class BadgeVerificationServiceTest {
     void shouldReturnLookupFailedWhenBadgeUrlHasInvalidPath() {
         // Badge with invalid URL path (fails URL validation before agent ID check)
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/invalid-path");
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/invalid-path");
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -235,7 +235,7 @@ class BadgeVerificationServiceTest {
     @DisplayName("Should return REGISTRATION_INVALID for unknown status")
     void shouldReturnRegistrationInvalidForUnknownStatus() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
-            "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+            "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
         TransparencyLog registration = createMockRegistration("UNKNOWN_STATUS");
@@ -263,15 +263,15 @@ class BadgeVerificationServiceTest {
         void shouldReturnAllFingerprintsFromMultipleActiveRegistrations() {
             // Given - 2 badge records with different agent IDs
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
             // Both registrations are ACTIVE with different fingerprints
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_1));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -288,14 +288,14 @@ class BadgeVerificationServiceTest {
         void shouldReturnFingerprintFromActiveEvenIfFirstIsDeprecated() {
             // Given - first badge is DEPRECATED, second is ACTIVE
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("DEPRECATED", FINGERPRINT_1));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -312,14 +312,14 @@ class BadgeVerificationServiceTest {
         void shouldSkipRevokedButReturnActive() {
             // Given - first badge is REVOKED, second is ACTIVE
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationWithFingerprint("REVOKED", FINGERPRINT_1));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -336,14 +336,14 @@ class BadgeVerificationServiceTest {
         void shouldHandlePartialFetchFailures() {
             // Given - first fetch fails, second succeeds
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenThrow(new RuntimeException("Network error"));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationWithFingerprint("ACTIVE", FINGERPRINT_2));
 
             // When
@@ -392,9 +392,9 @@ class BadgeVerificationServiceTest {
         void shouldFetchMultipleRegistrationsInParallel() throws Exception {
             // Given - 3 badge records
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_3)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_3)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
@@ -440,18 +440,18 @@ class BadgeVerificationServiceTest {
         void shouldReturnActiveMatchEvenIfNotFirstBadge() {
             // Given - 3 badges where ACTIVE is the second
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_3)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_3)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
             // First is DEPRECATED, second is ACTIVE, third is EXPIRED
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "DEPRECATED", TEST_FINGERPRINT));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_3))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_3))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "EXPIRED", TEST_FINGERPRINT));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -472,14 +472,14 @@ class BadgeVerificationServiceTest {
         void shouldPreferActiveOverDeprecated() {
             // Given - 2 badges: first DEPRECATED, second ACTIVE
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "DEPRECATED", TEST_FINGERPRINT));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -500,8 +500,8 @@ class BadgeVerificationServiceTest {
         void shouldReturnDeprecatedOkWhenAllDeprecated() {
             // Given
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
@@ -526,17 +526,17 @@ class BadgeVerificationServiceTest {
         void shouldHandlePartialFailuresGracefully() {
             // Given - 3 badges, one fails
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_3)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_3)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_1))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_1))
                 .thenThrow(new RuntimeException("Network error"));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_2))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_2))
                 .thenReturn(createMockRegistrationForHost(TEST_HOSTNAME, "ACTIVE", TEST_FINGERPRINT));
-            when(transparencyClient.getTransparencyLogByPath("/v1/agents/" + AGENT_ID_3))
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + AGENT_ID_3))
                 .thenThrow(new RuntimeException("Timeout"));
 
             X509Certificate cert = mock(X509Certificate.class);
@@ -557,8 +557,8 @@ class BadgeVerificationServiceTest {
         void shouldReturnLookupFailedWhenAllFetchesFail() {
             // Given
             List<RaBadgeRecord> badges = List.of(
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_1),
-                RaBadgeRecord.parse("v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + AGENT_ID_2)
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_1),
+                RaBadgeRecord.parse("v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + AGENT_ID_2)
             );
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(badges);
 

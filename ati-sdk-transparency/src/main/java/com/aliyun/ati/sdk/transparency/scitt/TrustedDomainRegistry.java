@@ -8,8 +8,8 @@ import java.util.stream.Collectors;
  * Registry of trusted SCITT domains for the ATI transparency infrastructure.
  *
  * <p>Trusted domains can be configured via the system property
- * {@value #TRUSTED_DOMAINS_PROPERTY}. If not set, defaults to the production
- * ATI transparency log domains.</p>
+ * {@value #TRUSTED_DOMAINS_PROPERTY}. If not set, defaults to CNNIC
+ * transparency log domains.</p>
  *
  * <p><b>Security note:</b> Only domains in this registry will be trusted for
  * fetching SCITT root keys. This prevents root key substitution attacks.</p>
@@ -20,17 +20,19 @@ import java.util.stream.Collectors;
  *
  * <h2>Configuration</h2>
  * <pre>{@code
- * # Use default production domains (no property set)
+ * # Use default CNNIC TL domains (no property set)
  *
  * # Or specify custom domains (comma-separated) - must be set BEFORE first use
- * -Dati.transparency.trusted.domains=transparency.ati.aliyun.com,localhost
+ * -Dati.transparency.trusted.domains=ati-tl.cnnic.cn,localhost
  * }</pre>
+ *
+ * @see docs/adr/0001-cnnic-transparency-log.md
  */
 public final class TrustedDomainRegistry {
 
     /**
      * System property to specify trusted domains (comma-separated).
-     * If not set, defaults to production ATI transparency log domains.
+     * If not set, defaults to CNNIC transparency log domains.
      * <p><b>Note:</b> This property is read only once at class initialization.
      * Changes after that point have no effect.</p>
      */
@@ -40,8 +42,6 @@ public final class TrustedDomainRegistry {
      * Default trusted SCITT domains used when no system property is set.
      */
     public static final Set<String> DEFAULT_TRUSTED_DOMAINS = Set.of(
-        "transparency.ati.aliyun.com",
-        "transparency.ati.ote-ati.aliyun.com",
         "tl.atiagent.cn",          // CNNIC TL (legacy)
         "ati-tl.cnnic.cn"          // CNNIC TL (current)
     );

@@ -29,7 +29,7 @@ class ClientVerificationTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
-    private static final String TEST_TL_PATH = "/v1/agents/" + TEST_AGENT_ID;
+    private static final String TEST_TL_PATH = "/tl/agents/" + TEST_AGENT_ID;
     private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
     private static final String TEST_FINGERPRINT =
             "SHA256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2";
@@ -74,7 +74,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with matching fingerprint
@@ -130,7 +130,7 @@ class ClientVerificationTest {
                 .thenReturn(true);
 
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(differentAgentHost)).thenReturn(List.of(badge));
 
             TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
@@ -165,7 +165,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT atiName
@@ -203,7 +203,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DIFFERENT fingerprint
@@ -238,7 +238,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with DEPRECATED status
@@ -274,7 +274,7 @@ class ClientVerificationTest {
 
             // Mock badge lookup
             RaBadgeRecord badge = RaBadgeRecord.parse(
-                "v=ra-badge1; version=1.0.0; url=https://transparency.ati.aliyun.com/v1/agents/" + TEST_AGENT_ID);
+                "v=ra-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
 
             // Mock registration with EXPIRED status (even though fingerprint matches)

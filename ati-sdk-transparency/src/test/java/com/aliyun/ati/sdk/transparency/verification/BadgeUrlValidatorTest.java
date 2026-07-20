@@ -51,7 +51,7 @@ class BadgeUrlValidatorTest {
                 .build();
 
             // ATI domain should be rejected since we didn't include it
-            String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
+            String url = "https://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID;
             BadgeUrlValidator.ValidationResult result = customValidator.validate(url);
 
             assertThat(result.valid()).isFalse();
@@ -92,7 +92,7 @@ class BadgeUrlValidatorTest {
                 .addTrustedDomain("transparency.custom.com")
                 .build();
 
-            assertThat(customValidator.getTrustedDomains()).hasSize(5); // 4 ATI + 1 custom
+            assertThat(customValidator.getTrustedDomains()).hasSize(3); // 2 CNNIC + 1 custom
         }
 
         @Test
@@ -123,8 +123,6 @@ class BadgeUrlValidatorTest {
             BadgeUrlValidator atiValidator = BadgeUrlValidator.withAtiDefaults();
 
             assertThat(atiValidator.getTrustedDomains()).containsExactlyInAnyOrder(
-                "transparency.ati.aliyun.com",
-                "transparency.ati.ote-ati.aliyun.com",
                 "tl.atiagent.cn",
                 "ati-tl.cnnic.cn"
             );
@@ -147,7 +145,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL using plain HTTP")
     void shouldRejectPlainHttpUrl() {
         // Given - HTTP URL (not HTTPS)
-        String url = "http://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
+        String url = "http://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -161,7 +159,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should accept HTTPS URL")
     void shouldAcceptHttpsUrl() {
         // Given - HTTPS URL
-        String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -204,7 +202,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL with similar-looking domain")
     void shouldRejectSimilarLookingDomain() {
         // Given - URL with domain that looks similar to trusted domain
-        String url = "https://transparency.ati.aliyun.com.attacker.com/v1/agents/" + VALID_AGENT_ID;
+        String url = "https://ati-tl.cnnic.cn.attacker.com/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -216,28 +214,22 @@ class BadgeUrlValidatorTest {
     // ==================== Trusted Domain Acceptance ====================
 
     @Test
-    @DisplayName("Should accept badge URL from trusted RA domain (production)")
-    void shouldAcceptTrustedDomainProduction() {
-        // Given - production transparency log URL
-        String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
+    @DisplayName("Should accept badge URL from trusted CNNIC domain (current)")
+    void shouldAcceptTrustedDomainCurrentCnnic() {
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
-        // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
 
-        // Then - should accept
         assertThat(result.valid()).isTrue();
     }
 
     @Test
-    @DisplayName("Should accept badge URL from trusted RA domain (OTE)")
-    void shouldAcceptTrustedDomainOte() {
-        // Given - OTE transparency log URL
-        String url = "https://transparency.ati.ote-ati.aliyun.com/v1/agents/" + VALID_AGENT_ID;
+    @DisplayName("Should accept badge URL from trusted CNNIC domain (legacy)")
+    void shouldAcceptTrustedDomainLegacyCnnic() {
+        String url = "https://tl.atiagent.cn:8180/tl/agents/" + VALID_AGENT_ID;
 
-        // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
 
-        // Then - should accept
         assertThat(result.valid()).isTrue();
     }
 
@@ -276,7 +268,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should accept badge URL with explicit port 443")
     void shouldAcceptExplicitPort443() {
         // Given - URL with explicit standard HTTPS port
-        String url = "https://transparency.ati.aliyun.com:443/v1/agents/" + VALID_AGENT_ID;
+        String url = "https://ati-tl.cnnic.cn:443/tl/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -305,7 +297,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL with path traversal")
     void shouldRejectPathTraversal() {
         // Given - URL with path traversal attack
-        String url = "https://transparency.ati.aliyun.com/v1/agents/../../admin";
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/../../admin";
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -319,7 +311,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL with query injection")
     void shouldRejectQueryInjection() {
         // Given - URL with query parameters (not expected in badge URLs)
-        String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID + "?admin=true";
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID + "?admin=true";
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -333,7 +325,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL with URL-encoded traversal")
     void shouldRejectUrlEncodedTraversal() {
         // Given - URL with URL-encoded path traversal
-        String url = "https://transparency.ati.aliyun.com/v1/agents/%2e%2e%2f%2e%2e%2fadmin";
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/%2e%2e%2f%2e%2e%2fadmin";
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -346,7 +338,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should reject badge URL with invalid path format")
     void shouldRejectInvalidPathFormat() {
         // Given - URL with path that doesn't match /v1/agents/{uuid}
-        String url = "https://transparency.ati.aliyun.com/v2/agents/" + VALID_AGENT_ID;
+        String url = "https://ati-tl.cnnic.cn:8180/v2/agents/" + VALID_AGENT_ID;
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);
@@ -359,7 +351,7 @@ class BadgeUrlValidatorTest {
     @DisplayName("Should accept valid badge URL with trailing slash")
     void shouldAcceptValidUrlWithTrailingSlash() {
         // Given - valid URL with trailing slash
-        String url = "https://transparency.ati.aliyun.com/v1/agents/" + VALID_AGENT_ID + "/";
+        String url = "https://ati-tl.cnnic.cn:8180/tl/agents/" + VALID_AGENT_ID + "/";
 
         // When
         BadgeUrlValidator.ValidationResult result = validator.validate(url);

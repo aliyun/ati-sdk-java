@@ -37,8 +37,7 @@ class TransparencyClientTest {
     static void setUpClass() {
         // Include localhost for WireMock tests along with production domains
         System.setProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY,
-            "transparency.ati.aliyun.com,transparency.ati.ote-ati.aliyun.com,"
-            + "tl.atiagent.cn,ati-tl.cnnic.cn,localhost");
+            "tl.atiagent.cn,ati-tl.cnnic.cn,localhost");
     }
 
     @AfterAll
@@ -156,19 +155,11 @@ class TransparencyClientTest {
     }
 
     @Test
-    @DisplayName("Should create OTE client via factory method")
-    void shouldCreateOteClient() {
-        TransparencyClient client = TransparencyClient.createOte();
+    @DisplayName("Should create default CNNIC client via factory method")
+    void shouldCreateDefaultClient() {
+        TransparencyClient client = TransparencyClient.createDefault();
 
-        assertThat(client.getBaseUrl()).isEqualTo(TransparencyClient.OTE_BASE_URL);
-    }
-
-    @Test
-    @DisplayName("Should create production client via factory method")
-    void shouldCreateProductionClient() {
-        TransparencyClient client = TransparencyClient.createProduction();
-
-        assertThat(client.getBaseUrl()).isEqualTo(TransparencyClient.PRODUCTION_BASE_URL);
+        assertThat(client.getBaseUrl()).isEqualTo(TransparencyClient.CNNIC_BASE_URL);
     }
 
     @Test
@@ -761,18 +752,17 @@ class TransparencyClientTest {
     }
 
     @Test
-    @DisplayName("Should accept trusted production domain")
-    void shouldAcceptTrustedProductionDomain() {
-        // These are in our configured trusted domains
-        TransparencyClient prodClient = TransparencyClient.builder()
-            .baseUrl("https://transparency.ati.aliyun.com")
+    @DisplayName("Should accept trusted CNNIC TL domains")
+    void shouldAcceptTrustedCnnicDomains() {
+        TransparencyClient currentClient = TransparencyClient.builder()
+            .baseUrl("https://ati-tl.cnnic.cn:8180")
             .build();
-        assertThat(prodClient.getBaseUrl()).isEqualTo("https://transparency.ati.aliyun.com");
+        assertThat(currentClient.getBaseUrl()).isEqualTo("https://ati-tl.cnnic.cn:8180");
 
-        TransparencyClient oteClient = TransparencyClient.builder()
-            .baseUrl("https://transparency.ati.ote-ati.aliyun.com")
+        TransparencyClient legacyClient = TransparencyClient.builder()
+            .baseUrl("https://tl.atiagent.cn:8180")
             .build();
-        assertThat(oteClient.getBaseUrl()).isEqualTo("https://transparency.ati.ote-ati.aliyun.com");
+        assertThat(legacyClient.getBaseUrl()).isEqualTo("https://tl.atiagent.cn:8180");
     }
 
     // ==================== Test Data ====================
@@ -807,7 +797,7 @@ class TransparencyClientTest {
               "logSize": 1000,
               "treeHeight": 10,
               "rootHash": "abc123",
-              "originName": "transparency.ati.aliyun.com",
+              "originName": "ati-tl.cnnic.cn",
               "checkpointFormat": "sigsum",
               "publicKeyPem": "-----BEGIN PUBLIC KEY-----..."
             }
@@ -888,14 +878,14 @@ class TransparencyClientTest {
      * Returns a valid EC P-256 public key in C2SP note format.
      */
     private String rootKeyC2spSingleResponse() {
-        return "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY;
+        return "ati-tl.cnnic.cn+abcd1234+" + TEST_EC_PUBLIC_KEY;
     }
 
     /**
      * Returns multiple valid EC P-256 public keys in C2SP note format.
      */
     private String rootKeyC2spMultipleResponse() {
-        return "transparency.ati.aliyun.com+abcd1234+" + TEST_EC_PUBLIC_KEY + "\n"
-            + "transparency.ati.aliyun.com+efgh5678+" + TEST_EC_PUBLIC_KEY_2;
+        return "ati-tl.cnnic.cn+abcd1234+" + TEST_EC_PUBLIC_KEY + "\n"
+            + "ati-tl.cnnic.cn+efgh5678+" + TEST_EC_PUBLIC_KEY_2;
     }
 }

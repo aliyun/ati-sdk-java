@@ -23,18 +23,6 @@ class TrustedDomainRegistryTest {
     class DefaultDomainTests {
 
         @Test
-        @DisplayName("Should accept production domain")
-        void shouldAcceptProductionDomain() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com")).isTrue();
-        }
-
-        @Test
-        @DisplayName("Should accept OTE domain")
-        void shouldAcceptOteDomain() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.ote-ati.aliyun.com")).isTrue();
-        }
-
-        @Test
         @DisplayName("Should accept current CNNIC domain")
         void shouldAcceptCurrentCnnicDomain() {
             assertThat(TrustedDomainRegistry.isTrustedDomain("ati-tl.cnnic.cn")).isTrue();
@@ -49,8 +37,15 @@ class TrustedDomainRegistryTest {
         @Test
         @DisplayName("Should be case insensitive")
         void shouldBeCaseInsensitive() {
-            assertThat(TrustedDomainRegistry.isTrustedDomain("TRANSPARENCY.ATI.ALIYUN.COM")).isTrue();
-            assertThat(TrustedDomainRegistry.isTrustedDomain("Transparency.Ati.Aliyun.Com")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("ATI-TL.CNNIC.CN")).isTrue();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("TL.ATIAGENT.CN")).isTrue();
+        }
+
+        @Test
+        @DisplayName("Should reject legacy Alibaba Cloud TL domains")
+        void shouldRejectLegacyAliyunTlDomains() {
+            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com")).isFalse();
+            assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.ote-ati.aliyun.com")).isFalse();
         }
 
         @Test
@@ -83,7 +78,6 @@ class TrustedDomainRegistryTest {
             Set<String> first = TrustedDomainRegistry.getTrustedDomains();
             Set<String> second = TrustedDomainRegistry.getTrustedDomains();
 
-            // Same reference - not just equal, but identical
             assertThat(first).isSameAs(second);
         }
 
@@ -99,23 +93,19 @@ class TrustedDomainRegistryTest {
         @Test
         @DisplayName("Runtime system property changes should NOT affect trusted domains")
         void runtimePropertyChangesShouldNotAffect() {
-            // Capture current state
             Set<String> before = TrustedDomainRegistry.getTrustedDomains();
-            boolean productionWasTrusted = TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com");
+            boolean cnnicWasTrusted = TrustedDomainRegistry.isTrustedDomain("ati-tl.cnnic.cn");
 
-            // Attempt to add a malicious domain via system property
             String originalValue = System.getProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY);
             try {
                 System.setProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY, "malicious.attacker.com");
 
-                // Verify the change had NO effect (security guarantee)
                 Set<String> after = TrustedDomainRegistry.getTrustedDomains();
                 assertThat(after).isSameAs(before);
                 assertThat(TrustedDomainRegistry.isTrustedDomain("malicious.attacker.com")).isFalse();
-                assertThat(TrustedDomainRegistry.isTrustedDomain("transparency.ati.aliyun.com"))
-                    .isEqualTo(productionWasTrusted);
+                assertThat(TrustedDomainRegistry.isTrustedDomain("ati-tl.cnnic.cn"))
+                    .isEqualTo(cnnicWasTrusted);
             } finally {
-                // Restore original state
                 if (originalValue == null) {
                     System.clearProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY);
                 } else {
@@ -127,19 +117,15 @@ class TrustedDomainRegistryTest {
         @Test
         @DisplayName("Clearing system property at runtime should NOT affect trusted domains")
         void clearingPropertyShouldNotAffect() {
-            // Capture current state
             Set<String> before = TrustedDomainRegistry.getTrustedDomains();
 
-            // Attempt to clear the property
             String originalValue = System.getProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY);
             try {
                 System.clearProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY);
 
-                // Verify the change had NO effect
                 Set<String> after = TrustedDomainRegistry.getTrustedDomains();
                 assertThat(after).isSameAs(before);
             } finally {
-                // Restore original state
                 if (originalValue != null) {
                     System.setProperty(TrustedDomainRegistry.TRUSTED_DOMAINS_PROPERTY, originalValue);
                 }
@@ -158,13 +144,11 @@ class TrustedDomainRegistryTest {
         }
 
         @Test
-        @DisplayName("Should contain expected default domains")
-        void shouldContainExpectedDefaultDomains() {
+        @DisplayName("Should contain expected CNNIC domains")
+        void shouldContainExpectedCnnicDomains() {
             assertThat(TrustedDomainRegistry.DEFAULT_TRUSTED_DOMAINS)
-                .hasSize(4)
-                .contains(
-                    "transparency.ati.aliyun.com",
-                    "transparency.ati.ote-ati.aliyun.com",
+                .hasSize(2)
+                .containsExactlyInAnyOrder(
                     "tl.atiagent.cn",
                     "ati-tl.cnnic.cn"
                 );
