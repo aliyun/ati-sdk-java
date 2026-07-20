@@ -51,7 +51,7 @@ The HTTP transport mode declared on an Endpoint — e.g. `STREAMABLE-HTTP` for M
 _Avoid_: transport layer (ambiguous with TLS), protocol (Transport is not Protocol)
 
 **HTTP-API**:
-Standard REST/HTTP interface exposed by an agent endpoint. Used with the SDK's `HttpApiClient` for request/response calls.
+Standard REST/HTTP interface exposed by an agent endpoint — one of the Endpoint **Protocol** values. Client agent SDK access: create via `AgentConnection.httpApiAt(agentUrl)` after `AtiClient.connect()`, which returns an `HttpApiClient` reusing the verified TLS connection for request/response calls.
 _Avoid_: REST (alone — HTTP-API is the ATI protocol name), HTTP (alone)
 
 **A2A**:
@@ -127,7 +127,7 @@ SDK connection handle returned by `AtiClient.connect()` — represents an establ
 _Avoid_: connection (alone — ambiguous with domain Connection concept or TLS session)
 
 **AtiConnection**:
-SDK connection handle returned by `AtiVerifiedClient.connect()` — represents a **Connection** in progress to a server agent. Holds pre-verification results (Badge/DANE expectations); the caller runs TLS via an external transport (MCP/A2A), then calls `verifyServer()` for post-verification. Not an Agent.
+SDK connection handle returned by `AtiVerifiedClient.connect()` — represents a **Connection** in progress to a server agent. Holds pre-verification results (Badge/DANE expectations); the caller runs TLS via an external transport (MCP/A2A), then calls `verifyServer()` for **Post-verification**, returning a **Connection Verification Result**. Not an Agent.
 _Avoid_: ATI connection (alone), verified connection (too vague)
 
 **ConnectOptions**:
@@ -139,11 +139,11 @@ Client-side verification of a target server agent during Connection, governed by
 _Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
 
 **Verification Result**:
-The outcome of Server Verification or Client Verification that determines whether a connection proceeds. Maps Registration Status from the TL Badge entry: `ACTIVE` → pass; `WARNING` / `DEPRECATED` → pass with warning; `REVOKED` / `EXPIRED` → reject. Lookup failures (missing Badge, DNS/TL errors) and fingerprint/name mismatches also produce a failed result. Implemented in the SDK as the `VerificationStatus` enum — use **Verification Result** for the domain conclusion, `VerificationStatus` when reading code or logs.
+The outcome of Server Verification or Client Verification that determines whether a connection proceeds. Maps Registration Status from the TL Badge entry: `ACTIVE` → pass; `WARNING` / `DEPRECATED` → pass with warning; `REVOKED` / `EXPIRED` → reject. Lookup failures (missing Badge, DNS/TL errors) and fingerprint/name mismatches also produce a failed result. Use **Verification Result** for the domain conclusion — not to be confused with the homonymous SDK classes below.
 _Avoid_: verification status (prefer Verification Result for the connection-time conclusion), trust result
 
 **VerificationStatus**:
-SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) implementing **Verification Result**. Key values:
+SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) implementing **Verification Result** for Badge/TL lookups. Key values:
 
 - `VERIFIED` — ACTIVE registration, fingerprints match.
 - `DEPRECATED_OK` — WARNING or DEPRECATED registration; connection allowed with warning.
@@ -155,6 +155,10 @@ SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) imp
 - `LOOKUP_FAILED` — DNS or TL fetch error.
 - `SEAL_VERIFICATION_FAILED` — Seal signature or Merkle proof invalid.
 _Avoid_: status code (alone — specify VerificationStatus when referring to the enum)
+
+**Connection Verification Result**:
+SDK record (`com.aliyun.ati.sdk.agent.verification.VerificationResult`) returned by `AtiConnection.verifyServer()` after post-verification. Combines DANE and Badge check outcomes per **Verification Policy** — distinct from transparency's `VerificationStatus` enum and from the domain **Verification Result** concept. Status values: `SUCCESS`, `MISMATCH`, `NOT_FOUND`, `ERROR`; types: `DANE`, `BADGE`, `PKI_ONLY`.
+_Avoid_: VerificationResult (alone — specify Connection Verification Result in discussion, or use the fully qualified class name in code references)
 
 **mTLS (Mutual TLS)**:
 A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates depends on IDCA configuration. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
@@ -201,7 +205,7 @@ A periodically published Merkle tree state snapshot from the Transparency Log (R
 _Avoid_: snapshot (alone), log state (too vague)
 
 **Transparency Log (TL)**:
-The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Badge URLs and `TransparencyClient.baseUrl` must resolve to a **Trusted TL Domain**. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
+The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Badge URLs and `TransparencyClient.baseUrl` must resolve to a **Trusted TL Domain**. SDK access: `TransparencyClient` (`ati-sdk-transparency`), defaulting to `TransparencyClient.CNNIC_BASE_URL`; injectable via `ConnectOptions.transparencyClient()` for custom TL endpoints in tests. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
 _Avoid_: TL (alone — spell out on first use), audit log, Alibaba Cloud TL (TL is CNNIC-operated, not Alibaba Cloud)
 
 **Trusted TL Domain**:
@@ -217,11 +221,11 @@ The trust verification level applied when establishing an agent-to-agent connect
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
 
 **Pre-verification**:
-The phase before the TLS handshake that asynchronously gathers verification expectations — DANE TLSA hashes and/or Badge fingerprints from DNS and the Transparency Log. Does not require the server's certificate yet.
+The phase before the TLS handshake that asynchronously gathers verification expectations — DANE TLSA hashes and/or Badge fingerprints from DNS and the Transparency Log. Does not require the server's certificate yet. In the SDK, collected into `PreVerificationResult` (`com.aliyun.ati.sdk.agent.verification`) by `AtiVerifiedClient.connect()` and held on `AtiConnection` for use during post-verification.
 _Avoid_: Pre-check (too vague), upfront validation
 
 **Post-verification**:
-The phase after the TLS handshake that synchronously compares the captured server certificate against the expectations collected during pre-verification. Fails the connection if fingerprints do not match.
+The phase after the TLS handshake that synchronously compares the captured server certificate against the expectations collected during **Pre-verification**. Fails the connection if fingerprints do not match. With `AtiClient`, post-verification runs automatically inside `connect()`. With `AtiVerifiedClient`, the caller invokes `AtiConnection.verifyServer()` after the external transport completes TLS — returns a **Connection Verification Result**.
 _Avoid_: Post-check (too vague), cert validation (ambiguous with PKI)
 
 **Certificate Fingerprint**:
@@ -232,7 +236,7 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{64-char hex}` when comp
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring `idca.trust-certificate` enables mTLS client Identity Certificate chain validation against CNNIC's identity CA; omitting IDCA skips client identity certificate verification to reduce integration complexity.
+The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring the IDCA trust anchor enables mTLS client Identity Certificate chain validation and **Client Verification**. Spring Boot: `ati.sdk.server.idca.trust-certificate` (path to CNNIC IDCA PEM). Programmatic: pass IDCA trust material to `ClientRequestVerifier` / `DefaultClientRequestVerifier`. When IDCA is not configured, caller Identity Certificate verification is skipped to reduce integration complexity.
 _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA, ATI CA (IDCA is CNNIC-operated)
 
 **Client Verification**:
