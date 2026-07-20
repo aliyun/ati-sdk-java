@@ -32,6 +32,12 @@ The registration state of an agent in the RA, following the state machine: `PEND
 - `REVOKED` — registration revoked; connections must be rejected.
 _Avoid_: status (alone), agent state (prefer Agent Lifecycle Status)
 
+**Registration Status**:
+The status field on a TL Badge entry, used during Badge verification to decide pass/reject. Related to but not identical to Agent Lifecycle Status. Badge verification additionally recognizes:
+- `WARNING` — passes with a warning (treated like `ACTIVE`).
+- `EXPIRED` — rejected (treated like `REVOKED`).
+_Avoid_: badge status (prefer Registration Status when referring to TL entries)
+
 **Protocol**:
 The communication protocol declared on an Endpoint. Discovery returns one or more Endpoints per agent; the client agent selects the appropriate Protocol to connect. An agent may publish multiple Endpoints, each with a different Protocol.
 _Avoid_: transport (too vague), API type
@@ -64,9 +70,25 @@ _Avoid_: Registry (alone — too generic), Console (RA is the service; Console i
 The RA's web UI for registering agents, completing ACME/DNS verification, and managing lifecycle.
 _Avoid_: Portal, dashboard
 
+**ACME Verification**:
+The registration-phase domain ownership proof — adding a DNS TXT challenge record to demonstrate control of the agentHost. Part of the RA registration flow, not performed by the SDK.
+_Avoid_: domain validation (too vague), Let's Encrypt (ACME is the protocol; ATI uses it for ownership proof)
+
+**DNS Verification**:
+The final registration-phase step — adding TLSA and Badge TXT DNS records so the agent becomes `ACTIVE`. Distinct from Badge/DANE verification at Connection time.
+_Avoid_: DNS check (too vague), record verification (ambiguous with Connection-time DANE)
+
 **Discovery**:
 Querying the RA's OpenAPI to resolve a registered agent's details (host, version, endpoints, badge URL) by `agentHost` and optional version constraint.
 _Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS resolution of agent records)
+
+**AgentDetail**:
+The result returned by Discovery — a snapshot of an agent's RA registration record, including `agentId`, `agentHost`, `agentVersion`, `status`, `trustLevel`, and `endpoints`. Used by a client agent to select an Endpoint and initiate a Connection. The SDK also uses the name `AgentDetails` in some modules for the same concept.
+_Avoid_: agent record (too vague), discovery response (prefer AgentDetail)
+
+**trustLevel**:
+A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`), returned in AgentDetail. Informational — it does not automatically change the client agent's Verification Policy choice.
+_Avoid_: trust score, security level (prefer trustLevel — matches the RA field name)
 
 **Connection**:
 Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`.
@@ -118,6 +140,13 @@ _Avoid_: Pre-check (too vague), upfront validation
 The phase after the TLS handshake that synchronously compares the captured server certificate against the expectations collected during pre-verification. Fails the connection if fingerprints do not match.
 _Avoid_: Post-check (too vague), cert validation (ambiguous with PKI)
 
+**Certificate Fingerprint**:
+The SHA-256 hash of a certificate, formatted as `SHA256:{hex}`. Used in post-verification to confirm the presented certificate matches the value recorded in the TL Badge entry.
+
+- **Server Cert Fingerprint** — fingerprint of the Server Certificate; compared during client-side post-verification of a server agent.
+- **Identity Cert Fingerprint** — fingerprint of the Identity Certificate; compared during server-side verification of a client agent.
+_Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
+
 **IDCA (Identity CA)**:
 The private certificate authority used by ATI to issue Identity Certificates. Distinct from public CAs used for Server Certificates. A server agent configures `idca.trust-certificate` to accept only client Identity Certificates signed by IDCA during mTLS.
 _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA
@@ -143,6 +172,10 @@ _Avoid_: version (alone — ambiguous with version constraint or ATI Name prefix
 **Version Constraint**:
 A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate), `*` (latest). Resolved server-side by the RA OpenAPI.
 _Avoid_: version filter, semver query
+
+**Version Rotation**:
+The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Badge TXT records (each tagged with `version=`), and the TL may hold multiple Badge entries. Discovery selects a version via Version Constraint; Badge pre-verification accepts any matching fingerprint.
+_Avoid_: version upgrade (too vague), rolling update
 
 **DANE**:
 DNS-based Authentication of Named Entities — verification that a presented certificate or public key matches a DNSSEC-secured TLSA record published for the agent's domain.
