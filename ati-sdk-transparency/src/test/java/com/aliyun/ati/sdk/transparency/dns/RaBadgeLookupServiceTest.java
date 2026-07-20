@@ -20,184 +20,93 @@ import static org.assertj.core.api.Assertions.assertThat;
 class RaBadgeLookupServiceTest {
 
     private static final String TEST_HOSTNAME = "agent.example.com";
-    // Use valid UUID-format hex patterns (AGENT_ID_PATTERN matches [a-f0-9-]+)
-    private static final String TEST_AGENT_ID_ANS = "6bf2b7a9-1383-4e33-a945-845f34af7526";
-    private static final String TEST_AGENT_ID_RA = "7cf3c8b0-2494-5f44-b056-956f45bf8637";
-
-    // ==================== _ati-badge Priority Tests ====================
+    private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
+    private static final String TEST_AGENT_ID_V2 = "7cf3c8b0-2494-5f44-b056-956f45bf8637";
 
     @Test
-    @DisplayName("Should prioritize _ati-badge when both _ati-badge and _ra-badge exist")
-    void shouldPrioritizeAnsBadgeWhenBothExist() {
-        // Given - both _ati-badge and _ra-badge records exist
+    @DisplayName("Should return _ati-badge when record exists")
+    void shouldReturnAtiBadgeWhenRecordExists() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        // When
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
-        // Then - _ati-badge should be prioritized
-        assertThat(badges).isNotEmpty();
-        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_ANS);
+        assertThat(badges).hasSize(1);
+        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID);
         assertThat(badges.get(0).badgeVersion()).isEqualTo("ati-badge1");
     }
 
     @Test
-    @DisplayName("Should use _ati-badge when only _ati-badge exists")
-    void shouldUseAnsBadgeWhenOnlyAnsBadgeExists() {
-        // Given - only _ati-badge record exists
+    @DisplayName("Should return empty when no _ati-badge exists")
+    void shouldReturnEmptyWhenNoAtiBadgeExists() {
         Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
-
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        // When
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
-        // Then
-        assertThat(badges).hasSize(1);
-        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_ANS);
-        assertThat(badges.get(0).badgeVersion()).isEqualTo("ati-badge1");
-    }
-
-    @Test
-    @DisplayName("Should fallback to _ra-badge when no _ati-badge exists")
-    void shouldFallbackToRaBadgeWhenNoAnsBadgeExists() {
-        // Given - only _ra-badge record exists (backward compatibility)
-        Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
-
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
-
-        // When
-        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
-
-        // Then
-        assertThat(badges).hasSize(1);
-        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_RA);
-        assertThat(badges.get(0).badgeVersion()).isEqualTo("ra-badge1");
-    }
-
-    @Test
-    @DisplayName("Should return empty when neither _ati-badge nor _ra-badge exists")
-    void shouldReturnEmptyWhenNeitherBadgeExists() {
-        // Given - no badge records exist
-        Map<String, String> dnsRecords = new HashMap<>();
-
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
-
-        // When
-        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
-
-        // Then
         assertThat(badges).isEmpty();
     }
 
     @Test
-    @DisplayName("lookupBadge() should return _ati-badge when both exist")
-    void lookupBadgeShouldReturnAnsBadgeWhenBothExist() {
-        // Given - both _ati-badge and _ra-badge records exist
+    @DisplayName("lookupBadge() should return first _ati-badge record")
+    void lookupBadgeShouldReturnFirstAtiBadgeRecord() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        // When
         RaBadgeRecord badge = service.lookupBadge(TEST_HOSTNAME);
 
-        // Then - should return _ati-badge (first/priority)
         assertThat(badge).isNotNull();
-        assertThat(badge.agentId()).isEqualTo(TEST_AGENT_ID_ANS);
+        assertThat(badge.agentId()).isEqualTo(TEST_AGENT_ID);
     }
 
     @Test
     @DisplayName("hasBadgeRecord() should return true when _ati-badge exists")
-    void hasBadgeRecordShouldReturnTrueWhenAnsBadgeExists() {
-        // Given - only _ati-badge exists
+    void hasBadgeRecordShouldReturnTrueWhenAtiBadgeExists() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        // When
-        boolean hasBadge = service.hasBadgeRecord(TEST_HOSTNAME);
-
-        // Then
-        assertThat(hasBadge).isTrue();
+        assertThat(service.hasBadgeRecord(TEST_HOSTNAME)).isTrue();
     }
-
-    @Test
-    @DisplayName("hasBadgeRecord() should return true when only _ra-badge exists")
-    void hasBadgeRecordShouldReturnTrueWhenOnlyRaBadgeExists() {
-        // Given - only _ra-badge exists (backward compatibility)
-        Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
-
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
-
-        // When
-        boolean hasBadge = service.hasBadgeRecord(TEST_HOSTNAME);
-
-        // Then
-        assertThat(hasBadge).isTrue();
-    }
-
-    // ==================== Additional Edge Cases ====================
 
     @Test
     @DisplayName("lookupBadges should return empty list for null hostname")
     void lookupBadgesShouldReturnEmptyListForNullHostname() {
-        Map<String, String> dnsRecords = new HashMap<>();
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
+        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(new HashMap<>());
 
-        List<RaBadgeRecord> badges = service.lookupBadges(null);
-
-        assertThat(badges).isEmpty();
+        assertThat(service.lookupBadges(null)).isEmpty();
     }
 
     @Test
     @DisplayName("lookupBadges should return empty list for blank hostname")
     void lookupBadgesShouldReturnEmptyListForBlankHostname() {
-        Map<String, String> dnsRecords = new HashMap<>();
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
+        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(new HashMap<>());
 
-        List<RaBadgeRecord> badges = service.lookupBadges("   ");
-
-        assertThat(badges).isEmpty();
+        assertThat(service.lookupBadges("   ")).isEmpty();
     }
 
     @Test
     @DisplayName("lookupBadge should return null when no badges exist")
     void lookupBadgeShouldReturnNullWhenNoBadgesExist() {
-        Map<String, String> dnsRecords = new HashMap<>();
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
+        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(new HashMap<>());
 
-        RaBadgeRecord badge = service.lookupBadge(TEST_HOSTNAME);
-
-        assertThat(badge).isNull();
+        assertThat(service.lookupBadge(TEST_HOSTNAME)).isNull();
     }
 
     @Test
     @DisplayName("hasBadgeRecord should return false when no badges exist")
     void hasBadgeRecordShouldReturnFalseWhenNoBadgesExist() {
-        Map<String, String> dnsRecords = new HashMap<>();
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
+        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(new HashMap<>());
 
-        boolean hasBadge = service.hasBadgeRecord(TEST_HOSTNAME);
-
-        assertThat(hasBadge).isFalse();
+        assertThat(service.hasBadgeRecord(TEST_HOSTNAME)).isFalse();
     }
 
     @Test
@@ -205,31 +114,27 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldNormalizeHostnameWithTrailingDot() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        // Query with trailing dot
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME + ".");
 
         assertThat(badges).hasSize(1);
-        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID_ANS);
+        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID);
     }
 
     @Test
-    @DisplayName("lookupBadges should combine all badges from both prefixes")
-    void lookupBadgesShouldCombineAllBadgesFromBothPrefixes() {
-        Map<String, String> dnsRecords = new HashMap<>();
-        dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
-        dnsRecords.put("_ra-badge." + TEST_HOSTNAME,
-            "v=ra-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
-
-        TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
+    @DisplayName("lookupBadges should return multiple records for version rotation")
+    void lookupBadgesShouldReturnMultipleRecordsForVersionRotation() {
+        TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
+        service.addRecord("_ati-badge." + TEST_HOSTNAME,
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+        service.addRecord("_ati-badge." + TEST_HOSTNAME,
+            "v=ati-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_V2);
 
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
-        // Should have both badges (_ati-badge first, then _ra-badge)
         assertThat(badges).hasSize(2);
     }
 
@@ -237,31 +142,12 @@ class RaBadgeLookupServiceTest {
     @DisplayName("lookupBadges should filter out invalid badge formats")
     void lookupBadgesShouldFilterOutInvalidBadgeFormats() {
         Map<String, String> dnsRecords = new HashMap<>();
-        // This has unsupported badge format
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=unsupported-format; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
+            "v=unsupported-format; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
-        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
-
-        // Should filter out unsupported formats
-        assertThat(badges).isEmpty();
-    }
-
-    @Test
-    @DisplayName("lookupBadges should handle multiple TXT records for same prefix")
-    void lookupBadgesShouldHandleMultipleTxtRecordsForSamePrefix() {
-        // TestableRaBadgeLookupService that supports multiple records per DNS name
-        TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
-        service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_ANS);
-        service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_RA);
-
-        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
-
-        assertThat(badges).hasSize(2);
+        assertThat(service.lookupBadges(TEST_HOSTNAME)).isEmpty();
     }
 
     @Test
@@ -269,35 +155,21 @@ class RaBadgeLookupServiceTest {
     void shouldHandleLookupExceptionGracefully() {
         TestableRaBadgeLookupServiceWithException service = new TestableRaBadgeLookupServiceWithException();
 
-        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
-
-        assertThat(badges).isEmpty();
+        assertThat(service.lookupBadges(TEST_HOSTNAME)).isEmpty();
     }
 
     @Test
     @DisplayName("Should create service with default constructor")
     void shouldCreateServiceWithDefaultConstructor() {
-        RaBadgeLookupService service = new RaBadgeLookupService();
-
-        // Just verify it creates without exception
-        assertThat(service).isNotNull();
+        assertThat(new RaBadgeLookupService()).isNotNull();
     }
 
     @Test
     @DisplayName("Should create service with custom DNS server")
     void shouldCreateServiceWithCustomDnsServer() {
-        RaBadgeLookupService service = new RaBadgeLookupService("8.8.8.8", Duration.ofSeconds(10));
-
-        // Just verify it creates without exception
-        assertThat(service).isNotNull();
+        assertThat(new RaBadgeLookupService("8.8.8.8", Duration.ofSeconds(10))).isNotNull();
     }
 
-    // ==================== Testable Subclasses ====================
-
-    /**
-     * Test double for RaBadgeLookupService that uses in-memory DNS records
-     * instead of making actual DNS queries.
-     */
     private static class TestableRaBadgeLookupService extends RaBadgeLookupService {
 
         private final Map<String, String> mockDnsRecords;
@@ -307,22 +179,13 @@ class RaBadgeLookupServiceTest {
             this.mockDnsRecords = mockDnsRecords;
         }
 
-        /**
-         * Override to return mock DNS records instead of making real queries.
-         */
         @Override
         protected List<String> lookupTxtRecords(String dnsName) {
             String record = mockDnsRecords.get(dnsName);
-            if (record != null) {
-                return List.of(record);
-            }
-            return List.of();
+            return record != null ? List.of(record) : List.of();
         }
     }
 
-    /**
-     * Test double that supports multiple records per DNS name.
-     */
     private static class TestableRaBadgeLookupServiceMultiple extends RaBadgeLookupService {
 
         private final Map<String, List<String>> mockDnsRecords = new HashMap<>();
@@ -341,9 +204,6 @@ class RaBadgeLookupServiceTest {
         }
     }
 
-    /**
-     * Test double that throws exception during lookup.
-     */
     private static class TestableRaBadgeLookupServiceWithException extends RaBadgeLookupService {
 
         TestableRaBadgeLookupServiceWithException() {

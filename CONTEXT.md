@@ -62,6 +62,10 @@ _Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field nam
 An optional URL on an Endpoint pointing to the agent's capability metadata (e.g. an Agent Card or service descriptor). Not used for TLS connection — informational only.
 _Avoid_: metadata endpoint, description URL
 
+**Agent Card**:
+A self-published metadata document describing an agent's capabilities, skills, and interfaces — typically JSON, often used with the A2A protocol. Discovered via an Endpoint's `metaDataUrl`. Complements AgentDetail: AgentDetail answers who is registered and where to connect; Agent Card answers what the agent can do after connecting. Does not participate in Badge/DANE trust verification.
+_Avoid_: agent metadata (too vague), capability descriptor (prefer Agent Card when referring to A2A-style documents)
+
 **RA (Registration Authority)**:
 The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA.
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
@@ -91,11 +95,15 @@ A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`), returned 
 _Avoid_: trust score, security level (prefer trustLevel — matches the RA field name)
 
 **Connection**:
-Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`.
+Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`. Encompasses Server Verification when initiated by a client agent.
 _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
 
+**Server Verification**:
+Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge/DANE expectations from DNS and TL) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
+_Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
+
 **mTLS (Mutual TLS)**:
-A TLS connection where both parties present certificates — the server agent presents its Server Certificate, the client agent presents its Identity Certificate. ATI agent-to-agent connections use mTLS by default; the server agent validates the client's Identity Certificate via IDCA. Pre/Post-verification (Badge/DANE) runs on top of mTLS.
+A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates depends on IDCA configuration. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
 _Avoid_: two-way TLS (prefer mTLS), client-auth (implementation detail, not the domain concept)
 
 **Server Certificate**:
@@ -103,13 +111,13 @@ The TLS certificate a server agent uses to serve HTTPS — proves the server's i
 _Avoid_: Service cert (prefer Server Certificate), TLS cert (alone — ambiguous with client-side TLS material)
 
 **Identity Certificate**:
-An ATI-issued, privately signed certificate that proves an agent's identity in mTLS. Every registered agent receives one at registration, regardless of role. Used when an agent acts as client agent (presented on outbound connections) and verified when an agent acts as server agent (checking the caller's identity). Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
+An ATI-issued, privately signed certificate that proves an agent's identity in mTLS. Every registered agent receives one at registration, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation of a caller's Identity Certificate requires IDCA to be configured on the server agent; without IDCA, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
 _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert
 
 ### Trust & Verification
 
 **Badge**:
-A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record.
+A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
 _Avoid_: Token, credential (alone — too generic)
 
 **Seal**:
@@ -148,8 +156,12 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{hex}`. Used in post-ver
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private certificate authority used by ATI to issue Identity Certificates. Distinct from public CAs used for Server Certificates. A server agent configures `idca.trust-certificate` to accept only client Identity Certificates signed by IDCA during mTLS.
+The private certificate authority used by ATI to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring `idca.trust-certificate` enables mTLS client Identity Certificate chain validation; omitting IDCA skips client identity certificate verification to reduce integration complexity.
 _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA
+
+**Client Verification**:
+Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. When IDCA is configured, the server agent validates the caller's Identity Certificate chain (IDCA) and applies Badge/DANE checks per Verification Policy — extracting the caller's ATI Name from the certificate URI SAN, then verifying via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
+_Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **SCITT Header**:
 HTTP headers carrying Transparency Log artifacts (Receipt, Status Token) for auditable attestation. Planned capability — **not supported in the current SDK version**; may be added in a future release. When supported, a client agent would attach its own SCITT artifacts to outgoing requests. Server-side client verification in ATI does not rely on SCITT headers — it uses Identity Certificate + Badge + DANE instead.
@@ -160,6 +172,10 @@ _Avoid_: Transparency header (prefer SCITT Header), SCITT (alone — spell out o
 **agentHost**:
 The FQDN that uniquely identifies an agent in the RA — e.g. `agent.example.com`. Used as the primary key for Discovery queries.
 _Avoid_: hostname (alone — ambiguous with machine hostname), domain (too vague)
+
+**agentId**:
+The unique registration ID assigned by the RA to an agent (UUID), returned in AgentDetail and stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Distinct from agentHost (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).
+_Avoid_: agent UUID (prefer agentId — matches the RA field name), ATI Name (different identifier)
 
 **ATI Name**:
 The canonical URI identifier for an agent, including version: `ati://v{version}.{agentHost}`. Embedded in the Identity Certificate's URI SAN.
@@ -178,8 +194,12 @@ The coexistence of multiple agentVersion values under the same agentHost during 
 _Avoid_: version upgrade (too vague), rolling update
 
 **DANE**:
-DNS-based Authentication of Named Entities — verification that a presented certificate or public key matches a DNSSEC-secured TLSA record published for the agent's domain.
+DNS-based Authentication of Named Entities — verification that a presented certificate or public key matches a TLSA record published for the agent's domain. TLSA records are validated with DNSSEC during DANE verification.
 _Avoid_: DNS verification (alone — too broad), certificate pinning (different mechanism)
+
+**DNSSEC**:
+DNS Security Extensions — cryptographic signing of DNS responses (DNSKEY/RRSIG) to prevent tampering. Required only for DANE TLSA verification, not for Badge TXT lookup. Badge pre-verification reads `_ati-badge` TXT records and validates entries via the Transparency Log (Seal + Merkle Proof) without requiring DNSSEC.
+_Avoid_: DNS security (too vague), DNS signing (implementation detail)
 
 **TLSA Record**:
 A DNS record binding a domain to an expected certificate or public key fingerprint. Server agents publish under `_443._tcp.{agentHost}`; identity certificates publish under `_ati-identity._tls.{agentHost}`. These prefixes must not be mixed.
