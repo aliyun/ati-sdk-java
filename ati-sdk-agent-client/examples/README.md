@@ -38,9 +38,11 @@ All examples support different ATI verification policies:
 
 | Policy | TLS | DANE | Badge | Description |
 |--------|-----|------|-------|-------------|
-| `NONE` (L0) or `BASIC` (L1) | ✓ | - | - | Standard HTTPS with system trust store |
+| `BASIC` (L1) | ✓ | - | - | Standard HTTPS with system trust store |
 | `ENHANCED` | ✓ | - | ✓ | Requires transparency log verification (default) |
 | `ADVANCED` | ✓ | ✓ | ✓ | Requires both DANE and Badge |
+
+`NONE` is server-only and not valid for client examples.
 
 ## Integration Patterns
 

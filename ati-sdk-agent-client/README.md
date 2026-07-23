@@ -6,7 +6,7 @@ Agent client module — provides secure agent-to-agent connections with DANE TLS
 
 - `AtiVerifiedClient` — Main client for verified connections (Builder pattern)
 - `ConnectOptions` — Connection options (verification policy, mTLS certs, auth headers)
-- `VerificationPolicy` — Verification policies (NONE, BASIC, ENHANCED, ADVANCED)
+- `VerificationPolicy` — Verification policies (BASIC, ENHANCED, ADVANCED for clients; NONE is server-only)
 - `AtiConnection` — Established connection handle
 - `HttpAuthHeadersProvider` — HTTP auth header injection (Bearer, API Key, custom)
 - `AtiHttpClient` — Verifying HTTP client wrapper

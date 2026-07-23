@@ -15,16 +15,25 @@
 
 ## 验证策略
 
-| 策略 | TLS | DANE | Badge | 说明 |
-|------|-----|------|-------|------|
-| `NONE` | - | - | - | No authentication (dev/test only) |
-| `BASIC` | ✓ | - | - | 仅标准 TLS |
-| `ENHANCED` | ✓ | - | ✓ | TLS + Badge 验证（默认） |
-| `ADVANCED` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
+| 策略 | TLS | DANE | Badge | 适用范围 | 说明 |
+|------|-----|------|-------|----------|------|
+| `NONE` | - | - | - | 仅服务端 | 无入站客户端认证（仅开发/测试） |
+| `BASIC` | ✓ | - | - | 客户端 & 服务端 | 仅标准 TLS |
+| `ENHANCED` | ✓ | - | ✓ | 客户端 & 服务端 | TLS + Badge 验证（默认） |
+| `ADVANCED` | ✓ | ✓ | ✓ | 客户端 & 服务端 | TLS + DANE + Badge |
+
+客户端 Agent 必须使用 `BASIC`、`ENHANCED` 或 `ADVANCED`，且始终校验服务端证书。`NONE` 仅可在服务端配置（`ati.sdk.server.verification.policy`）。
 
 ## 验证时序图
 
 下方时序图使用 `{serverIdentityHost}`、`{serverAccessHost}` 与 `{clientIdentityHost}` 占位符。**单域名模式**下 `{serverIdentityHost}` 等于 `{serverAccessHost}` — Discovery、Badge 与传输层 DANE 均指向同一 FQDN。
+
+**说明：**
+
+- **Discovery（步骤 1–2）为可选** — 已知 `agentUrl` 直接连接时可跳过。
+- **客户端与服务端 policy 独立配置** — 例如客户端 `ENHANCED` 不意味着服务端会执行步骤 15–20，除非服务端 policy 也为 `ENHANCED`/`ADVANCED` 且已配置 IDCA。
+- **`NONE` 仅适用于服务端** — 客户端不能配置 `NONE`；客户端始终校验服务端证书（最低 `BASIC`）。
+- **服务端 `client-auth`** 由 `ati.sdk.server.verification.policy` 自动派生（勿单独配置）：`NONE` → none，`BASIC` → want，`ENHANCED`/`ADVANCED` → need。
 
 ### 双 Hostname 模型（共享平台）
 
@@ -65,7 +74,36 @@
 | `{serverIdentityHost}`（= `{serverAccessHost}`） | `_ati`（Discovery）、`_ati-badge`（Badge）、`_443._tcp`（传输层 DANE） |
 | `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
 
-### PKI_ONLY：Agent 发现 + 标准 TLS（+ 服务端 IDCA 验证）
+### NONE（L0）：服务端无认证（仅开发/测试）
+
+仅服务端策略（`ati.sdk.server.verification.policy`）。客户端始终校验服务端证书（客户端 policy 为 `BASIC` 或更高）。
+
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS 服务器
+    participant S as Server Agent
+    participant CA as 系统 CA
+
+    opt 可选 Discovery
+        C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    end
+
+    Note over C,S: TLS 握手 → 服务端 Access Host
+    Note over C: 客户端 policy：BASIC 或更高（始终校验服务端证书）
+    C->>S: 3. ClientHello → endpoint.agentUrl
+    S->>C: 4. ServerHello + 服务器证书链
+    C->>CA: 5. 验证服务器证书链（系统信任库）
+    CA->>C: 6. 证书链有效 ✓
+    Note over S: 7. 不请求客户端证书（服务端 policy NONE，client-auth=none）
+    Note over S: 8. 跳过 Client Verification
+
+    Note over C,S: 9. 连接建立
+    C->>S: 加密应用数据（双向）
+```
+
+### BASIC（L1）：Agent 发现 + 标准 TLS
 
 ```mermaid
 sequenceDiagram
@@ -75,26 +113,32 @@ sequenceDiagram
     participant CA as System CA
     participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent 发现（服务端身份）
-    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    opt 可选 Discovery
+        C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    end
 
-    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
+    Note over C,S: TLS 握手 → 服务端 Access Host
     C->>S: 3. ClientHello → endpoint.agentUrl
     S->>C: 4. ServerHello + 服务器证书链
     C->>CA: 5. 验证服务器证书链（系统信任库）
     CA->>C: 6. 链有效 ✓
-    S->>C: 7. CertificateRequest（client-auth=want）
-    C->>S: 8. 客户端身份证书
-    S->>IDCA: 9. 验证客户端证书链（配置了 IDCA 时）
-    IDCA->>S: 10. 客户端证书有效 ✓
+    S->>C: 7. CertificateRequest（client-auth=want，服务端 policy BASIC）
+    C->>S: 8. 客户端身份证书（可选）
 
-    Note over S: 从客户端证书 URI SAN 提取 {clientIdentityHost}
-    Note over C,S: 11. 连接建立
+    opt 传输层 mTLS（服务端配置了 IDCA 时）
+        S->>IDCA: 9. 验证客户端证书链
+        IDCA->>S: 10. 客户端证书有效 ✓
+    end
+
+    Note over S: 11. 应用层（服务端 policy BASIC）：仅从 URI SAN 提取 {clientIdentityHost} — 无 Badge/DANE
+    Note over C,S: 12. 连接建立
     C->>S: 加密应用数据（双向）
 ```
 
-### BADGE_REQUIRED：TLS + 透明日志验证
+### ENHANCED（L2）：TLS + 透明日志验证
+
+客户端 policy 为 `ENHANCED`。服务端步骤 15–20 仅在**服务端 policy 为 ENHANCED/ADVANCED 且已配置 IDCA** 时执行（`client-auth=need`）。
 
 ```mermaid
 sequenceDiagram
@@ -103,10 +147,12 @@ sequenceDiagram
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
+    participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent 发现（服务端身份）
-    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    opt 可选 Discovery
+        C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    end
 
     Note over C,S: 客户端预验证服务端身份（Badge）
     C->>DNS: 3. 查询 _ati-badge.{serverIdentityHost} TXT
@@ -115,29 +161,33 @@ sequenceDiagram
     TL->>C: 6. Badge + Seal + Merkle Proof
     Note over C: 7. 验证 seal 签名 & Merkle proof
 
-    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
+    Note over C,S: TLS 握手 → 服务端 Access Host
     C->>S: 8. ClientHello → endpoint.agentUrl
     S->>C: 9. ServerHello + 服务器证书链
     C->>CA: 10. 验证服务器证书链（系统信任库）
     CA->>C: 11. 链有效 ✓
-    S->>C: 12. CertificateRequest（client-auth=want）
+    S->>C: 12. CertificateRequest（client-auth=need，服务端 policy ENHANCED/ADVANCED）
     C->>S: 13. 客户端身份证书
+    S->>IDCA: 14. 验证客户端证书链（传输层 mTLS）
 
-    Note over C: 14. 后验证服务端身份：证书指纹 == badge ✓
+    Note over C: 15. 后验证服务端身份：证书指纹 == badge ✓
 
-    Note over C,S: 服务端 Client Verification（客户端身份）
-    Note over S: 15. 从客户端证书 URI SAN 提取 {clientIdentityHost}
-    S->>DNS: 16. 查询 _ati-badge.{clientIdentityHost} TXT
-    DNS->>S: 17. 客户端 badge URL
-    S->>TL: 18. 从 TL 获取客户端 badge
-    TL->>S: 19. 客户端 Badge + Seal + Merkle Proof
-    Note over S: 20. 验证 seal & 客户端证书指纹 == badge 哈希 ✓
+    opt 服务端 policy ENHANCED/ADVANCED + 已配置 IDCA
+        Note over S: 16. 从客户端证书 URI SAN 提取 {clientIdentityHost}
+        S->>DNS: 17. 查询 _ati-badge.{clientIdentityHost} TXT
+        DNS->>S: 18. 客户端 badge URL
+        S->>TL: 19. 从 TL 获取客户端 badge
+        TL->>S: 20. 客户端 Badge + Seal + Merkle Proof
+        Note over S: 21. 验证 seal & 客户端证书指纹 == badge 哈希 ✓
+    end
 
-    Note over C,S: 21. 连接建立
+    Note over C,S: 22. 连接建立
     C->>S: 加密应用数据（双向）
 ```
 
-### DANE_AND_BADGE：完整验证
+### ADVANCED（L3）：完整验证
+
+客户端 policy 为 `ADVANCED`。服务端 Client Verification 含客户端 DANE 步骤仅在**服务端 policy 为 ADVANCED 且已配置 IDCA** 时执行（`client-auth=need`）。
 
 ```mermaid
 sequenceDiagram
@@ -146,10 +196,12 @@ sequenceDiagram
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
+    participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent 发现（服务端身份）
-    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    opt 可选 Discovery
+        C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
+    end
 
     Note over C,S: 客户端预验证（服务端 Access + 服务端身份）
     C->>DNS: 3. 查询 _443._tcp.{serverAccessHost} TLSA
@@ -160,28 +212,33 @@ sequenceDiagram
     TL->>C: 8. Badge + Seal + Merkle Proof
     Note over C: 9. 验证 seal 签名 & Merkle proof
 
-    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
+    Note over C,S: TLS 握手 → 服务端 Access Host
     C->>S: 10. ClientHello → endpoint.agentUrl
     S->>C: 11. ServerHello + 服务器证书链
     C->>CA: 12. 验证服务器证书链（系统信任库）
     CA->>C: 13. 链有效 ✓
-    S->>C: 14. CertificateRequest（client-auth=want）
+    S->>C: 14. CertificateRequest（client-auth=need，服务端 policy ENHANCED/ADVANCED）
     C->>S: 15. 客户端身份证书
+    S->>IDCA: 16. 验证客户端证书链（传输层 mTLS）
 
-    Note over C: 16. 后验证：服务端传输层 DANE + 服务端身份 Badge ✓
+    Note over C: 17. 后验证：服务端传输层 DANE + 服务端身份 Badge ✓
 
-    Note over C,S: 服务端 Client Verification（客户端身份）
-    Note over S: 17. 从客户端证书 URI SAN 提取 {clientIdentityHost}
-    S->>DNS: 18. 查询 _ati-badge.{clientIdentityHost} TXT
-    DNS->>S: 19. 客户端 badge URL
-    S->>DNS: 20. 查询 _ati-identity._tls.{clientIdentityHost} TLSA
-    DNS->>S: 21. TLSA: 3 1 1 <client-cert-key-hash>
-    S->>TL: 22. 从 TL 获取客户端 badge
-    TL->>S: 23. 客户端 Badge + Seal + Merkle Proof
-    Note over S: 24. 验证 seal & 客户端证书指纹 == badge 哈希 ✓
-    Note over S: 25. 验证客户端证书公钥 == TLSA 哈希 ✓
+    opt 服务端 policy ENHANCED/ADVANCED + 已配置 IDCA
+        Note over S: 18. 从客户端证书 URI SAN 提取 {clientIdentityHost}
+        S->>DNS: 19. 查询 _ati-badge.{clientIdentityHost} TXT
+        DNS->>S: 20. 客户端 badge URL
+        S->>TL: 21. 从 TL 获取客户端 badge
+        TL->>S: 22. 客户端 Badge + Seal + Merkle Proof
+        Note over S: 23. 验证 seal & 客户端证书指纹 == badge 哈希 ✓
+    end
 
-    Note over C,S: 26. 连接建立
+    opt 服务端 policy ADVANCED + 已配置 IDCA
+        S->>DNS: 24. 查询 _ati-identity._tls.{clientIdentityHost} TLSA
+        DNS->>S: 25. TLSA: 3 1 1 <client-cert-key-hash>
+        Note over S: 26. 验证客户端证书公钥 == TLSA 哈希 ✓
+    end
+
+    Note over C,S: 27. 连接建立
     C->>S: 加密应用数据（双向）
 ```
 
@@ -355,6 +412,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
+      # BASIC | ENHANCED | ADVANCED（NONE 仅服务端）
       policy: ENHANCED
     client:
       dns-timeout: 5s

@@ -39,7 +39,6 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Supports progressive verification policies:</p>
  * <ul>
- *   <li><b>NONE</b>: No TLS or ATI verification (dev/test only)</li>
  *   <li><b>BASIC</b>: Standard TLS PKI verification</li>
  *   <li><b>ENHANCED</b>: Basic + ATI transparency log verification</li>
  *   <li><b>ADVANCED</b>: Enhanced + DANE (DNSSEC)</li>
@@ -445,7 +444,9 @@ public class AtiVerifiedClient implements AutoCloseable {
          * @return this builder
          */
         public Builder policy(VerificationPolicy policy) {
-            this.policy = Objects.requireNonNull(policy);
+            Objects.requireNonNull(policy, "Verification policy cannot be null");
+            policy.validateForClient();
+            this.policy = policy;
             return this;
         }
 
@@ -508,9 +509,7 @@ public class AtiVerifiedClient implements AutoCloseable {
             char[] passwordCopy = keyPassword != null ? keyPassword.clone() : null;
             try {
                 AtiVerifiedSslContextFactory.SslContextResult result =
-                    policy == VerificationPolicy.NONE
-                        ? AtiVerifiedSslContextFactory.createTrustAllWithCapture(keyStore, passwordCopy)
-                        : AtiVerifiedSslContextFactory.createWithTrustManager(keyStore, passwordCopy);
+                    AtiVerifiedSslContextFactory.createWithTrustManager(keyStore, passwordCopy);
                 sslContext = result.sslContext();
                 trustManager = result.trustManager();
             } catch (GeneralSecurityException e) {

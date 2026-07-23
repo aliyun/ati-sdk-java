@@ -237,7 +237,9 @@ public final class ConnectOptions {
          * @see VerificationPolicy#ADVANCED
          */
         public Builder verificationPolicy(VerificationPolicy policy) {
-            this.verificationPolicy = Objects.requireNonNull(policy, "Verification policy cannot be null");
+            Objects.requireNonNull(policy, "Verification policy cannot be null");
+            policy.validateForClient();
+            this.verificationPolicy = policy;
             return this;
         }
 

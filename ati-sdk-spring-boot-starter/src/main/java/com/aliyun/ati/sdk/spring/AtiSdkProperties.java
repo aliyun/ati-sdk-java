@@ -26,7 +26,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     transparency:
  *       base-url: https://ati-tl.cnnic.cn:8180
  *     verification:
- *       policy: ENHANCED
+ *       policy: ENHANCED       # BASIC | ENHANCED | ADVANCED (client; NONE is server-only)
  *     client:
  *       dns-timeout: 5s
  *       connect-timeout: 10s

@@ -77,6 +77,20 @@ class VerificationPolicyTest {
     }
 
     @Test
+    void noneIsServerOnly() {
+        assertTrue(VerificationPolicy.NONE.isServerOnly());
+        assertFalse(VerificationPolicy.BASIC.isServerOnly());
+    }
+
+    @Test
+    void validateForClientRejectsNone() {
+        assertThrows(IllegalArgumentException.class, VerificationPolicy.NONE::validateForClient);
+        VerificationPolicy.BASIC.validateForClient();
+        VerificationPolicy.ENHANCED.validateForClient();
+        VerificationPolicy.ADVANCED.validateForClient();
+    }
+
+    @Test
     void allValuesAreNotNull() {
         for (VerificationPolicy policy : VerificationPolicy.values()) {
             assertNotNull(policy);

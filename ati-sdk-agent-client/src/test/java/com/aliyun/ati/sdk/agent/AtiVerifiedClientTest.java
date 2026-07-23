@@ -208,7 +208,9 @@ class AtiVerifiedClientTest {
             keyStore.load(null, "password".toCharArray());
 
             // In the simplified ATI policy, SCITT is never enabled
-            for (VerificationPolicy policy : VerificationPolicy.values()) {
+            for (VerificationPolicy policy : new VerificationPolicy[] {
+                VerificationPolicy.BASIC, VerificationPolicy.ENHANCED, VerificationPolicy.ADVANCED
+            }) {
                 AtiVerifiedClient client = AtiVerifiedClient.builder()
                     .agentId("test-agent")
                     .keyStore(keyStore, "password".toCharArray())

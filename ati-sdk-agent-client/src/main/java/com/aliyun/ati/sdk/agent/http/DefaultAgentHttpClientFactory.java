@@ -93,12 +93,10 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
             }
 
             VerificationPolicy policy = options.getVerificationPolicy();
+            policy.validateForClient();
             AtiVerifiedSslContextFactory.SslContextResult sslResult =
-                policy == VerificationPolicy.NONE
-                    ? AtiVerifiedSslContextFactory.createTrustAllWithCapture(
-                        clientKeyStore, DEFAULT_KEY_PASSWORD.toCharArray())
-                    : AtiVerifiedSslContextFactory.createWithTrustManager(
-                        clientKeyStore, DEFAULT_KEY_PASSWORD.toCharArray());
+                AtiVerifiedSslContextFactory.createWithTrustManager(
+                    clientKeyStore, DEFAULT_KEY_PASSWORD.toCharArray());
 
             HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslResult.sslContext())

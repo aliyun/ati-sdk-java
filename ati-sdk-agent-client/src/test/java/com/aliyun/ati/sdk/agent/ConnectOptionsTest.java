@@ -150,6 +150,12 @@ class ConnectOptionsTest {
     // ==================== Additional Builder Coverage Tests ====================
 
     @Test
+    void builderShouldRejectNonePolicy() {
+        assertThrows(IllegalArgumentException.class, () ->
+            ConnectOptions.builder().verificationPolicy(VerificationPolicy.NONE).build());
+    }
+
+    @Test
     void builderShouldRejectNullVerificationPolicy() {
         assertThrows(NullPointerException.class, () ->
             ConnectOptions.builder().verificationPolicy(null));

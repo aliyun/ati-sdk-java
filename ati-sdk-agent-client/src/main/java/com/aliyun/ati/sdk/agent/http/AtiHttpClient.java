@@ -457,6 +457,8 @@ public class AtiHttpClient {
          * @return this builder
          */
         public Builder verificationPolicy(VerificationPolicy policy) {
+            Objects.requireNonNull(policy, "Verification policy cannot be null");
+            policy.validateForClient();
             this.policy = policy;
             return this;
         }

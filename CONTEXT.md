@@ -231,7 +231,7 @@ _Avoid_: trusted domain (alone — specify Trusted TL Domain), TL URL (too vague
 **Verification Policy**:
 The trust verification level applied when establishing an agent-to-agent connection. Aligned with ATI Console levels L0–L3. Policies are progressive — each level includes all checks from the previous level (except None).
 
-- **None** (`NONE`) — L0 无认证: no TLS certificate validation, no ATI verification; development and testing only.
+- **None** (`NONE`) — L0 无认证: server-only; skip inbound client verification (no client certificate requested); development and testing only. Client agents must always validate the server certificate and cannot use this policy.
 - **Basic** (`BASIC`) — L1 基础认证: standard TLS PKI (system CA or IDCA on servers).
 - **Enhanced** (`ENHANCED`) — L2 增强认证: Basic + Badge verification via the Transparency Log. Recommended production default.
 - **Advanced** (`ADVANCED`) — L3 高级认证: Enhanced + DANE TLSA verification. Requires DNSSEC infrastructure.

@@ -122,6 +122,7 @@ public class AtiClientAutoConfiguration {
 
         String policyStr = properties.getVerification().getPolicy();
         VerificationPolicy policy = VerificationPolicy.fromString(policyStr);
+        policy.validateForClient();
 
         AtiVerifiedClient.Builder builder = AtiVerifiedClient.builder()
             .transparencyClient(transparencyClient)

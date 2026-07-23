@@ -15,16 +15,25 @@
 
 ## Verification Policies
 
-| Policy | TLS | DANE | Badge | Description |
-|--------|-----|------|-------|-------------|
-| `NONE` | - | - | - | No authentication (dev/test only) |
-| `BASIC` | ✓ | - | - | Standard TLS only |
-| `ENHANCED` | ✓ | - | ✓ | TLS + Badge verification (default) |
-| `ADVANCED` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
+| Policy | TLS | DANE | Badge | Scope | Description |
+|--------|-----|------|-------|-------|-------------|
+| `NONE` | - | - | - | Server only | No inbound client auth (dev/test only) |
+| `BASIC` | ✓ | - | - | Client & server | Standard TLS only |
+| `ENHANCED` | ✓ | - | ✓ | Client & server | TLS + Badge verification (default) |
+| `ADVANCED` | ✓ | ✓ | ✓ | Client & server | TLS + DANE + Badge |
+
+Client agents must use `BASIC`, `ENHANCED`, or `ADVANCED` — they always validate the server certificate. `NONE` is configured only on the server (`ati.sdk.server.verification.policy`).
 
 ## Verification Sequence Diagrams
 
 The diagrams below use `{serverIdentityHost}`, `{serverAccessHost}`, and `{clientIdentityHost}`. In **single-hostname mode**, `{serverIdentityHost}` equals `{serverAccessHost}` — Discovery, Badge, and transport DANE all target the same FQDN.
+
+**Notes:**
+
+- **Discovery (steps 1–2)** is optional — skip when connecting directly via a known `agentUrl`.
+- **Client and server policies are configured independently** — e.g. client `ENHANCED` does not imply the server runs steps 15–20 unless the server policy is also `ENHANCED` or `ADVANCED` and IDCA is configured.
+- **`NONE` is server-only** — clients cannot set `NONE`; they always validate the server certificate (minimum `BASIC`).
+- **`client-auth`** on the server is derived from `ati.sdk.server.verification.policy` (not set separately): `NONE` → none, `BASIC` → want, `ENHANCED`/`ADVANCED` → need.
 
 ### Dual Hostname Model (Shared Platform)
 
@@ -65,7 +74,36 @@ DNS lookups in the diagrams (server-side records collapse onto one FQDN):
 | `{serverIdentityHost}` (= `{serverAccessHost}`) | `_ati` (Discovery), `_ati-badge` (Badge), `_443._tcp` (transport DANE) |
 | `{clientIdentityHost}` | `_ati-badge`, `_ati-identity._tls` (server-side Client Verification) |
 
-### NONE (L0) & BASIC (L1): Agent Discovery + Standard TLS (+ IDCA on server side)
+### NONE (L0): Server-side No Authentication (dev/test only)
+
+Server policy only (`ati.sdk.server.verification.policy`). The client always validates the server certificate (client policy `BASIC` or higher).
+
+```mermaid
+sequenceDiagram
+    participant C as Client Agent
+    participant DNS as DNS Server
+    participant S as Server Agent
+    participant CA as System CA
+
+    opt Optional Discovery
+        C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    end
+
+    Note over C,S: TLS Handshake → server Access Host
+    Note over C: Client policy: BASIC or higher (server cert always validated)
+    C->>S: 3. ClientHello → endpoint.agentUrl
+    S->>C: 4. ServerHello + Server Certificate Chain
+    C->>CA: 5. Validate server cert chain (system trust store)
+    CA->>C: 6. Chain valid ✓
+    Note over S: 7. No client certificate requested (server policy NONE, client-auth=none)
+    Note over S: 8. Skip Client Verification
+
+    Note over C,S: 9. Connection Established
+    C->>S: Encrypted Application Data (bidirectional)
+```
+
+### BASIC (L1): Agent Discovery + Standard TLS
 
 ```mermaid
 sequenceDiagram
@@ -75,26 +113,32 @@ sequenceDiagram
     participant CA as System CA
     participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent Discovery (server identity)
-    C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    opt Optional Discovery
+        C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    end
 
-    Note over C,S: TLS Handshake (with mTLS) → server Access Host
+    Note over C,S: TLS Handshake → server Access Host
     C->>S: 3. ClientHello → endpoint.agentUrl
     S->>C: 4. ServerHello + Server Certificate Chain
     C->>CA: 5. Validate server cert chain (system trust store)
     CA->>C: 6. Chain valid ✓
-    S->>C: 7. CertificateRequest (client-auth=want)
-    C->>S: 8. Client identity certificate
-    S->>IDCA: 9. Validate client cert chain (if IDCA configured)
-    IDCA->>S: 10. Client cert valid ✓
+    S->>C: 7. CertificateRequest (client-auth=want, server policy BASIC)
+    C->>S: 8. Client identity certificate (optional)
 
-    Note over S: Extract {clientIdentityHost} from client cert URI SAN
-    Note over C,S: 11. Connection Established
+    opt Transport mTLS (if IDCA configured on server)
+        S->>IDCA: 9. Validate client cert chain
+        IDCA->>S: 10. Client cert valid ✓
+    end
+
+    Note over S: 11. Application layer (server policy BASIC): extract {clientIdentityHost} from URI SAN only — no Badge/DANE
+    Note over C,S: 12. Connection Established
     C->>S: Encrypted Application Data (bidirectional)
 ```
 
 ### ENHANCED (L2): TLS + Transparency Log Verification
+
+Client policy `ENHANCED`. Server-side steps 15–20 run only when **server policy is ENHANCED or ADVANCED** and **IDCA trust is configured** (`client-auth=need`).
 
 ```mermaid
 sequenceDiagram
@@ -103,10 +147,12 @@ sequenceDiagram
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
+    participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent Discovery (server identity)
-    C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    opt Optional Discovery
+        C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    end
 
     Note over C,S: Client Pre-verify server identity (Badge)
     C->>DNS: 3. Query _ati-badge.{serverIdentityHost} TXT
@@ -115,29 +161,33 @@ sequenceDiagram
     TL->>C: 6. Badge + Seal + Merkle Proof
     Note over C: 7. Verify seal signature & Merkle proof
 
-    Note over C,S: TLS Handshake (with mTLS) → server Access Host
+    Note over C,S: TLS Handshake → server Access Host
     C->>S: 8. ClientHello → endpoint.agentUrl
     S->>C: 9. ServerHello + Server Certificate Chain
     C->>CA: 10. Validate server cert chain (system trust store)
     CA->>C: 11. Chain valid ✓
-    S->>C: 12. CertificateRequest (client-auth=want)
+    S->>C: 12. CertificateRequest (client-auth=need, server policy ENHANCED/ADVANCED)
     C->>S: 13. Client identity certificate
+    S->>IDCA: 14. Validate client cert chain (transport mTLS)
 
-    Note over C: 14. Post-verify server identity: cert fingerprint == badge ✓
+    Note over C: 15. Post-verify server identity: cert fingerprint == badge ✓
 
-    Note over C,S: Server-side Client Verification (client identity)
-    Note over S: 15. Extract {clientIdentityHost} from client cert URI SAN
-    S->>DNS: 16. Query _ati-badge.{clientIdentityHost} TXT
-    DNS->>S: 17. Client badge URL
-    S->>TL: 18. Fetch client badge from TL
-    TL->>S: 19. Client Badge + Seal + Merkle Proof
-    Note over S: 20. Verify seal & client cert fingerprint == badge hash ✓
+    opt Server policy ENHANCED/ADVANCED + IDCA configured
+        Note over S: 16. Extract {clientIdentityHost} from client cert URI SAN
+        S->>DNS: 17. Query _ati-badge.{clientIdentityHost} TXT
+        DNS->>S: 18. Client badge URL
+        S->>TL: 19. Fetch client badge from TL
+        TL->>S: 20. Client Badge + Seal + Merkle Proof
+        Note over S: 21. Verify seal & client cert fingerprint == badge hash ✓
+    end
 
-    Note over C,S: 21. Connection Established
+    Note over C,S: 22. Connection Established
     C->>S: Encrypted Application Data (bidirectional)
 ```
 
 ### ADVANCED (L3): Full Verification
+
+Client policy `ADVANCED`. Server-side Client Verification includes client DANE when **server policy is ADVANCED** and **IDCA is configured** (`client-auth=need`).
 
 ```mermaid
 sequenceDiagram
@@ -146,10 +196,12 @@ sequenceDiagram
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
+    participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent Discovery (server identity)
-    C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
-    DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    opt Optional Discovery
+        C->>DNS: 1. Query _ati.{serverIdentityHost} TXT
+        DNS->>C: 2. AgentDetail (av, p, u on server Access Host)
+    end
 
     Note over C,S: Client Pre-verify (server Access + server identity)
     C->>DNS: 3. Query _443._tcp.{serverAccessHost} TLSA
@@ -160,28 +212,33 @@ sequenceDiagram
     TL->>C: 8. Badge + Seal + Merkle Proof
     Note over C: 9. Verify seal signature & Merkle proof
 
-    Note over C,S: TLS Handshake (with mTLS) → server Access Host
+    Note over C,S: TLS Handshake → server Access Host
     C->>S: 10. ClientHello → endpoint.agentUrl
     S->>C: 11. ServerHello + Server Certificate Chain
     C->>CA: 12. Validate server cert chain (system trust store)
     CA->>C: 13. Chain valid ✓
-    S->>C: 14. CertificateRequest (client-auth=want)
+    S->>C: 14. CertificateRequest (client-auth=need, server policy ENHANCED/ADVANCED)
     C->>S: 15. Client identity certificate
+    S->>IDCA: 16. Validate client cert chain (transport mTLS)
 
-    Note over C: 16. Post-verify: server transport DANE + server identity Badge ✓
+    Note over C: 17. Post-verify: server transport DANE + server identity Badge ✓
 
-    Note over C,S: Server-side Client Verification (client identity)
-    Note over S: 17. Extract {clientIdentityHost} from client cert URI SAN
-    S->>DNS: 18. Query _ati-badge.{clientIdentityHost} TXT
-    DNS->>S: 19. Client badge URL
-    S->>DNS: 20. Query _ati-identity._tls.{clientIdentityHost} TLSA
-    DNS->>S: 21. TLSA: 3 1 1 <client-cert-key-hash>
-    S->>TL: 22. Fetch client badge from TL
-    TL->>S: 23. Client Badge + Seal + Merkle Proof
-    Note over S: 24. Verify seal & client cert fingerprint == badge hash ✓
-    Note over S: 25. Verify client cert public key == TLSA hash ✓
+    opt Server policy ENHANCED/ADVANCED + IDCA configured
+        Note over S: 18. Extract {clientIdentityHost} from client cert URI SAN
+        S->>DNS: 19. Query _ati-badge.{clientIdentityHost} TXT
+        DNS->>S: 20. Client badge URL
+        S->>TL: 21. Fetch client badge from TL
+        TL->>S: 22. Client Badge + Seal + Merkle Proof
+        Note over S: 23. Verify seal & client cert fingerprint == badge hash ✓
+    end
 
-    Note over C,S: 26. Connection Established
+    opt Server policy ADVANCED + IDCA configured
+        S->>DNS: 24. Query _ati-identity._tls.{clientIdentityHost} TLSA
+        DNS->>S: 25. TLSA: 3 1 1 <client-cert-key-hash>
+        Note over S: 26. Verify client cert public key == TLSA hash ✓
+    end
+
+    Note over C,S: 27. Connection Established
     C->>S: Encrypted Application Data (bidirectional)
 ```
 
@@ -355,6 +412,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
+      # BASIC | ENHANCED | ADVANCED (NONE is server-only)
       policy: ENHANCED
     client:
       dns-timeout: 5s

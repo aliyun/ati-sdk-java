@@ -85,6 +85,18 @@ class AtiAutoConfigurationTest {
         }
 
         @Test
+        @DisplayName("Should reject NONE client verification policy")
+        void shouldRejectNoneClientPolicy() {
+            contextRunner
+                .withPropertyValues("ati.sdk.verification.policy=NONE")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure().getCause())
+                        .hasMessageContaining("server-only");
+                });
+        }
+
+        @Test
         @DisplayName("Should apply verification policy property")
         void shouldApplyVerificationPolicy() {
             contextRunner

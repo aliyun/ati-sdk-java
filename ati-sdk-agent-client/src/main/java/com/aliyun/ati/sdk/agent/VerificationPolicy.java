@@ -4,7 +4,7 @@ package com.aliyun.ati.sdk.agent;
  * Progressive verification policy for agent connections, aligned with ATI Console trust levels.
  *
  * <ul>
- *   <li>{@link #NONE} — L0 无认证: no TLS certificate validation, no ATI verification (dev/test only)</li>
+ *   <li>{@link #NONE} — L0 无认证: server-only; skip inbound client verification (dev/test only)</li>
  *   <li>{@link #BASIC} — L1 基础认证: standard TLS PKI verification</li>
  *   <li>{@link #ENHANCED} — L2 增强认证: Basic + Badge (transparency log seal, Merkle proof, fingerprint)</li>
  *   <li>{@link #ADVANCED} — L3 高级认证: Enhanced + DANE (requires DNSSEC infrastructure)</li>
@@ -22,9 +22,11 @@ package com.aliyun.ati.sdk.agent;
 public enum VerificationPolicy {
 
     /**
-     * No authentication — skip TLS certificate validation and all ATI verification.
+     * No inbound authentication — server skips client certificate request and Client Verification.
      *
-     * <p>For development and testing only. Do not use in production.</p>
+     * <p>Server-only ({@code ati.sdk.server.verification.policy}). Client agents must use
+     * {@link #BASIC}, {@link #ENHANCED}, or {@link #ADVANCED} and always validate the server
+     * certificate. For development and testing only. Do not use in production.</p>
      */
     NONE,
 
@@ -104,5 +106,25 @@ public enum VerificationPolicy {
      */
     public boolean requiresIdcaTrust() {
         return this == ENHANCED || this == ADVANCED;
+    }
+
+    /**
+     * Returns true if this policy may only be configured on the server side.
+     */
+    public boolean isServerOnly() {
+        return this == NONE;
+    }
+
+    /**
+     * Validates that this policy is allowed for client-side configuration.
+     *
+     * @throws IllegalArgumentException if this policy is server-only
+     */
+    public void validateForClient() {
+        if (isServerOnly()) {
+            throw new IllegalArgumentException(
+                "VerificationPolicy.NONE is server-only; client agents must use "
+                    + "BASIC, ENHANCED, or ADVANCED and always validate the server certificate");
+        }
     }
 }
