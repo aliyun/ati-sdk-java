@@ -19,7 +19,7 @@ An agent that accepts incoming connections from other agents — the called part
 _Avoid_: Server (alone — ambiguous with HTTP server or host machine)
 
 **Endpoint**:
-A protocol-specific service surface published by an agent — e.g. MCP or A2A — identified by an `agentUrl`, a **Protocol**, and optional **Transport** list in the registry record.
+A protocol-specific service surface published by an agent — identified by `agentUrl` (the `u=` value from Discovery TXT), a **Protocol** (`p=` in TXT, e.g. `mcp`, `a2a`), and optional **Transport** list. After DNS Discovery, each endpoint's `agentUrl` is the direct connect target — the URL path typically encodes the protocol (e.g. `.../mcp`, `.../a2a`); callers select an endpoint by `agentUrl`, not by passing a separate protocol argument to connect.
 _Avoid_: URL (alone), API (when the protocol is MCP or A2A)
 
 **Agent Lifecycle Status**:
@@ -31,7 +31,7 @@ The registration state of an agent in the RA, following the state machine: `PEND
 - `DEPRECATED` — still connectable with a warning; callers should migrate to a newer version.
 - `REVOKED` — registration revoked; connections must be rejected.
 
-Returned as `status` on `AgentDetail` from Discovery. TL Badge Entry payload may also carry a snapshot as `payload.agentStatus` — semantically related, but Connection verification uses TL top-level **Registration Status**, not RA lifecycle status or `payload.agentStatus`.
+Returned as `status` on RA registration records. TL Badge Entry payload may also carry a snapshot as `payload.agentStatus` — semantically related, but Connection verification uses TL top-level **Registration Status**, not RA lifecycle status or `payload.agentStatus`. Not available from DNS Discovery.
 _Avoid_: status (alone), agent state (prefer Agent Lifecycle Status)
 
 **Registration Status**:
@@ -47,7 +47,7 @@ The communication protocol declared on an Endpoint — e.g. `MCP`, `A2A`, `HTTP-
 _Avoid_: API type (prefer Protocol — matches RA field name)
 
 **Transport**:
-The HTTP transport mode declared on an Endpoint — e.g. `STREAMABLE-HTTP` for MCP. Answers *how* to carry the Protocol over HTTP. Returned in `AgentEndpoint.transports` from Discovery. The client agent uses Transport to select an SDK transport implementation (e.g. `HttpClientStreamableHttpTransport` for MCP). Does not participate in Badge/DANE trust verification.
+The HTTP transport mode declared on an Endpoint — e.g. `STREAMABLE-HTTP` for MCP. Answers *how* to carry the Protocol over HTTP. Not published in Discovery TXT records — `AgentEndpoint.transports` may be empty after Discovery; the client agent selects a transport implementation based on **Protocol** (e.g. `HttpClientStreamableHttpTransport` for MCP). Does not participate in Badge/DANE trust verification.
 _Avoid_: transport layer (ambiguous with TLS), protocol (Transport is not Protocol)
 
 **HTTP-API**:
@@ -63,7 +63,7 @@ Model Context Protocol — an endpoint protocol for tool invocation, resource ac
 _Avoid_: model protocol, MCP server (MCP is the protocol; the agent is still an Agent)
 
 **agentUrl**:
-The connectable HTTPS URL of an Endpoint — e.g. `https://agent.example.com/mcp`. The target address for Connection after Discovery selects an Endpoint.
+The connectable HTTPS URL of an Endpoint — e.g. `https://bailian.aliyun.com/agents/{agentId}/mcp`. Published in Discovery TXT records as `u=`. The URL's host is the **Access Hostname**; the agent's **Identity Hostname** (agentHost) is a first-level subdomain of that host (e.g. `{agentId}.bailian.aliyun.com`).
 _Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field name)
 
 **metaDataUrl**:
@@ -75,11 +75,11 @@ A self-published metadata document describing an agent's capabilities, skills, a
 _Avoid_: agent metadata (too vague), capability descriptor (prefer Agent Card when referring to A2A-style documents)
 
 **RA (Registration Authority)**:
-The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA — providing ATI Console, Discovery OpenAPI, endpoint metadata, and `trustLevel`. Distinct from CNNIC, which operates the trust infrastructure (Transparency Log and Identity Certificate issuance). Badge verification links the two: DNS `_ati-badge` points to TL entries (CNNIC) that attest RA registration records.
+The authoritative system that manages agent registration and lifecycle. In this SDK, Alibaba Cloud ATI service is the RA — providing ATI Console, endpoint metadata, and `trustLevel`. Distinct from CNNIC, which operates the trust infrastructure (Transparency Log and Identity Certificate issuance). Badge verification links the two: DNS `_ati-badge` on the Identity Hostname points to TL entries (CNNIC) that attest RA registration records. SDK Discovery does not call RA OpenAPI.
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
 
 **CNNIC**:
-China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
+China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration via Console.
 _Avoid_: TL operator (alone — CNNIC also operates IDCA), CA provider (prefer CNNIC when referring to the institutional role)
 
 **ATI Console**:
@@ -99,23 +99,39 @@ The certificate signing request submitted during RA registration to obtain an Id
 _Avoid_: client CSR (ambiguous), server CSR (that is for the Server Certificate)
 
 **Discovery**:
-Querying the RA's OpenAPI to resolve a registered agent's details (host, version, endpoints) by `agentHost` and optional version constraint. Returns `AgentDetail`. DNS lookups for `_ati-badge` TXT and TLSA records happen during Connection pre-verification, not during Discovery.
-_Avoid_: DNS lookup (alone — discovery goes through OpenAPI, not direct DNS resolution of agent records), DNS-based discovery (inaccurate for this SDK — use registry-based or OpenAPI-based discovery)
+Resolving a registered agent's endpoints by querying DNS TXT records at `_ati.{agentHost}` on the agent's **Identity Hostname**. Input is the Identity Hostname (agentHost) and an optional **Version Constraint**; the client filters matching TXT records, selects the **latest** matching `av` (agent version), and returns one `AgentDetail` with all protocol endpoints at that version. Does not call the RA OpenAPI. Does not query `_ati-badge` TXT — Badge lookup remains in Connection pre-verification only. Failures throw typed exceptions (e.g. no matching TXT, DNS lookup error) — does not return null.
+_Avoid_: OpenAPI discovery, registry lookup (prefer Discovery — DNS TXT on Identity Hostname), DNS lookup (alone — specify `_ati` TXT discovery), null return (prefer typed exceptions on failure)
+
+**Discovery TXT Record**:
+A DNS TXT record at `_ati.{agentHost}` on the **Identity Hostname**, one record per protocol endpoint. Format: `v={format}; av={agentVersion}; p={protocol}; u={agentUrl}` with optional `m={mode}`.
+
+- `v` — ATI discovery format version (currently `ati1` only).
+- `av` — agent version (SemVer, e.g. `v1.0.0`); matched client-side against the **Version Constraint**. When multiple TXT records match, Discovery selects the **latest** matching `av` and returns all protocol (`p`) records at that version. When no Version Constraint is provided, Discovery selects the **latest** `av` among all records.
+- `p` — **Protocol** in lowercase in TXT (e.g. `mcp`, `a2a`, `http-api`); the SDK normalizes to uppercase (`MCP`, `A2A`, `HTTP-API`) in `AgentEndpoint.protocol` to match existing conventions.
+- `u` — full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp`).
+- `m` — optional **Discovery Mode** (currently only `direct` is supported). When omitted, defaults to `direct` — connect directly to the URL in `u`.
+
+Multiple TXT records may coexist under the same Identity Hostname — one per protocol, and optionally multiple `av` values during **Version Rotation**.
+_Avoid_: _ati-badge (that is Badge TXT, not Discovery TXT), trust card URL (Discovery embeds `u` directly — no separate card fetch)
+
+**Discovery Mode**:
+How Discovery resolves an endpoint from a Discovery TXT record. Currently only **`direct`** (`m=direct`) is supported — the client connects directly to the `u` URL. When `m` is omitted from the TXT record, `direct` is assumed. TXT records with an unsupported `m` value are skipped during Discovery; if no valid records remain, Discovery throws **AtiNotFoundException**. Future modes may be added without changing the `v=ati1` format version.
+_Avoid_: mode (alone — prefer Discovery Mode), card mode (not supported in current SDK)
 
 **AgentDetail**:
-The result returned by Discovery — a snapshot of an agent's RA registration record, including `agentId`, `agentHost`, `agentVersion`, `status`, `trustLevel`, and `endpoints`. Used by a client agent to select an Endpoint and initiate a Connection. The discovery module exposes this as `com.aliyun.ati.sdk.discovery.AgentDetail`. The generated model `AgentDetails` in `ati-sdk-core` represents the same RA snapshot — prefer `AgentDetail` in new code; use `AgentDetails` only when working with `AtiClient` internals.
-_Avoid_: agent record (too vague), discovery response (prefer AgentDetail), AgentDetails (alone — prefer AgentDetail unless citing the core generated class)
+The result returned by DNS Discovery — includes `agentHost` (Identity Hostname), `accessHost` (Access Hostname, derived from the `u=` URL host — shared across all endpoints), `agentVersion`, and `endpoints` built from matching Discovery TXT records. Each endpoint carries its own `agentUrl` (`u=`); `accessHost` is duplicated at the top level for convenience (e.g. Transport DANE lookup in **ConnectOptions**). Does **not** include `agentId`, `status`, or `trustLevel` — those are RA/TL concepts unavailable via DNS Discovery. Exposed as `com.aliyun.ati.sdk.discovery.AgentDetail`.
+_Avoid_: agent record (too vague), discovery response (prefer AgentDetail), OpenAPI registration snapshot (DNS Discovery returns a slimmer shape)
 
 **trustLevel**:
-A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`), returned in AgentDetail. Informational — it does not automatically change the client agent's Verification Policy choice.
+A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`). Informational — it does not automatically change the client agent's Verification Policy choice. Not available from DNS Discovery.
 _Avoid_: trust score, security level (prefer trustLevel — matches the RA field name)
 
 **Connection**:
-Establishing a verified TLS link to an agent's endpoint URL — running pre-verification (Badge/DANE), TLS handshake, and post-verification (fingerprint comparison). Does not require prior Discovery; can connect directly to a known `agentUrl`. Encompasses Server Verification when initiated by a client agent.
+Establishing a verified TLS link to an agent's endpoint URL on the **Access Hostname** — running pre-verification (Badge/DANE on the **Identity Hostname**), TLS handshake, and post-verification (fingerprint comparison). Under the **Dual Hostname Model**, the `agentUrl` host differs from the Identity Hostname used for Badge/DANE lookups. Does not require prior Discovery; can connect directly to a known `agentUrl` if `identityHost` is supplied via **ConnectOptions**. Encompasses Server Verification when initiated by a client agent.
 _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
 
 **AtiClient**:
-SDK client class for the simplified integration path — `connect(agentUrl, ConnectOptions)` returns an `AgentConnection` for HTTP-API request/response. Encapsulates Badge/DANE pre/post-verification internally. Recommended for quick HTTP-API integrations. Not an Agent — it is the client agent's SDK entry point.
+SDK client class for the simplified integration path — `connect(agentUrl, ConnectOptions)` returns an `AgentConnection` for HTTP-API request/response. Typical flow: `AtiDiscoveryClient.discover(agentHost)` → pick an endpoint by `agentUrl` (`u=` from TXT) → `connect(agentUrl, ConnectOptions)` with `identityHost` populated from `AgentDetail.agentHost`. Encapsulates Badge/DANE pre/post-verification internally. Not an Agent — it is the client agent's SDK entry point.
 _Avoid_: ATI client (alone — ambiguous with any SDK module), client (alone)
 
 **AtiVerifiedClient**:
@@ -131,11 +147,11 @@ SDK connection handle returned by `AtiVerifiedClient.connect()` — represents a
 _Avoid_: ATI connection (alone), verified connection (too vague)
 
 **ConnectOptions**:
-SDK configuration object passed to `AtiClient.connect()` when a client agent initiates a **Connection**. Carries the runtime **Verification Policy**, optional mTLS Identity Certificate material, TLSA lookup port (default 443), custom `TransparencyClient`, and HTTP auth headers. Not an ATI protocol field — the SDK API wrapper for connection-time settings. Default policy: `BADGE_REQUIRED`.
+SDK configuration object passed to `AtiClient.connect()` when a client agent initiates a **Connection**. Carries the runtime **Verification Policy**, optional **identityHost** (Identity Hostname for Badge/identity DANE lookups) and **accessHost** (Access Hostname for server-cert `_443._tcp` DANE lookups), optional mTLS Identity Certificate material, TLSA lookup port (default 443), custom `TransparencyClient`, and HTTP auth headers. After Discovery, the SDK should populate both `identityHost` and `accessHost` from `AgentDetail`. Direct connect without Discovery requires explicit `identityHost` (and ideally `accessHost`) under the Dual Hostname Model. Default policy: `BADGE_REQUIRED`.
 _Avoid_: connect config (too vague), connection options (prefer ConnectOptions — matches the SDK class name)
 
 **Server Verification**:
-Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge/DANE expectations from DNS and TL) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
+Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge on Identity Hostname, DANE TLSA on Identity Hostname for identity cert and on Access Hostname for server cert) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
 _Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
 
 **Verification Result**:
@@ -221,7 +237,7 @@ The trust verification level applied when establishing an agent-to-agent connect
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
 
 **Pre-verification**:
-The phase before the TLS handshake that asynchronously gathers verification expectations — DANE TLSA hashes and/or Badge fingerprints from DNS and the Transparency Log. Does not require the server's certificate yet. In the SDK, collected into `PreVerificationResult` (`com.aliyun.ati.sdk.agent.verification`) by `AtiVerifiedClient.connect()` and held on `AtiConnection` for use during post-verification.
+The phase before the TLS handshake that asynchronously gathers verification expectations — Badge fingerprints from `_ati-badge` on the **Identity Hostname**, DANE TLSA from the **Access Hostname** (server cert) and/or **Identity Hostname** (identity cert), and TL Badge Entry data. Does not require the server's certificate yet. In the SDK, collected into `PreVerificationResult` by `AtiVerifiedClient.connect()` and held on `AtiConnection` for use during post-verification.
 _Avoid_: Pre-check (too vague), upfront validation
 
 **Post-verification**:
@@ -261,12 +277,24 @@ _Avoid_: status header, badge token
 
 ### Identity
 
+**Identity Hostname**:
+The FQDN that anchors an agent's ATI registration, private Identity Certificate, and identity-related DNS records — e.g. `abc123.bailian.aliyun.com`. Must be a **first-level subdomain** of the agent's **Access Hostname** (e.g. `{label}.bailian.aliyun.com` under `bailian.aliyun.com`). Pure DNS metadata namespace: no A/AAAA required, no TLS handshake. Discovery queries, `_ati` TXT, `_ati-badge` TXT, and `_ati-identity._tls` TLSA are published here. Synonymous with **agentHost** in RA/TL field names and ATI Name URIs.
+_Avoid_: identity host (lowercase — prefer Identity Hostname), agent domain (too vague)
+
+**Access Hostname**:
+The FQDN where an agent's traffic lands — TLS handshake, public Server Certificate validation, and A/AAAA resolution — e.g. `bailian.aliyun.com`. Multiple agents on a shared platform share one Access Hostname; each agent's **Identity Hostname** is a first-level subdomain (e.g. `abc123.bailian.aliyun.com`). Endpoint `agentUrl` values (`u=` in Discovery TXT) use this host; `_443._tcp` TLSA for Server Certificate DANE is published here.
+_Avoid_: access host (lowercase — prefer Access Hostname), platform domain (too vague), agentHost (agentHost is the Identity Hostname)
+
+**Dual Hostname Model**:
+The ATI registration pattern where **Identity Hostname** and **Access Hostname** are distinct FQDNs. Identity Hostname must be a first-level subdomain of Access Hostname. Required for shared platforms (e.g. 百炼, Coze, 智谱) where multiple agents share one TLS entry. Degenerate case: both hostnames are the same FQDN (single-hostname deployment).
+_Avoid_: two-domain model (prefer Dual Hostname Model), split domain (too vague)
+
 **agentHost**:
-The FQDN that uniquely identifies an agent in the RA — e.g. `agent.example.com`. Used as the primary key for Discovery queries.
-_Avoid_: hostname (alone — ambiguous with machine hostname), domain (too vague)
+The RA/TL field name and SDK identifier for an agent's **Identity Hostname** — e.g. `abc123.bailian.aliyun.com`. Used as the primary key for Discovery queries and embedded in ATI Name (`ati://v{version}.{agentHost}`). When Identity Hostname equals Access Hostname (single-hostname deployment), both roles collapse to the same FQDN — the degenerate case of the dual-hostname model.
+_Avoid_: hostname (alone — ambiguous with Access Hostname or machine hostname), domain (too vague)
 
 **agentId**:
-The unique registration ID assigned by the RA to an agent (UUID), returned in AgentDetail and stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Distinct from agentHost (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).
+The unique registration ID assigned by the RA to an agent (UUID), stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Obtained during Connection Badge pre-verification (from `_ati-badge` URL), not from DNS Discovery. Distinct from agentHost (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).
 _Avoid_: agent UUID (prefer agentId — matches the RA field name), ATI Name (different identifier)
 
 **ATI Name**:
@@ -278,11 +306,11 @@ The SemVer version of an agent as recorded in the RA registration — e.g. `1.0.
 _Avoid_: version (alone — ambiguous with version constraint or ATI Name prefix)
 
 **Version Constraint**:
-A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate), `*` (latest). Resolved server-side by the RA OpenAPI.
+A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate). Resolved client-side against the `av` field in `_ati` Discovery TXT records on the Identity Hostname. When multiple records satisfy the constraint, Discovery picks the **latest** matching `av`. When omitted, Discovery defaults to the **latest** `av` among all TXT records. The `av` prefix `v` (e.g. `v1.0.0`) is normalized before comparison.
 _Avoid_: version filter, semver query
 
 **Version Rotation**:
-The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Badge TXT records (each tagged with `version=`), and the TL may hold multiple Badge entries. Discovery selects a version via Version Constraint; Badge pre-verification accepts any matching fingerprint.
+The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Discovery TXT records (each with a distinct `av`) and multiple Badge TXT records (each tagged with `version=`). Discovery filters by Version Constraint and selects the latest matching `av`; Badge pre-verification accepts any matching fingerprint.
 _Avoid_: version upgrade (too vague), rolling update
 
 **DANE**:
@@ -296,9 +324,9 @@ _Avoid_: DNS security (too vague), DNS signing (implementation detail)
 **TLSA Record**:
 A DNS record binding a domain to an expected certificate or public key fingerprint. Requires DNSSEC when used for DANE verification (unlike Badge TXT lookup).
 
-ATI publishes TLSA at two distinct prefixes — must not be mixed:
-- **Server Certificate** — `_443._tcp.{agentHost}`; used in client-side DANE verification during Server Verification.
-- **Identity Certificate** — `_ati-identity._tls.{agentHost}`; used in server-side Client Verification.
+ATI publishes TLSA at two distinct prefixes on two hostnames — must not be mixed:
+- **Server Certificate** — `_443._tcp.{accessHost}` on the **Access Hostname**; used in client-side DANE verification during Server Verification.
+- **Identity Certificate** — `_ati-identity._tls.{agentHost}` on the **Identity Hostname**; used in server-side Client Verification.
 
 ATI's default TLSA convention is **`3 1 1`** (RFC 6698): Usage 3 (Domain-issued certificate, coexists with PKI), Selector 1 (SPKI/public key), Matching Type 1 (SHA-256 hash). The SDK's `TlsaUtils` can handle other selector/matching-type combinations if published, but registration docs and examples assume `3 1 1`.
 _Avoid_: DNS record (alone), TLS record
