@@ -6,10 +6,14 @@ status: accepted
 
 Agent discovery uses DNS TXT records at `_ati.{identityHost}` on the agent's **Identity Hostname**, replacing the RA OpenAPI (`DescribeAtiAgentRegisterInfoMarket`) path entirely.
 
-Shared platforms (e.g. 百炼, Coze) require a **Dual Hostname Model**:
+Shared platforms (e.g. 百炼, Coze) use a **Dual Hostname Model**:
 
-- **Identity Hostname** (`agentHost`) — registration anchor, Identity Certificate, `_ati` / `_ati-badge` / `_ati-identity._tls` DNS. Must be a first-level subdomain of Access Hostname (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`).
-- **Access Hostname** — TLS landing zone, public Server Certificate, `_443._tcp` TLSA. Endpoint URLs (`u=` in TXT) point here.
+- **Identity Hostname** (`agentHost`) — registration anchor, Identity Certificate, `_ati` / `_ati-badge` / `_ati-identity._tls` DNS. A first-level subdomain of Access Hostname (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`).
+- **Access Hostname** — TLS landing zone, public Server Certificate, `_443._tcp` TLSA. Endpoint URLs (`u=` in TXT) point here (e.g. `https://bailian.aliyun.com/agents/abc123/mcp`).
+
+**Single-hostname deployment** (one agent独占 a domain): Identity Hostname equals Access Hostname (e.g. both `agent.example.com`). RA registration requires `agentHost` to equal the `u=` host.
+
+**Shared platform**: RA registration requires `agentHost` to be a **first-level subdomain** of the `u=` host (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`.
 
 Discovery TXT format: `v=ati1; av={version}; p={protocol}; u={url}` with optional `m=direct` (default `direct`). One TXT per protocol; `av` matched client-side via SemVer (semver4j); latest matching version wins.
 

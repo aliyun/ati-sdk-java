@@ -1,12 +1,12 @@
 # ATI Java SDK
 
-> Agent 信任基础设施 (ATI) Java SDK — 通过注册表 OpenAPI 发现、DANE TLSA 验证和透明日志认证，实现安全的 Agent 间通信。
+> Agent 信任基础设施 (ATI) Java SDK — 通过 DNS TXT 发现、DANE TLSA 验证和透明日志认证，实现安全的 Agent 间通信。
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 ## 特性
 
-- **基于注册表的 Agent 发现** — 通过 RA OpenAPI 按 `agentHost` 和可选版本约束解析 Agent
+- **基于 DNS 的 Agent 发现** — 通过 Identity Hostname 上的 `_ati` TXT 记录解析 Agent，支持 SemVer 版本约束
 - **DANE TLSA 验证** — 通过 DNS TLSA 记录验证服务器证书
 - **Badge 验证** — 通过 CNNIC 透明日志（Transparency Log）加密验证 Agent 注册信息
 - **mTLS 安全连接** — 支持身份证书的双向 TLS
@@ -23,21 +23,62 @@
 
 ## 验证时序图
 
+下方时序图使用 `{serverIdentityHost}`、`{serverAccessHost}` 与 `{clientIdentityHost}` 占位符。**单域名模式**下 `{serverIdentityHost}` 等于 `{serverAccessHost}` — Discovery、Badge 与传输层 DANE 均指向同一 FQDN。
+
+### 双 Hostname 模型（共享平台）
+
+多个 Agent 共享一个 **Access Hostname**；每个 Agent 的 **Identity Hostname** 为其一级子域名。RA 要求 `agentHost` 为 `u=` host 的一级子域名。
+
+| Hostname | 定义 | 示例 |
+|----------|------|------|
+| **服务端 Identity Hostname** `{serverIdentityHost}` | **服务端 Agent** 身份的唯一标识 — 用于发现 Agent、验证服务端是谁 | `abc123.bailian.aliyun.com` |
+| **服务端 Access Hostname** `{serverAccessHost}` | 访问**服务端 Agent 服务**的通用域名 — TLS 与 `agentUrl` 均连接于此 | `bailian.aliyun.com` |
+| **客户端 Identity Hostname** `{clientIdentityHost}` | **客户端 Agent** 身份的唯一标识 — 与服务端 Identity Hostname 对称；服务端验证调用方时，从客户端 Identity Certificate URI SAN 提取 | `xyz789.caller.example.com` |
+
+示例 endpoint：`u=https://bailian.aliyun.com/agents/abc123/mcp` — host 为 Access；Discovery 查询 `_ati.abc123.bailian.aliyun.com`。
+
+时序图中的 DNS 查询对应关系：
+
+| Hostname | 记录 |
+|----------|------|
+| `{serverIdentityHost}` | `_ati`（Discovery）、`_ati-badge`（Badge） |
+| `{serverAccessHost}` | `_443._tcp`（服务端传输层 DANE） |
+| `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
+
+### 单 Hostname 模型
+
+单个 Agent 独占一个域名；**Identity Hostname 等于 Access Hostname**。RA 要求 `agentHost` 等于 `u=` 的 host。
+
+| Hostname | 定义 | 示例 |
+|----------|------|------|
+| **服务端 Identity Hostname** `{serverIdentityHost}` | 与 Access Hostname 相同 — 注册、Discovery、Badge 与 TLS 均在同一 FQDN | `agent.example.com` |
+| **服务端 Access Hostname** `{serverAccessHost}` | 等于 `{serverIdentityHost}` | `agent.example.com` |
+| **客户端 Identity Hostname** `{clientIdentityHost}` | 客户端 Agent 身份（不变 — 客户端也可采用单域名部署） | `caller.example.com` |
+
+示例 endpoint：`u=https://agent.example.com/mcp` — host 等于 `agentHost`。
+
+时序图中的 DNS 查询对应关系（服务端记录合并到同一 FQDN）：
+
+| Hostname | 记录 |
+|----------|------|
+| `{serverIdentityHost}`（= `{serverAccessHost}`） | `_ati`（Discovery）、`_ati-badge`（Badge）、`_443._tcp`（传输层 DANE） |
+| `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
+
 ### PKI_ONLY：Agent 发现 + 标准 TLS（+ 服务端 IDCA 验证）
 
 ```mermaid
 sequenceDiagram
     participant C as Client Agent
-    participant ATI as ATI Console (OpenAPI)
+    participant DNS as DNS 服务器
     participant S as Server Agent
     participant CA as System CA
     participant IDCA as IDCA Root CA
 
-    Note over C,S: Agent 发现
-    C->>ATI: 1. 发现 agent（hostname, version）
-    ATI->>C: 2. AgentDetail（endpoints: agentUrl, protocol, transports）
+    Note over C,S: Agent 发现（服务端身份）
+    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
 
-    Note over C,S: TLS 握手（含 mTLS）
+    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
     C->>S: 3. ClientHello → endpoint.agentUrl
     S->>C: 4. ServerHello + 服务器证书链
     C->>CA: 5. 验证服务器证书链（系统信任库）
@@ -47,7 +88,7 @@ sequenceDiagram
     S->>IDCA: 9. 验证客户端证书链（配置了 IDCA 时）
     IDCA->>S: 10. 客户端证书有效 ✓
 
-    Note over S: 应用层：从证书 URI SAN 提取 agentHost
+    Note over S: 从客户端证书 URI SAN 提取 {clientIdentityHost}
     Note over C,S: 11. 连接建立
     C->>S: 加密应用数据（双向）
 ```
@@ -58,23 +99,22 @@ sequenceDiagram
 sequenceDiagram
     participant C as Client Agent
     participant DNS as DNS 服务器
-    participant ATI as ATI 控制台 (OpenAPI)
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
 
-    Note over C,S: Agent 发现
-    C->>ATI: 1. 发现 agent（hostname, version）
-    ATI->>C: 2. AgentDetail（endpoints: agentUrl, protocol, transports）
+    Note over C,S: Agent 发现（服务端身份）
+    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
 
-    Note over C,S: 客户端预验证（Badge）
-    C->>DNS: 3. 查询 _ati-badge.{serverHost} TXT
+    Note over C,S: 客户端预验证服务端身份（Badge）
+    C->>DNS: 3. 查询 _ati-badge.{serverIdentityHost} TXT
     DNS->>C: 4. Badge URL(s)
     C->>TL: 5. 从 TL 获取 badge
     TL->>C: 6. Badge + Seal + Merkle Proof
     Note over C: 7. 验证 seal 签名 & Merkle proof
 
-    Note over C,S: TLS 握手（含 mTLS）
+    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
     C->>S: 8. ClientHello → endpoint.agentUrl
     S->>C: 9. ServerHello + 服务器证书链
     C->>CA: 10. 验证服务器证书链（系统信任库）
@@ -82,11 +122,11 @@ sequenceDiagram
     S->>C: 12. CertificateRequest（client-auth=want）
     C->>S: 13. 客户端身份证书
 
-    Note over C: 14. 后验证：服务器证书指纹 == badge 指纹 ✓
+    Note over C: 14. 后验证服务端身份：证书指纹 == badge ✓
 
-    Note over C,S: 服务端验证
-    Note over S: 15. 从证书 URI SAN 提取客户端 agentHost
-    S->>DNS: 16. 查询 _ati-badge.{clientHost} TXT
+    Note over C,S: 服务端 Client Verification（客户端身份）
+    Note over S: 15. 从客户端证书 URI SAN 提取 {clientIdentityHost}
+    S->>DNS: 16. 查询 _ati-badge.{clientIdentityHost} TXT
     DNS->>S: 17. 客户端 badge URL
     S->>TL: 18. 从 TL 获取客户端 badge
     TL->>S: 19. 客户端 Badge + Seal + Merkle Proof
@@ -102,25 +142,24 @@ sequenceDiagram
 sequenceDiagram
     participant C as Client Agent
     participant DNS as DNS 服务器
-    participant ATI as ATI 控制台 (OpenAPI)
     participant TL as CNNIC TL
     participant S as Server Agent
     participant CA as System CA
 
-    Note over C,S: Agent 发现
-    C->>ATI: 1. 发现 agent（hostname, version）
-    ATI->>C: 2. AgentDetail（endpoints: agentUrl, protocol, transports）
+    Note over C,S: Agent 发现（服务端身份）
+    C->>DNS: 1. 查询 _ati.{serverIdentityHost} TXT
+    DNS->>C: 2. AgentDetail（av, p, u 在服务端 Access Host 上）
 
-    Note over C,S: 客户端预验证（DANE + Badge）
-    C->>DNS: 3. 查询 _443._tcp.{serverHost} TLSA
+    Note over C,S: 客户端预验证（服务端 Access + 服务端身份）
+    C->>DNS: 3. 查询 _443._tcp.{serverAccessHost} TLSA
     DNS->>C: 4. TLSA: 3 1 1 <server-cert-hash>
-    C->>DNS: 5. 查询 _ati-badge.{serverHost} TXT
+    C->>DNS: 5. 查询 _ati-badge.{serverIdentityHost} TXT
     DNS->>C: 6. Badge URL(s)
     C->>TL: 7. 从 TL 获取 badge
     TL->>C: 8. Badge + Seal + Merkle Proof
     Note over C: 9. 验证 seal 签名 & Merkle proof
 
-    Note over C,S: TLS 握手（含 mTLS）
+    Note over C,S: TLS 握手（含 mTLS）→ 服务端 Access Host
     C->>S: 10. ClientHello → endpoint.agentUrl
     S->>C: 11. ServerHello + 服务器证书链
     C->>CA: 12. 验证服务器证书链（系统信任库）
@@ -128,13 +167,13 @@ sequenceDiagram
     S->>C: 14. CertificateRequest（client-auth=want）
     C->>S: 15. 客户端身份证书
 
-    Note over C: 16. 后验证：DANE 哈希 + Badge 指纹 + 证书 ✓
+    Note over C: 16. 后验证：服务端传输层 DANE + 服务端身份 Badge ✓
 
-    Note over C,S: 服务端验证
-    Note over S: 17. 从证书 URI SAN 提取客户端 agentHost
-    S->>DNS: 18. 查询 _ati-badge.{clientHost} TXT
+    Note over C,S: 服务端 Client Verification（客户端身份）
+    Note over S: 17. 从客户端证书 URI SAN 提取 {clientIdentityHost}
+    S->>DNS: 18. 查询 _ati-badge.{clientIdentityHost} TXT
     DNS->>S: 19. 客户端 badge URL
-    S->>DNS: 20. 查询 _ati-identity._tls.{clientHost} TLSA
+    S->>DNS: 20. 查询 _ati-identity._tls.{clientIdentityHost} TLSA
     DNS->>S: 21. TLSA: 3 1 1 <client-cert-key-hash>
     S->>TL: 22. 从 TL 获取客户端 badge
     TL->>S: 23. 客户端 Badge + Seal + Merkle Proof
@@ -150,7 +189,7 @@ sequenceDiagram
 | 模块 | 说明 |
 |------|------|
 | [`ati-sdk-core`](ati-sdk-core/README.md) | 配置、认证、HTTP、工具类 |
-| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | 通过 RA OpenAPI 解析 Agent |
+| [`ati-sdk-discovery`](ati-sdk-discovery/README.md) | 通过 DNS `_ati` TXT 解析 Agent |
 | [`ati-sdk-transparency`](ati-sdk-transparency/README.md) | 透明日志验证（+ SCITT 基础设施，计划中） |
 | [`ati-sdk-agent-client`](ati-sdk-agent-client/README.md) | 安全的 Agent 间连接 |
 | [`ati-sdk-spring-boot-starter`](ati-sdk-spring-boot-starter/README.md) | Spring Boot 自动配置 |
@@ -204,65 +243,102 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 
 ### Agent 发现
 
-通过 RA OpenAPI 解析 Agent 信息：
+通过 Identity Hostname 上的 DNS TXT 记录解析 Agent 信息：
 
 ```java
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.discovery.AgentDetail;
 
-// 使用 AK/SK 创建发现客户端
-AtiDiscoveryClient client = new AtiDiscoveryClient(
-    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
+AtiDiscoveryClient client = new AtiDiscoveryClient();
 
-// 按 hostname 和版本约束解析
-AgentDetail agent = client.discover("agent.example.com", "1.0.0");
-System.out.println("Agent host: " + agent.getAgentHost());
+// 按 Identity Hostname 解析，可选 SemVer 约束
+AgentDetail agent = client.discover("abc123.bailian.aliyun.com", "^1.0.0");
+System.out.println("Identity host: " + agent.getAgentHost());
+System.out.println("Access host: " + agent.getAccessHost());
 System.out.println("Endpoints: " + agent.getEndpoints());
 
 // 解析最新版本
-AgentDetail latest = client.discover("agent.example.com");
+AgentDetail latest = client.discover("abc123.bailian.aliyun.com");
 ```
 
 ### Agent 间连接
 
-使用可配置的验证级别连接其他 Agent：
+在**双 Hostname 模型**下，TLS 连接到 **Access Hostname**（`agentUrl` 的 host），而 Badge 与 identity DANE 查询使用 **Identity Hostname**。Discovery 之后，从 `detail.getEndpoints()` 中按 protocol 选择 endpoint（选中版本下每个 protocol 一条），再通过 `ConnectOptions` 传入两个 hostname：
 
 ```java
+import com.aliyun.ati.sdk.agent.AtiClient;
 import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
+import com.aliyun.ati.sdk.agent.AtiConnection;
 import com.aliyun.ati.sdk.agent.ConnectOptions;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
-import com.aliyun.ati.sdk.agent.AtiConnection;
+import com.aliyun.ati.sdk.agent.connection.AgentConnection;
+import com.aliyun.ati.sdk.agent.http.auth.HttpAuthHeadersProvider;
+import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
+import com.aliyun.ati.sdk.discovery.AgentDetail;
+import com.aliyun.ati.sdk.discovery.AgentEndpoint;
+import com.aliyun.ati.sdk.exception.AtiNotFoundException;
+import com.aliyun.ati.sdk.transparency.TransparencyClient;
 
-// 创建客户端
-AtiVerifiedClient client = AtiVerifiedClient.builder()
+import java.nio.file.Path;
+
+TransparencyClient tl = TransparencyClient.builder()
+    .baseUrl("https://ati-tl.cnnic.cn:8180")
+    .build();
+
+AtiDiscoveryClient discovery = new AtiDiscoveryClient();
+AtiClient client = AtiClient.create();
+
+// 发现 → 按 protocol 选择 endpoint → 连接
+AgentDetail detail = discovery.discover("abc123.bailian.aliyun.com", "^1.0.0");
+String agentUrl = detail.getEndpoints().stream()
+    .filter(e -> "MCP".equals(e.getProtocol()))
+    .map(AgentEndpoint::getAgentUrl)
+    .findFirst()
+    .orElseThrow(() -> new AtiNotFoundException("Endpoint", "MCP"));
+
+AgentConnection conn = client.connect(agentUrl,
+    ConnectOptions.builder()
+        .identityHost(detail.getAgentHost())    // Badge + _ati-identity._tls
+        .accessHost(detail.getAccessHost())     // _443._tcp 传输层 DANE
+        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .transparencyClient(tl)
+        .build());
+
+// 不经 Discovery 直接连接 — 单域名模式（RA：agentHost == u= host）
+AgentConnection direct = client.connect(
+    "https://agent.example.com/mcp",
+    ConnectOptions.builder()
+        .identityHost("agent.example.com")
+        .accessHost("agent.example.com")
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .transparencyClient(tl)
+        .build());
+
+// mTLS 客户端证书 + Bearer token
+AgentConnection mtls = client.connect(agentUrl,
+    ConnectOptions.builder()
+        .identityHost(detail.getAgentHost())
+        .accessHost(detail.getAccessHost())
+        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .transparencyClient(tl)
+        .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
+        .authProvider(HttpAuthHeadersProvider.bearer("token"))
+        .build());
+```
+
+使用 PKCS12 密钥库时，可用 `AtiVerifiedClient`：
+
+```java
+AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/identity.p12", "password")
+    .transparencyClient(tl)
     .policy(VerificationPolicy.BADGE_REQUIRED)
     .build();
 
-// 仅 PKI — 标准 HTTPS + CA 验证
-AtiConnection conn = client.connect("https://agent.example.com",
+AtiConnection conn = verifiedClient.connect(agentUrl,
     ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.PKI_ONLY)
-        .build());
-
-// Badge 验证（推荐）— 通过透明日志验证
-AtiConnection conn = client.connect("https://agent.example.com",
-    ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
-        .build());
-
-// 完整验证 — DANE + Badge
-AtiConnection conn = client.connect("https://agent.example.com",
-    ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
-        .build());
-
-// 使用 mTLS 客户端证书 + Bearer token
-AtiConnection conn = client.connect("https://agent.example.com",
-    ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
-        .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
-        .authProvider(HttpAuthHeadersProvider.bearer("token"))
+        .identityHost(detail.getAgentHost())
+        .accessHost(detail.getAccessHost())
         .build());
 ```
 
@@ -274,10 +350,6 @@ AtiConnection conn = client.connect("https://agent.example.com",
 ati:
   sdk:
     mode: client
-    discovery:
-      endpoint: alidns.aliyuncs.com
-      access-key-id: ${ATI_AK}
-      access-key-secret: ${ATI_SK}
     identity:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
@@ -351,12 +423,16 @@ ConnectOptions opts = ConnectOptions.builder()
 
 // BADGE_REQUIRED — TLS + ATI Badge 验证（推荐）
 ConnectOptions opts = ConnectOptions.builder()
+    .identityHost("abc123.bailian.aliyun.com")
+    .accessHost("bailian.aliyun.com")
     .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
     .transparencyClient(tl)
     .build();
 
 // DANE_AND_BADGE — TLS + DANE TLSA + ATI Badge（最高级别）
 ConnectOptions opts = ConnectOptions.builder()
+    .identityHost("abc123.bailian.aliyun.com")
+    .accessHost("bailian.aliyun.com")
     .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
     .transparencyClient(tl)
     .build();
@@ -440,7 +516,7 @@ AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/keystore.p12", "password")
     .transparencyClient(tl)
     .policy(VerificationPolicy.DANE_AND_BADGE)
-    .tlsaPort(443)  // 始终查询 _443._tcp.{hostname} TLSA 记录
+    .tlsaPort(443)  // 始终查询 _443._tcp.{accessHost} TLSA 记录
     .build();
 ```
 
@@ -452,10 +528,6 @@ AtiVerifiedClient client = AtiVerifiedClient.builder()
 ati:
   sdk:
     mode: client
-    discovery:
-      endpoint: alidns.aliyuncs.com
-      access-key-id: your-ak
-      access-key-secret: your-sk
     identity:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
@@ -471,7 +543,6 @@ ati:
 | 属性 | 说明 | 默认值 |
 |------|------|--------|
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
-| `ati.sdk.discovery.endpoint` | 阿里云 OpenAPI endpoint | `alidns.aliyuncs.com` |
 | `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `BADGE_REQUIRED` |
 | `ati.sdk.client.dns-timeout` | DNS 查询超时 | `5s` |
@@ -549,23 +620,22 @@ try {
 | `*` | 任意版本（最新）|
 
 ```java
-AtiDiscoveryClient client = new AtiDiscoveryClient(
-    "alidns.aliyuncs.com", accessKeyId, accessKeySecret);
+AtiDiscoveryClient client = new AtiDiscoveryClient();
 
 // 精确版本
-AgentDetail agent = client.discover("agent.example.com", "1.0.0");
+AgentDetail agent = client.discover("abc123.bailian.aliyun.com", "1.0.0");
 
 // 任意 1.x 版本
-AgentDetail agent = client.discover("agent.example.com", "^1.0.0");
+AgentDetail agent = client.discover("abc123.bailian.aliyun.com", "^1.0.0");
 
 // 任意 1.2.x 版本
-AgentDetail agent = client.discover("agent.example.com", "~1.2.0");
+AgentDetail agent = client.discover("abc123.bailian.aliyun.com", "~1.2.0");
 
 // 最新版本（省略版本参数）
-AgentDetail latest = client.discover("agent.example.com");
+AgentDetail latest = client.discover("abc123.bailian.aliyun.com");
 ```
 
-版本约束由 ATI 注册表服务端解析。`agentVersion` 参数直接传递给 `DescribeAtiAgentRegisterInfoMarket` API。
+版本约束在客户端对 Discovery TXT 中的 `av` 字段进行 SemVer 匹配。
 
 ## 开源协议
 

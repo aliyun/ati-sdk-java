@@ -50,6 +50,8 @@ import java.util.Objects;
 public final class ConnectOptions {
 
     private final VerificationPolicy verificationPolicy;
+    private final String identityHost;
+    private final String accessHost;
     private final int port;
     private final Path clientCertPath;
     private final Path clientKeyPath;
@@ -61,6 +63,8 @@ public final class ConnectOptions {
 
     private ConnectOptions(Builder builder) {
         this.verificationPolicy = builder.verificationPolicy;
+        this.identityHost = builder.identityHost;
+        this.accessHost = builder.accessHost;
         this.port = builder.port;
         this.clientCertPath = builder.clientCertPath;
         this.clientKeyPath = builder.clientKeyPath;
@@ -96,6 +100,24 @@ public final class ConnectOptions {
      */
     public VerificationPolicy getVerificationPolicy() {
         return verificationPolicy != null ? verificationPolicy : VerificationPolicy.BADGE_REQUIRED;
+    }
+
+    /**
+     * Returns the Identity Hostname for Badge and identity DANE lookups.
+     *
+     * @return the identity hostname, or null to use the connection URL host
+     */
+    public String getIdentityHost() {
+        return identityHost;
+    }
+
+    /**
+     * Returns the Access Hostname for transport TLSA ({@code _443._tcp}) lookups.
+     *
+     * @return the access hostname, or null to use the connection URL host
+     */
+    public String getAccessHost() {
+        return accessHost;
     }
 
     /**
@@ -190,6 +212,8 @@ public final class ConnectOptions {
      */
     public static final class Builder {
         private VerificationPolicy verificationPolicy;
+        private String identityHost;
+        private String accessHost;
         private int port = 443;
         private Path clientCertPath;
         private Path clientKeyPath;
@@ -214,6 +238,28 @@ public final class ConnectOptions {
          */
         public Builder verificationPolicy(VerificationPolicy policy) {
             this.verificationPolicy = Objects.requireNonNull(policy, "Verification policy cannot be null");
+            return this;
+        }
+
+        /**
+         * Sets the Identity Hostname for Badge and identity DANE pre/post-verification.
+         *
+         * @param identityHost the identity hostname
+         * @return this builder
+         */
+        public Builder identityHost(String identityHost) {
+            this.identityHost = identityHost;
+            return this;
+        }
+
+        /**
+         * Sets the Access Hostname for transport DANE ({@code _443._tcp}) verification.
+         *
+         * @param accessHost the access hostname
+         * @return this builder
+         */
+        public Builder accessHost(String accessHost) {
+            this.accessHost = accessHost;
             return this;
         }
 
@@ -371,6 +417,8 @@ public final class ConnectOptions {
     public String toString() {
         return "ConnectOptions{" +
             "verificationPolicy=" + getVerificationPolicy() +
+            ", identityHost='" + identityHost + '\'' +
+            ", accessHost='" + accessHost + '\'' +
             ", port=" + port +
             ", hasClientCert=" + hasClientCertificate() +
             ", hasAuthProvider=" + (httpAuthHeadersProvider != null) +

@@ -82,28 +82,24 @@ public class AtiClientAutoConfiguration {
     }
 
     /**
-     * Creates an AtiDiscoveryClient bean for agent resolution via Alibaba Cloud OpenAPI.
+     * Creates an AtiDiscoveryClient bean for DNS-based agent discovery.
      *
-     * <p>Only created when mode is "client" or "both" and discovery credentials are configured.</p>
+     * <p>Only created when mode is "client" or "both".</p>
      *
      * @param properties the ATI SDK properties
      * @return the discovery client
-     * @throws Exception if the OpenAPI client cannot be created
      */
     @Bean
     @ConditionalOnMissingBean
-    public AtiDiscoveryClient atiDiscoveryClient(AtiSdkProperties properties) throws Exception {
+    public AtiDiscoveryClient atiDiscoveryClient(AtiSdkProperties properties) {
         if (!properties.isClientMode()) {
             LOG.debug("Skipping AtiDiscoveryClient bean: mode={}", properties.getMode());
             return null;
         }
 
-        AtiSdkProperties.Discovery discovery = properties.getDiscovery();
-        LOG.info("Creating AtiDiscoveryClient with endpoint={}", discovery.getEndpoint());
-        return new AtiDiscoveryClient(
-            discovery.getEndpoint(),
-            discovery.getAccessKeyId(),
-            discovery.getAccessKeySecret());
+        Duration dnsTimeout = parseDuration(properties.getClient().getDnsTimeout());
+        LOG.info("Creating AtiDiscoveryClient with dnsTimeout={}", dnsTimeout);
+        return new AtiDiscoveryClient(dnsTimeout);
     }
 
     /**

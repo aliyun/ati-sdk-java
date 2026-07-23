@@ -139,7 +139,8 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
         ServerVerifier badgeService = getOrCreateVerificationService(options, policy);
 
         return DefaultConnectionVerifier.fromPolicy(
-            policy, transparencyClient, daneVerifier, badgeService);
+            policy, transparencyClient, daneVerifier, badgeService,
+            options.getIdentityHost(), options.getAccessHost());
     }
 
     /**

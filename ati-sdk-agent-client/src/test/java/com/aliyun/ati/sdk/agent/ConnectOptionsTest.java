@@ -73,6 +73,25 @@ class ConnectOptionsTest {
     }
 
     @Test
+    void builderShouldSetIdentityAndAccessHost() {
+        ConnectOptions options = ConnectOptions.builder()
+            .identityHost("abc123.bailian.aliyun.com")
+            .accessHost("bailian.aliyun.com")
+            .build();
+
+        assertEquals("abc123.bailian.aliyun.com", options.getIdentityHost());
+        assertEquals("bailian.aliyun.com", options.getAccessHost());
+    }
+
+    @Test
+    void defaultsShouldReturnNullHostnames() {
+        ConnectOptions options = ConnectOptions.defaults();
+
+        assertNull(options.getIdentityHost());
+        assertNull(options.getAccessHost());
+    }
+
+    @Test
     void builderShouldRejectPartialCertPaths() {
         assertThrows(IllegalStateException.class, () ->
             ConnectOptions.builder()

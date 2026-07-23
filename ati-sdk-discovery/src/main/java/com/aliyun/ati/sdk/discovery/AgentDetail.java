@@ -1,39 +1,18 @@
 package com.aliyun.ati.sdk.discovery;
 
+import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Details of a discovered ATI agent.
- *
- * <p>Returned by {@link AtiDiscoveryClient#discover(String, String)} when
- * an agent is found in the registry via Alibaba Cloud OpenAPI.</p>
+ * Details of a discovered ATI agent from DNS {@code _ati} TXT records.
  */
 public final class AgentDetail {
 
-    private String agentId;
-    private String agentDisplayName;
     private String agentHost;
+    private String accessHost;
     private String agentVersion;
-    private String agentDescription;
-    private String status;
-    private String trustLevel;
     private List<AgentEndpoint> endpoints;
-
-    public String getAgentId() {
-        return agentId;
-    }
-
-    public void setAgentId(String agentId) {
-        this.agentId = agentId;
-    }
-
-    public String getAgentDisplayName() {
-        return agentDisplayName;
-    }
-
-    public void setAgentDisplayName(String agentDisplayName) {
-        this.agentDisplayName = agentDisplayName;
-    }
 
     public String getAgentHost() {
         return agentHost;
@@ -41,6 +20,14 @@ public final class AgentDetail {
 
     public void setAgentHost(String agentHost) {
         this.agentHost = agentHost;
+    }
+
+    public String getAccessHost() {
+        return accessHost;
+    }
+
+    public void setAccessHost(String accessHost) {
+        this.accessHost = accessHost;
     }
 
     public String getAgentVersion() {
@@ -51,30 +38,6 @@ public final class AgentDetail {
         this.agentVersion = agentVersion;
     }
 
-    public String getAgentDescription() {
-        return agentDescription;
-    }
-
-    public void setAgentDescription(String agentDescription) {
-        this.agentDescription = agentDescription;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getTrustLevel() {
-        return trustLevel;
-    }
-
-    public void setTrustLevel(String trustLevel) {
-        this.trustLevel = trustLevel;
-    }
-
     public List<AgentEndpoint> getEndpoints() {
         return endpoints;
     }
@@ -83,13 +46,51 @@ public final class AgentDetail {
         this.endpoints = endpoints;
     }
 
+    /**
+     * Creates {@link ConnectOptions}-friendly helpers from this discovery result.
+     *
+     * @return a snapshot with identity and access hostnames
+     */
+    public HostnamePair hostnamePair() {
+        return new HostnamePair(agentHost, accessHost);
+    }
+
+    /**
+     * Identity and Access hostnames from discovery.
+     */
+    public record HostnamePair(String identityHost, String accessHost) {
+    }
+
     @Override
     public String toString() {
         return "AgentDetail{"
-            + "agentId='" + agentId + '\''
-            + ", agentHost='" + agentHost + '\''
+            + "agentHost='" + agentHost + '\''
+            + ", accessHost='" + accessHost + '\''
             + ", agentVersion='" + agentVersion + '\''
-            + ", status='" + status + '\''
+            + ", endpoints=" + (endpoints != null ? endpoints.size() : 0)
             + '}';
+    }
+
+    static String extractAccessHost(List<AgentEndpoint> endpoints) {
+        if (endpoints == null || endpoints.isEmpty()) {
+            return null;
+        }
+        String agentUrl = endpoints.get(0).getAgentUrl();
+        if (agentUrl == null || agentUrl.isBlank()) {
+            return null;
+        }
+        return URI.create(agentUrl).getHost();
+    }
+
+    static List<AgentEndpoint> toEndpoints(List<AtiDiscoveryRecord> records) {
+        List<AgentEndpoint> endpoints = new ArrayList<>();
+        for (AtiDiscoveryRecord record : records) {
+            AgentEndpoint endpoint = new AgentEndpoint();
+            endpoint.setProtocol(DiscoveryProtocols.toEndpointProtocol(record.getProtocol()));
+            endpoint.setAgentUrl(record.getAgentUrl());
+            endpoint.setTransports(List.of());
+            endpoints.add(endpoint);
+        }
+        return endpoints;
     }
 }

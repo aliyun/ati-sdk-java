@@ -24,10 +24,6 @@ Set `ati.sdk.mode` to configure which side to enable:
 ati:
   sdk:
     mode: client
-    discovery:
-      endpoint: alidns.aliyuncs.com
-      access-key-id: ${ATI_AK}
-      access-key-secret: ${ATI_SK}
     identity:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
@@ -35,6 +31,9 @@ ati:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
       policy: BADGE_REQUIRED
+    client:
+      dns-timeout: 5s
+      connect-timeout: 10s
 ```
 
 ## Dependencies

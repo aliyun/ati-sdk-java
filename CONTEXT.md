@@ -63,7 +63,7 @@ Model Context Protocol — an endpoint protocol for tool invocation, resource ac
 _Avoid_: model protocol, MCP server (MCP is the protocol; the agent is still an Agent)
 
 **agentUrl**:
-The connectable HTTPS URL of an Endpoint — e.g. `https://bailian.aliyun.com/agents/{agentId}/mcp`. Published in Discovery TXT records as `u=`. The URL's host is the **Access Hostname**; the agent's **Identity Hostname** (agentHost) is a first-level subdomain of that host (e.g. `{agentId}.bailian.aliyun.com`).
+The connectable HTTPS URL of an Endpoint — e.g. `https://bailian.aliyun.com/agents/{agentId}/mcp` on a shared platform, or `https://agent.example.com/mcp` in single-hostname mode. Published in Discovery TXT records as `u=`. The URL's host is the **Access Hostname**; the agent's **Identity Hostname** (`agentHost`) is typically a first-level subdomain on shared platforms (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`). In **single-hostname mode**, RA requires the `u=` host to **equal** `agentHost`.
 _Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field name)
 
 **metaDataUrl**:
@@ -108,7 +108,7 @@ A DNS TXT record at `_ati.{agentHost}` on the **Identity Hostname**, one record 
 - `v` — ATI discovery format version (currently `ati1` only).
 - `av` — agent version (SemVer, e.g. `v1.0.0`); matched client-side against the **Version Constraint**. When multiple TXT records match, Discovery selects the **latest** matching `av` and returns all protocol (`p`) records at that version. When no Version Constraint is provided, Discovery selects the **latest** `av` among all records.
 - `p` — **Protocol** in lowercase in TXT (e.g. `mcp`, `a2a`, `http-api`); the SDK normalizes to uppercase (`MCP`, `A2A`, `HTTP-API`) in `AgentEndpoint.protocol` to match existing conventions.
-- `u` — full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp`).
+- `u` — full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp` on a shared platform). In **single-hostname mode**, host equals `agentHost` (e.g. `https://agent.example.com/mcp`).
 - `m` — optional **Discovery Mode** (currently only `direct` is supported). When omitted, defaults to `direct` — connect directly to the URL in `u`.
 
 Multiple TXT records may coexist under the same Identity Hostname — one per protocol, and optionally multiple `av` values during **Version Rotation**.
@@ -119,7 +119,7 @@ How Discovery resolves an endpoint from a Discovery TXT record. Currently only *
 _Avoid_: mode (alone — prefer Discovery Mode), card mode (not supported in current SDK)
 
 **AgentDetail**:
-The result returned by DNS Discovery — includes `agentHost` (Identity Hostname), `accessHost` (Access Hostname, derived from the `u=` URL host — shared across all endpoints), `agentVersion`, and `endpoints` built from matching Discovery TXT records. Each endpoint carries its own `agentUrl` (`u=`); `accessHost` is duplicated at the top level for convenience (e.g. Transport DANE lookup in **ConnectOptions**). Does **not** include `agentId`, `status`, or `trustLevel` — those are RA/TL concepts unavailable via DNS Discovery. Exposed as `com.aliyun.ati.sdk.discovery.AgentDetail`.
+The result returned by DNS Discovery — includes `agentHost` (Identity Hostname), `accessHost` (Access Hostname, derived from the `u=` URL host — shared across all endpoints), `agentVersion`, and `endpoints` built from matching Discovery TXT records. Each endpoint carries its own `agentUrl` (`u=`); `accessHost` is duplicated at the top level for convenience (e.g. Transport DANE lookup in **ConnectOptions**). On shared platforms, `accessHost` differs from `agentHost`; in single-hostname mode they are equal. Does **not** include `agentId`, `status`, or `trustLevel` — those are RA/TL concepts unavailable via DNS Discovery. Exposed as `com.aliyun.ati.sdk.discovery.AgentDetail`.
 _Avoid_: agent record (too vague), discovery response (prefer AgentDetail), OpenAPI registration snapshot (DNS Discovery returns a slimmer shape)
 
 **trustLevel**:
@@ -278,16 +278,26 @@ _Avoid_: status header, badge token
 ### Identity
 
 **Identity Hostname**:
-The FQDN that anchors an agent's ATI registration, private Identity Certificate, and identity-related DNS records — e.g. `abc123.bailian.aliyun.com`. Must be a **first-level subdomain** of the agent's **Access Hostname** (e.g. `{label}.bailian.aliyun.com` under `bailian.aliyun.com`). Pure DNS metadata namespace: no A/AAAA required, no TLS handshake. Discovery queries, `_ati` TXT, `_ati-badge` TXT, and `_ati-identity._tls` TLSA are published here. Synonymous with **agentHost** in RA/TL field names and ATI Name URIs.
+The FQDN that anchors an agent's ATI registration, private Identity Certificate, and identity-related DNS records — e.g. `abc123.bailian.aliyun.com`. On shared platforms, must be a **first-level subdomain** of the agent's **Access Hostname** (e.g. `{label}.bailian.aliyun.com` under `bailian.aliyun.com`). In single-hostname deployment, may **equal** the Access Hostname (e.g. both `agent.example.com`). Pure DNS metadata namespace: no A/AAAA required, no TLS handshake. Discovery queries, `_ati` TXT, `_ati-badge` TXT, and `_ati-identity._tls` TLSA are published here. Synonymous with **agentHost** in RA/TL field names and ATI Name URIs.
 _Avoid_: identity host (lowercase — prefer Identity Hostname), agent domain (too vague)
 
 **Access Hostname**:
-The FQDN where an agent's traffic lands — TLS handshake, public Server Certificate validation, and A/AAAA resolution — e.g. `bailian.aliyun.com`. Multiple agents on a shared platform share one Access Hostname; each agent's **Identity Hostname** is a first-level subdomain (e.g. `abc123.bailian.aliyun.com`). Endpoint `agentUrl` values (`u=` in Discovery TXT) use this host; `_443._tcp` TLSA for Server Certificate DANE is published here.
+The FQDN where an agent's traffic lands — TLS handshake, public Server Certificate validation, and A/AAAA resolution — e.g. `bailian.aliyun.com` on a shared platform. Multiple agents may share one Access Hostname; each agent's **Identity Hostname** is a first-level subdomain (e.g. `abc123.bailian.aliyun.com`). Endpoint `agentUrl` values (`u=` in Discovery TXT) use this host; `_443._tcp` TLSA for Server Certificate DANE is published here. In **single-hostname mode**, equals `agentHost`.
 _Avoid_: access host (lowercase — prefer Access Hostname), platform domain (too vague), agentHost (agentHost is the Identity Hostname)
 
 **Dual Hostname Model**:
-The ATI registration pattern where **Identity Hostname** and **Access Hostname** are distinct FQDNs. Identity Hostname must be a first-level subdomain of Access Hostname. Required for shared platforms (e.g. 百炼, Coze, 智谱) where multiple agents share one TLS entry. Degenerate case: both hostnames are the same FQDN (single-hostname deployment).
+Conceptual separation of **Identity Hostname** (who the agent is — Discovery, Badge, identity DNS) from **Access Hostname** (where TLS lands — transport DANE). Exposed in **ConnectOptions** as `identityHost` and `accessHost`.
+
+- **Shared platform (primary case)** — multiple agents share one Access Hostname; RA requires each agent's Identity Hostname to be a **first-level subdomain** of the Access Hostname (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`); `u=` points to the Access Hostname.
+- **Single-hostname deployment** — one agent独占 a domain; Identity Hostname **equals** Access Hostname (e.g. both `agent.example.com`); RA requires `agentHost` to equal the `u=` host.
+
+When both hostnames are equal, Badge and transport DANE lookups target the same FQDN. The SDK does not require distinct hostnames.
 _Avoid_: two-domain model (prefer Dual Hostname Model), split domain (too vague)
+
+**RA Registration Constraints (`agentHost` vs `u=`)**:
+- **Single-hostname deployment** — RA requires **`agentHost` to equal the host component of each endpoint `u=` URL** (e.g. both `agent.example.com`).
+- **Shared platform** — RA requires **`agentHost` to be a first-level subdomain of the `u=` host** (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`, with `u=` on `bailian.aliyun.com`.
+_Avoid_: URL host mismatch (prefer stating the mode-specific constraint explicitly)
 
 **agentHost**:
 The RA/TL field name and SDK identifier for an agent's **Identity Hostname** — e.g. `abc123.bailian.aliyun.com`. Used as the primary key for Discovery queries and embedded in ATI Name (`ati://v{version}.{agentHost}`). When Identity Hostname equals Access Hostname (single-hostname deployment), both roles collapse to the same FQDN — the degenerate case of the dual-hostname model.

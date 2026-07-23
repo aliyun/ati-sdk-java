@@ -12,10 +12,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * ati:
  *   sdk:
  *     mode: client
- *     discovery:
- *       endpoint: alidns.aliyuncs.com
- *       access-key-id: your-ak
- *       access-key-secret: your-sk
  *     identity:
  *       certificate: /path/to/identity.crt
  *       private-key: /path/to/identity.key
@@ -49,7 +45,6 @@ public class AtiSdkProperties {
      */
     private boolean enabled = true;
 
-    private Discovery discovery = new Discovery();
     private Identity identity = new Identity();
     private Server server = new Server();
     private Transparency transparency = new Transparency();
@@ -70,14 +65,6 @@ public class AtiSdkProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
-    }
-
-    public Discovery getDiscovery() {
-        return discovery;
-    }
-
-    public void setDiscovery(Discovery discovery) {
-        this.discovery = discovery;
     }
 
     public Identity getIdentity() {
@@ -132,39 +119,6 @@ public class AtiSdkProperties {
      */
     public boolean isServerMode() {
         return "server".equalsIgnoreCase(mode) || "both".equalsIgnoreCase(mode);
-    }
-
-    /**
-     * Discovery configuration for agent lookup via Alibaba Cloud OpenAPI.
-     */
-    public static class Discovery {
-        private String endpoint = "alidns.aliyuncs.com";
-        private String accessKeyId;
-        private String accessKeySecret;
-
-        public String getEndpoint() {
-            return endpoint;
-        }
-
-        public void setEndpoint(String endpoint) {
-            this.endpoint = endpoint;
-        }
-
-        public String getAccessKeyId() {
-            return accessKeyId;
-        }
-
-        public void setAccessKeyId(String accessKeyId) {
-            this.accessKeyId = accessKeyId;
-        }
-
-        public String getAccessKeySecret() {
-            return accessKeySecret;
-        }
-
-        public void setAccessKeySecret(String accessKeySecret) {
-            this.accessKeySecret = accessKeySecret;
-        }
     }
 
     /**

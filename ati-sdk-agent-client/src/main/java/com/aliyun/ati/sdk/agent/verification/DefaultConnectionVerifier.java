@@ -53,11 +53,15 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
     private final DaneVerifier daneVerifier;
     private final BadgeVerifier badgeVerifier;
     private final ScittVerifierAdapter scittVerifier;
+    private final String identityHostOverride;
+    private final String accessHostOverride;
 
     private DefaultConnectionVerifier(Builder builder) {
         this.daneVerifier = builder.daneVerifier;
         this.badgeVerifier = builder.badgeVerifier;
         this.scittVerifier = builder.scittVerifier;
+        this.identityHostOverride = builder.identityHostOverride;
+        this.accessHostOverride = builder.accessHostOverride;
     }
 
     /**
@@ -108,7 +112,32 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
             TransparencyClient transparencyClient,
             DaneTlsaVerifier daneVerifier,
             ServerVerifier badgeServiceOverride) {
-        Builder builder = builder();
+        return fromPolicy(policy, transparencyClient, daneVerifier, badgeServiceOverride, null, null);
+    }
+
+    /**
+     * Creates a DefaultConnectionVerifier from a verification policy with optional
+     * badge service override and dual-hostname overrides.
+     *
+     * @param policy the verification policy controlling which verifiers are enabled
+     * @param transparencyClient the transparency client for SCITT verification, or null
+     * @param daneVerifier the DANE TLSA verifier, or null to skip DANE regardless of policy
+     * @param badgeServiceOverride optional pre-built badge service; if null, a new
+     *                             {@link CachingBadgeVerificationService} is created
+     * @param identityHost optional Identity Hostname for Badge lookups; null uses connection host
+     * @param accessHost optional Access Hostname for transport DANE lookups; null uses connection host
+     * @return a configured verifier
+     */
+    public static DefaultConnectionVerifier fromPolicy(
+            VerificationPolicy policy,
+            TransparencyClient transparencyClient,
+            DaneTlsaVerifier daneVerifier,
+            ServerVerifier badgeServiceOverride,
+            String identityHost,
+            String accessHost) {
+        Builder builder = builder()
+            .identityHost(identityHost)
+            .accessHost(accessHost);
 
         if (policy.hasDaneVerification() && daneVerifier != null) {
             builder.daneVerifier(new DaneVerifier(daneVerifier));
@@ -135,15 +164,17 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
 
     @Override
     public CompletableFuture<PreVerificationResult> preVerify(String hostname, int port) {
-        LOGGER.debug("Pre-verifying {}:{}", hostname, port);
+        String badgeHost = resolveIdentityHost(hostname);
+        String daneHost = resolveAccessHost(hostname);
+        LOGGER.debug("Pre-verifying {}:{} (badgeHost={}, daneHost={})", hostname, port, badgeHost, daneHost);
 
         // Run all pre-verifications in parallel
         CompletableFuture<DaneVerifier.PreVerifyResult> daneFuture = daneVerifier != null
-            ? daneVerifier.preVerify(hostname, port)
+            ? daneVerifier.preVerify(daneHost, port)
             : CompletableFuture.completedFuture(DaneVerifier.PreVerifyResult.success(List.of()));
 
         CompletableFuture<BadgeVerifier.BadgeExpectation> badgeFuture = badgeVerifier != null
-            ? badgeVerifier.preVerify(hostname)
+            ? badgeVerifier.preVerify(badgeHost)
             : CompletableFuture.completedFuture(null);
 
         // Combine results
@@ -185,15 +216,30 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
     @Override
     public List<VerificationResult> postVerify(String hostname, X509Certificate serverCert,
                                                 PreVerificationResult preResult) {
-        LOGGER.debug("Post-verifying {} with certificate", hostname);
+        String badgeHost = resolveIdentityHost(hostname);
+        String daneHost = resolveAccessHost(hostname);
+        LOGGER.debug("Post-verifying {} with certificate (badgeHost={}, daneHost={})",
+            hostname, badgeHost, daneHost);
 
         List<VerificationResult> results = new ArrayList<>();
 
-        postVerifyDane(hostname, serverCert, preResult).ifPresent(results::add);
+        postVerifyDane(daneHost, serverCert, preResult).ifPresent(results::add);
         postVerifyScitt(hostname, serverCert, preResult).ifPresent(results::add);
-        postVerifyBadge(hostname, serverCert, preResult).ifPresent(results::add);
+        postVerifyBadge(badgeHost, serverCert, preResult).ifPresent(results::add);
 
         return results;
+    }
+
+    private String resolveIdentityHost(String connectionHost) {
+        return identityHostOverride != null && !identityHostOverride.isBlank()
+            ? identityHostOverride
+            : connectionHost;
+    }
+
+    private String resolveAccessHost(String connectionHost) {
+        return accessHostOverride != null && !accessHostOverride.isBlank()
+            ? accessHostOverride
+            : connectionHost;
     }
 
     /**
@@ -369,8 +415,26 @@ public class DefaultConnectionVerifier implements ConnectionVerifier {
         private DaneVerifier daneVerifier;
         private BadgeVerifier badgeVerifier;
         private ScittVerifierAdapter scittVerifier;
+        private String identityHostOverride;
+        private String accessHostOverride;
 
         private Builder() {
+        }
+
+        /**
+         * Sets the Identity Hostname override for Badge verification.
+         */
+        public Builder identityHost(String identityHost) {
+            this.identityHostOverride = identityHost;
+            return this;
+        }
+
+        /**
+         * Sets the Access Hostname override for transport DANE verification.
+         */
+        public Builder accessHost(String accessHost) {
+            this.accessHostOverride = accessHost;
+            return this;
         }
 
         /**

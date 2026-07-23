@@ -111,66 +111,6 @@ class AtiSdkPropertiesTest {
         }
     }
 
-    // ==================== Discovery Properties ====================
-
-    @Nested
-    @DisplayName("Discovery properties")
-    class DiscoveryTests {
-
-        @Test
-        @DisplayName("endpoint should default to alidns.aliyuncs.com")
-        void endpointShouldHaveDefault() {
-            AtiSdkProperties props = new AtiSdkProperties();
-
-            assertThat(props.getDiscovery().getEndpoint())
-                .isEqualTo("alidns.aliyuncs.com");
-        }
-
-        @Test
-        @DisplayName("accessKeyId should default to null")
-        void accessKeyIdShouldDefaultToNull() {
-            AtiSdkProperties props = new AtiSdkProperties();
-
-            assertThat(props.getDiscovery().getAccessKeyId()).isNull();
-        }
-
-        @Test
-        @DisplayName("accessKeySecret should default to null")
-        void accessKeySecretShouldDefaultToNull() {
-            AtiSdkProperties props = new AtiSdkProperties();
-
-            assertThat(props.getDiscovery().getAccessKeySecret()).isNull();
-        }
-
-        @Test
-        @DisplayName("Should set and get discovery properties")
-        void shouldSetAndGetDiscoveryProperties() {
-            AtiSdkProperties props = new AtiSdkProperties();
-            AtiSdkProperties.Discovery discovery = props.getDiscovery();
-
-            discovery.setEndpoint("custom.endpoint.com");
-            discovery.setAccessKeyId("ak-123");
-            discovery.setAccessKeySecret("sk-456");
-
-            assertThat(discovery.getEndpoint()).isEqualTo("custom.endpoint.com");
-            assertThat(discovery.getAccessKeyId()).isEqualTo("ak-123");
-            assertThat(discovery.getAccessKeySecret()).isEqualTo("sk-456");
-        }
-
-        @Test
-        @DisplayName("Should replace entire discovery object")
-        void shouldReplaceEntireDiscoveryObject() {
-            AtiSdkProperties props = new AtiSdkProperties();
-            AtiSdkProperties.Discovery newDiscovery = new AtiSdkProperties.Discovery();
-            newDiscovery.setEndpoint("new.endpoint.com");
-
-            props.setDiscovery(newDiscovery);
-
-            assertThat(props.getDiscovery().getEndpoint())
-                .isEqualTo("new.endpoint.com");
-        }
-    }
-
     // ==================== Identity Properties ====================
 
     @Nested
@@ -485,7 +425,6 @@ class AtiSdkPropertiesTest {
         void allNestedObjectsShouldBeNonNull() {
             AtiSdkProperties props = new AtiSdkProperties();
 
-            assertThat(props.getDiscovery()).isNotNull();
             assertThat(props.getIdentity()).isNotNull();
             assertThat(props.getServer()).isNotNull();
             assertThat(props.getTransparency()).isNotNull();

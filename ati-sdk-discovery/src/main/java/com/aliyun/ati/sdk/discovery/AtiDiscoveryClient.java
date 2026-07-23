@@ -1,188 +1,120 @@
 package com.aliyun.ati.sdk.discovery;
 
-import com.aliyun.teaopenapi.Client;
-import com.aliyun.teaopenapi.models.Config;
-import com.aliyun.teaopenapi.models.OpenApiRequest;
-import com.aliyun.teaopenapi.models.Params;
-import com.aliyun.teautil.models.RuntimeOptions;
-
+import com.aliyun.ati.sdk.exception.AtiNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 /**
- * Client for discovering ATI agents via Alibaba Cloud OpenAPI.
- *
- * <p>This client queries the ATI agent registry to resolve agent details
- * by host and optional version constraint.</p>
+ * Client for discovering ATI agents via DNS {@code _ati} TXT records on the Identity Hostname.
  *
  * <p>Example usage:</p>
  * <pre>{@code
- * AtiDiscoveryClient client = new AtiDiscoveryClient(
- *     "alidns.aliyuncs.com",
- *     "your-access-key-id",
- *     "your-access-key-secret");
+ * AtiDiscoveryClient client = new AtiDiscoveryClient();
  *
- * // Discover agent by host
- * AgentDetail detail = client.discover("agent.example.com");
- *
- * // Discover agent by host and version
- * AgentDetail detail = client.discover("agent.example.com", "^1.0.0");
+ * AgentDetail detail = client.discover("abc123.bailian.aliyun.com", "^1.0.0");
+ * String agentUrl = detail.getEndpoints().get(0).getAgentUrl();
  * }</pre>
  */
 public final class AtiDiscoveryClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(AtiDiscoveryClient.class);
-    private static final String API_VERSION = "2015-01-09";
-    private static final String ACTION = "DescribeAtiAgentRegisterInfoMarket";
 
-    private final Client openApiClient;
-    private final String endpoint;
+    private final TxtRecordLookup txtLookup;
 
     /**
-     * Creates a new discovery client.
-     *
-     * @param endpoint the Alibaba Cloud API endpoint
-     * @param accessKeyId the access key ID
-     * @param accessKeySecret the access key secret
-     * @throws Exception if the client cannot be created
+     * Creates a client with the default DNS TXT lookup (5s timeout).
      */
-    public AtiDiscoveryClient(String endpoint,
-                              String accessKeyId,
-                              String accessKeySecret) throws Exception {
-        Config config = new Config();
-        config.setAccessKeyId(accessKeyId);
-        config.setAccessKeySecret(accessKeySecret);
-        config.setEndpoint(endpoint);
-        config.setProtocol("HTTPS");
-        this.endpoint = endpoint;
-        this.openApiClient = new Client(config);
+    public AtiDiscoveryClient() {
+        this(new DnsTxtRecordLookup());
     }
 
     /**
-     * Discovers an agent by host and optional version constraint.
+     * Creates a client with a custom TXT lookup (for tests or custom resolvers).
      *
-     * @param agentHost the agent FQDN (required)
-     * @param agentVersion SemVer range expression (optional, e.g. "^1.0.0")
-     * @return the agent detail, or null if not found
+     * @param txtLookup TXT record lookup implementation
      */
-    public AgentDetail discover(String agentHost, String agentVersion) {
+    public AtiDiscoveryClient(TxtRecordLookup txtLookup) {
+        this.txtLookup = Objects.requireNonNull(txtLookup, "txtLookup must not be null");
+    }
+
+    /**
+     * Creates a client with a custom DNS timeout.
+     *
+     * @param timeout DNS lookup timeout
+     */
+    public AtiDiscoveryClient(Duration timeout) {
+        this(new DnsTxtRecordLookup(timeout));
+    }
+
+    /**
+     * Discovers an agent by Identity Hostname and optional version constraint.
+     *
+     * @param agentHost Identity Hostname (required)
+     * @param versionConstraint optional SemVer constraint (e.g. {@code ^1.0.0})
+     * @return discovered agent detail
+     * @throws AtiNotFoundException if no matching TXT records are found
+     * @throws DiscoveryException if DNS lookup fails
+     */
+    public AgentDetail discover(String agentHost, String versionConstraint) {
         Objects.requireNonNull(agentHost, "agentHost must not be null");
-        LOG.debug("[Discovery] Step 1/4: Resolving agent host '{}' (version='{}')", agentHost, agentVersion);
-        try {
-            Params params = new Params()
-                .setAction(ACTION)
-                .setVersion(API_VERSION)
-                .setProtocol("HTTPS")
-                .setMethod("POST")
-                .setAuthType("AK")
-                .setStyle("RPC")
-                .setPathname("/")
-                .setReqBodyType("json")
-                .setBodyType("json");
+        LOG.debug("[Discovery] Resolving agent host '{}' (constraint='{}')", agentHost, versionConstraint);
 
-            Map<String, Object> queries = new HashMap<>();
-            queries.put("AgentHost", agentHost);
-            if (agentVersion != null && !agentVersion.isBlank()) {
-                queries.put("AgentVersion", agentVersion);
-            }
+        String dnsName = "_ati." + agentHost;
+        List<String> txtValues = txtLookup.lookupTxt(dnsName);
+        List<AtiDiscoveryRecord> records = parseRecords(txtValues);
 
-            LOG.debug("[Discovery] Step 2/4: Calling OpenAPI endpoint='{}' action='{}', version='{}', queries={}",
-                endpoint, ACTION, API_VERSION, queries);
-
-            OpenApiRequest request = new OpenApiRequest().setQuery(
-                com.aliyun.openapiutil.Client.query(queries));
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = (Map<String, Object>) openApiClient.callApi(
-                params, request, new RuntimeOptions());
-
-            LOG.debug("[Discovery] Step 3/4: Received response for {}: {}", agentHost, response);
-
-            AgentDetail detail = parseResponse(response);
-            if (detail != null) {
-                LOG.debug("[Discovery] Step 4/4: Parsed agent detail — id='{}', host='{}', version='{}', endpoints={}",
-                    detail.getAgentId(), detail.getAgentHost(), detail.getAgentVersion(),
-                    detail.getEndpoints() != null ? detail.getEndpoints().size() : 0);
-            } else {
-                LOG.debug("[Discovery] Step 4/4: Parsed result is null (agent not registered or empty response)");
-            }
-            return detail;
-        } catch (Exception e) {
-            LOG.error("[Discovery] Failed to discover agent: {}", agentHost, e);
-            return null;
+        if (records.isEmpty()) {
+            throw new AtiNotFoundException("Agent", agentHost);
         }
+
+        String selectedVersion;
+        try {
+            selectedVersion = DiscoveryVersionSelector.selectLatestVersion(records, versionConstraint);
+        } catch (IllegalArgumentException e) {
+            throw new AtiNotFoundException("Agent", agentHost);
+        }
+
+        List<AtiDiscoveryRecord> selectedRecords = records.stream()
+            .filter(r -> DiscoveryVersionSelector.versionsEqual(r.getAgentVersion(), selectedVersion))
+            .toList();
+
+        List<AgentEndpoint> endpoints = AgentDetail.toEndpoints(selectedRecords);
+
+        AgentDetail detail = new AgentDetail();
+        detail.setAgentHost(agentHost);
+        detail.setAgentVersion(selectedVersion);
+        detail.setEndpoints(endpoints);
+        detail.setAccessHost(AgentDetail.extractAccessHost(endpoints));
+
+        LOG.debug("[Discovery] Resolved {} — version='{}', endpoints={}",
+            agentHost, selectedVersion, endpoints.size());
+        return detail;
     }
 
     /**
-     * Discovers an agent by host, returning the latest version.
+     * Discovers an agent by Identity Hostname, selecting the latest {@code av}.
      *
-     * @param agentHost the agent FQDN (required)
-     * @return the agent detail, or null if not found
+     * @param agentHost Identity Hostname (required)
+     * @return discovered agent detail
      */
     public AgentDetail discover(String agentHost) {
         return discover(agentHost, null);
     }
 
-    @SuppressWarnings("unchecked")
-    private AgentDetail parseResponse(Map<String, Object> response) {
-        if (response == null) {
-            return null;
-        }
-
-        Map<String, Object> body = (Map<String, Object>) response.get("body");
-        if (body == null) {
-            return null;
-        }
-
-        // RPC style: data is directly in body, no Success/Data wrapper
-        String agentId = (String) body.get("AgentId");
-        if (agentId == null || agentId.isBlank()) {
-            return null;
-        }
-
-        AgentDetail detail = new AgentDetail();
-        detail.setAgentId(agentId);
-        detail.setAgentDisplayName((String) body.get("AgentDisplayName"));
-        detail.setAgentHost((String) body.get("AgentHost"));
-        detail.setAgentVersion((String) body.get("AgentVersion"));
-        detail.setAgentDescription((String) body.get("AgentDescription"));
-        detail.setStatus((String) body.get("Status"));
-        detail.setTrustLevel((String) body.get("TrustLevel"));
-
-        // Endpoints structure: {Endpoint=[{AgentUrl=..., Protocol=..., Transports={Transport=[...]}}]}
-        Map<String, Object> endpointsWrapper =
-            (Map<String, Object>) body.get("Endpoints");
-        if (endpointsWrapper != null) {
-            List<Map<String, Object>> endpointsList =
-                (List<Map<String, Object>>) endpointsWrapper.get("Endpoint");
-            if (endpointsList != null) {
-                List<AgentEndpoint> endpoints = new ArrayList<>();
-                for (Map<String, Object> ep : endpointsList) {
-                    AgentEndpoint endpoint = new AgentEndpoint();
-                    endpoint.setProtocol((String) ep.get("Protocol"));
-                    endpoint.setAgentUrl((String) ep.get("AgentUrl"));
-                    endpoint.setMetadataUrl((String) ep.get("MetadataUrl"));
-                    // Transports: {Transport=[STREAMABLE-HTTP]}
-                    Map<String, Object> transportsWrapper =
-                        (Map<String, Object>) ep.get("Transports");
-                    if (transportsWrapper != null) {
-                        List<String> transports =
-                            (List<String>) transportsWrapper.get("Transport");
-                        endpoint.setTransports(
-                            transports != null ? transports : List.of());
-                    }
-                    endpoints.add(endpoint);
-                }
-                detail.setEndpoints(endpoints);
+    private static List<AtiDiscoveryRecord> parseRecords(List<String> txtValues) {
+        List<AtiDiscoveryRecord> parsed = new ArrayList<>();
+        for (String txt : txtValues) {
+            try {
+                parsed.add(AtiDiscoveryRecord.parse(txt));
+            } catch (IllegalArgumentException e) {
+                LOG.debug("Skipping unparseable discovery TXT record: {}", e.getMessage());
             }
         }
-
-        return detail;
+        return parsed;
     }
 }
