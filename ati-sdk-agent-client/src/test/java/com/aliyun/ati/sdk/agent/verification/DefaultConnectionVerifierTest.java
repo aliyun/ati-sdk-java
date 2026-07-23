@@ -201,7 +201,7 @@ class DefaultConnectionVerifierTest {
         List<VerificationResult> results = List.of(
             VerificationResult.success(VerificationResult.VerificationType.DANE, "fp123"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ADVANCED);
 
         assertTrue(combined.isSuccess());
     }
@@ -213,7 +213,7 @@ class DefaultConnectionVerifierTest {
         List<VerificationResult> results = List.of(
             VerificationResult.mismatch(VerificationResult.VerificationType.DANE, "actual", "expected"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ADVANCED);
 
         assertTrue(combined.shouldFail());
         assertEquals(VerificationResult.Status.MISMATCH, combined.status());
@@ -226,7 +226,7 @@ class DefaultConnectionVerifierTest {
         List<VerificationResult> results = List.of(
             VerificationResult.notFound(VerificationResult.VerificationType.DANE, "No TLSA records"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ADVANCED);
 
         assertTrue(combined.shouldFail());
         assertEquals(VerificationResult.Status.ERROR, combined.status());
@@ -236,7 +236,7 @@ class DefaultConnectionVerifierTest {
     void combineWithEmptyResults() {
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.builder().build();
 
-        VerificationResult combined = verifier.combine(List.of(), VerificationPolicy.PKI_ONLY);
+        VerificationResult combined = verifier.combine(List.of(), VerificationPolicy.BASIC);
 
         assertFalse(combined.shouldFail());
         assertTrue(combined.isNotFound());
@@ -249,7 +249,7 @@ class DefaultConnectionVerifierTest {
         List<VerificationResult> results = List.of(
             VerificationResult.error(VerificationResult.VerificationType.BADGE, "Connection timeout"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.BADGE_REQUIRED);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ENHANCED);
 
         assertTrue(combined.shouldFail());
         assertEquals(VerificationResult.Status.ERROR, combined.status());
@@ -263,7 +263,7 @@ class DefaultConnectionVerifierTest {
             VerificationResult.notFound(VerificationResult.VerificationType.DANE, "No records"),
             VerificationResult.success(VerificationResult.VerificationType.BADGE, "fp123"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.BADGE_REQUIRED);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ENHANCED);
 
         assertTrue(combined.isSuccess());
         assertEquals(VerificationResult.VerificationType.BADGE, combined.type());
@@ -319,7 +319,7 @@ class DefaultConnectionVerifierTest {
         List<VerificationResult> results = List.of(
             VerificationResult.error(VerificationResult.VerificationType.DANE, "DNS lookup failed"));
 
-        VerificationResult combined = verifier.combine(results, VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult combined = verifier.combine(results, VerificationPolicy.ADVANCED);
 
         assertTrue(combined.shouldFail());
         assertEquals(VerificationResult.Status.ERROR, combined.status());
@@ -425,7 +425,7 @@ class DefaultConnectionVerifierTest {
     @Test
     void fromPolicyWithPkiOnlyCreatesEmptyVerifier() {
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.PKI_ONLY, null, null);
+            VerificationPolicy.BASIC, null, null);
 
         assertNotNull(verifier);
     }
@@ -437,7 +437,7 @@ class DefaultConnectionVerifierTest {
         when(tc.getBaseUrl()).thenReturn("https://transparency.test.example.com");
 
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.DANE_AND_BADGE, tc, tlsaVerifier);
+            VerificationPolicy.ADVANCED, tc, tlsaVerifier);
 
         assertNotNull(verifier);
     }
@@ -448,7 +448,7 @@ class DefaultConnectionVerifierTest {
         when(tc.getBaseUrl()).thenReturn("https://transparency.test.example.com");
 
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.BADGE_REQUIRED, tc, null);
+            VerificationPolicy.ENHANCED, tc, null);
 
         assertNotNull(verifier);
     }
@@ -457,7 +457,7 @@ class DefaultConnectionVerifierTest {
     void fromPolicyWithBadgeRequiredThrowsWithoutTransparencyClient() {
         assertThrows(IllegalStateException.class, () ->
             DefaultConnectionVerifier.fromPolicy(
-                VerificationPolicy.BADGE_REQUIRED, null, null));
+                VerificationPolicy.ENHANCED, null, null));
     }
 
     @Test
@@ -465,7 +465,7 @@ class DefaultConnectionVerifierTest {
         ServerVerifier customService = mock(ServerVerifier.class);
 
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.BADGE_REQUIRED, null, null, customService);
+            VerificationPolicy.ENHANCED, null, null, customService);
 
         assertNotNull(verifier);
     }
@@ -477,7 +477,7 @@ class DefaultConnectionVerifierTest {
         when(tc.getBaseUrl()).thenReturn("https://transparency.test.example.com");
 
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.DANE_AND_BADGE, tc, null);
+            VerificationPolicy.ADVANCED, tc, null);
 
         assertNotNull(verifier);
     }
@@ -638,7 +638,7 @@ class DefaultConnectionVerifierTest {
                 .build());
 
         DefaultConnectionVerifier verifier = DefaultConnectionVerifier.fromPolicy(
-            VerificationPolicy.DANE_AND_BADGE,
+            VerificationPolicy.ADVANCED,
             null,
             tlsaVerifier,
             serverVerifier,

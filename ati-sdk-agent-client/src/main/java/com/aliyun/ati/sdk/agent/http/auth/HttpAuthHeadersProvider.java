@@ -44,7 +44,7 @@ import java.util.Objects;
  * StreamableHttpTransport transport = client.connectStreaming(
  *     "https://agent.example.com/ans",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+ *         .verificationPolicy(VerificationPolicy.ENHANCED)
  *         .HttpAuthHeadersProvider(HttpAuthHeadersProvider.bearer(token))
  *         .build()
  * );

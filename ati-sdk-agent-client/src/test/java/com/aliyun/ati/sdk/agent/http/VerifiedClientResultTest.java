@@ -196,7 +196,7 @@ class VerifiedClientResultTest {
         return AtiHttpClient.builder()
             .delegate(mockDelegate)
             .connectionVerifier(NoOpConnectionVerifier.INSTANCE)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
     }
 }

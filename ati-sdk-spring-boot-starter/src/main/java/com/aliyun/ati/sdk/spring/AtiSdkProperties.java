@@ -20,13 +20,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       private-key: /path/to/server.key
  *       port: 443
  *       verification:
- *         policy: PKI_ONLY
+ *         policy: BASIC          # NONE | BASIC | ENHANCED | ADVANCED
  *       idca:
- *         trust-certificate: /path/to/idca-trust.pem
+ *         trust-certificate: /path/to/idca-trust.pem  # required for ENHANCED/ADVANCED
  *     transparency:
  *       base-url: https://ati-tl.cnnic.cn:8180
  *     verification:
- *       policy: BADGE_REQUIRED
+ *       policy: ENHANCED
  *     client:
  *       dns-timeout: 5s
  *       connect-timeout: 10s
@@ -152,7 +152,7 @@ public class AtiSdkProperties {
         private String certificate;
         private String privateKey;
         private int port = 443;
-        private Verification verification = new Verification("PKI_ONLY");
+        private Verification verification = new Verification("BASIC");
         private Idca idca = new Idca();
 
         public String getCertificate() {
@@ -239,7 +239,7 @@ public class AtiSdkProperties {
      * Verification policy configuration.
      */
     public static class Verification {
-        private String policy = "BADGE_REQUIRED";
+        private String policy = "ENHANCED";
 
         public Verification() {
         }

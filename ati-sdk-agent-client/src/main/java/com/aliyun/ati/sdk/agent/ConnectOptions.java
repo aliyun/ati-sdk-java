@@ -22,7 +22,7 @@ import java.util.Objects;
  * <pre>{@code
  * AgentConnection conn = client.connect("target.example.com",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+ *         .verificationPolicy(VerificationPolicy.ENHANCED)
  *         .build());
  * }</pre>
  *
@@ -30,7 +30,7 @@ import java.util.Objects;
  * <pre>{@code
  * AgentConnection conn = client.connect("target.example.com",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+ *         .verificationPolicy(VerificationPolicy.ADVANCED)
  *         .build());
  * }</pre>
  *
@@ -38,7 +38,7 @@ import java.util.Objects;
  * <pre>{@code
  * AgentConnection conn = client.connect("target.example.com",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+ *         .verificationPolicy(VerificationPolicy.ENHANCED)
  *         .clientCertPath(Path.of("/path/to/cert.pem"))
  *         .clientKeyPath(Path.of("/path/to/key.pem"))
  *         .build());
@@ -96,10 +96,10 @@ public final class ConnectOptions {
     /**
      * Returns the verification policy.
      *
-     * @return the verification policy, or BADGE_REQUIRED if not set
+     * @return the verification policy, or ENHANCED if not set
      */
     public VerificationPolicy getVerificationPolicy() {
-        return verificationPolicy != null ? verificationPolicy : VerificationPolicy.BADGE_REQUIRED;
+        return verificationPolicy != null ? verificationPolicy : VerificationPolicy.ENHANCED;
     }
 
     /**
@@ -233,8 +233,8 @@ public final class ConnectOptions {
          *
          * @param policy the verification policy
          * @return this builder
-         * @see VerificationPolicy#BADGE_REQUIRED
-         * @see VerificationPolicy#DANE_AND_BADGE
+         * @see VerificationPolicy#ENHANCED
+         * @see VerificationPolicy#ADVANCED
          */
         public Builder verificationPolicy(VerificationPolicy policy) {
             this.verificationPolicy = Objects.requireNonNull(policy, "Verification policy cannot be null");

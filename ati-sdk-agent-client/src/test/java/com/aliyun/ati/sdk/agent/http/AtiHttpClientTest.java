@@ -53,7 +53,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         assertNotNull(client);
@@ -65,7 +65,7 @@ class AtiHttpClientTest {
         assertThrows(NullPointerException.class, () ->
             AtiHttpClient.builder()
                 .connectionVerifier(mockVerifier)
-                .verificationPolicy(VerificationPolicy.PKI_ONLY)
+                .verificationPolicy(VerificationPolicy.BASIC)
                 .build());
     }
 
@@ -74,7 +74,7 @@ class AtiHttpClientTest {
         assertThrows(NullPointerException.class, () ->
             AtiHttpClient.builder()
                 .delegate(mockHttpClient)
-                .verificationPolicy(VerificationPolicy.PKI_ONLY)
+                .verificationPolicy(VerificationPolicy.BASIC)
                 .build());
     }
 
@@ -92,7 +92,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .preVerifyTimeout(Duration.ofSeconds(30))
             .build();
 
@@ -118,7 +118,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         client.clearCache();
@@ -130,7 +130,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         client.invalidateCache("example.com", 443);
@@ -143,7 +143,7 @@ class AtiHttpClientTest {
 
         assertSame(builder, builder.delegate(mockHttpClient));
         assertSame(builder, builder.connectionVerifier(mockVerifier));
-        assertSame(builder, builder.verificationPolicy(VerificationPolicy.PKI_ONLY));
+        assertSame(builder, builder.verificationPolicy(VerificationPolicy.BASIC));
         assertSame(builder, builder.preVerifyTimeout(Duration.ofSeconds(5)));
         assertSame(builder, builder.certProvider(mockCertProvider));
     }
@@ -181,7 +181,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -222,7 +222,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -252,7 +252,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -281,7 +281,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -306,7 +306,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -346,7 +346,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -371,7 +371,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -410,7 +410,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -485,7 +485,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -523,7 +523,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -562,7 +562,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -604,7 +604,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .preVerifyTimeout(Duration.ofMillis(100))
             .build();
@@ -635,7 +635,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -677,7 +677,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -719,7 +719,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -750,7 +750,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .certProvider(mockCertProvider)
             .build();
 
@@ -805,7 +805,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -848,7 +848,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -888,7 +888,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .certProvider(mockCertProvider)
             .build();
 
@@ -941,7 +941,7 @@ class AtiHttpClientTest {
         AtiHttpClient client = AtiHttpClient.builder()
             .delegate(mockHttpClient)
             .connectionVerifier(mockVerifier)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .certProvider(mockCertProvider)
             .build();
 

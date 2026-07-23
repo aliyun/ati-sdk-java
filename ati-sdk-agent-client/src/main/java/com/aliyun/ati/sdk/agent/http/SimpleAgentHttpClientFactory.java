@@ -40,11 +40,11 @@ public class SimpleAgentHttpClientFactory implements AgentHttpClientFactory {
                 .connectTimeout(connectTimeout)
                 .build();
 
-            // Create verifying client with PKI_ONLY policy (no verification)
+            // Create verifying client with BASIC policy (no verification)
             AtiHttpClient verifyingClient = AtiHttpClient.builder()
                 .delegate(httpClient)
                 .connectionVerifier(NoOpConnectionVerifier.INSTANCE)
-                .verificationPolicy(VerificationPolicy.PKI_ONLY)
+                .verificationPolicy(VerificationPolicy.BASIC)
                 .build();
 
             return new VerifiedClientResult(NoOpConnectionVerifier.INSTANCE, verifyingClient);

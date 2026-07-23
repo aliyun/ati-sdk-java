@@ -84,17 +84,17 @@ class SimpleAgentHttpClientFactoryTest {
 
         // When/Then - should work regardless of policy
         HttpClient pkiClient = factory.create(hostname,
-            ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build(),
+            ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build(),
             timeout);
         assertThat(pkiClient).isNotNull();
 
         HttpClient daneClient = factory.create(hostname,
-            ConnectOptions.builder().verificationPolicy(VerificationPolicy.DANE_AND_BADGE).build(),
+            ConnectOptions.builder().verificationPolicy(VerificationPolicy.ADVANCED).build(),
             timeout);
         assertThat(daneClient).isNotNull();
 
         HttpClient badgeClient = factory.create(hostname,
-            ConnectOptions.builder().verificationPolicy(VerificationPolicy.BADGE_REQUIRED).build(),
+            ConnectOptions.builder().verificationPolicy(VerificationPolicy.ENHANCED).build(),
             timeout);
         assertThat(badgeClient).isNotNull();
     }

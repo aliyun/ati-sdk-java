@@ -30,7 +30,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
-      policy: BADGE_REQUIRED
+      policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s

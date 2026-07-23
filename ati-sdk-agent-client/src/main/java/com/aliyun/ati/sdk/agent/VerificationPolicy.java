@@ -1,25 +1,19 @@
 package com.aliyun.ati.sdk.agent;
 
 /**
- * Progressive verification policy for agent connections.
+ * Progressive verification policy for agent connections, aligned with ATI Console trust levels.
  *
- * <p>Each level includes all verifications from the previous level:</p>
  * <ul>
- *   <li>{@link #PKI_ONLY} - Standard TLS PKI verification only</li>
- *   <li>{@link #BADGE_REQUIRED} - PKI + Badge (transparency log seal, Merkle proof, fingerprint)</li>
- *   <li>{@link #DANE_AND_BADGE} - PKI + Badge + DANE (requires DNSSEC infrastructure)</li>
+ *   <li>{@link #NONE} — L0 无认证: no TLS certificate validation, no ATI verification (dev/test only)</li>
+ *   <li>{@link #BASIC} — L1 基础认证: standard TLS PKI verification</li>
+ *   <li>{@link #ENHANCED} — L2 增强认证: Basic + Badge (transparency log seal, Merkle proof, fingerprint)</li>
+ *   <li>{@link #ADVANCED} — L3 高级认证: Enhanced + DANE (requires DNSSEC infrastructure)</li>
  * </ul>
  *
  * <h2>Usage</h2>
  * <pre>{@code
- * // Badge verification (recommended default)
  * ConnectOptions.builder()
- *     .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
- *     .build();
- *
- * // Maximum verification with DANE
- * ConnectOptions.builder()
- *     .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+ *     .verificationPolicy(VerificationPolicy.ENHANCED)
  *     .build();
  * }</pre>
  *
@@ -28,55 +22,87 @@ package com.aliyun.ati.sdk.agent;
 public enum VerificationPolicy {
 
     /**
-     * Standard PKI trust only - no additional verification.
+     * No authentication — skip TLS certificate validation and all ATI verification.
      *
-     * <p>Uses the JVM's default trust store to validate certificates against
-     * well-known Certificate Authorities. This is the minimum security level.</p>
+     * <p>For development and testing only. Do not use in production.</p>
      */
-    PKI_ONLY,
+    NONE,
 
     /**
-     * PKI + Badge verification via ATI transparency log.
-     *
-     * <p>Verifies that the server is a registered ATI agent by checking the
-     * transparency log (proof of registration with Merkle proof and certificate
-     * fingerprint matching). This is the recommended default for most use cases.</p>
+     * Basic authentication — standard PKI trust via the JVM default trust store (or IDCA on servers).
      */
-    BADGE_REQUIRED,
+    BASIC,
 
     /**
-     * PKI + Badge + DANE verification.
+     * Enhanced authentication — Basic + Badge verification via the ATI transparency log.
      *
-     * <p>Combines badge verification with DNS-based Authentication of Named Entities
-     * (DNSSEC-secured TLSA records). Requires both DNSSEC infrastructure and ATI
-     * registration. Use this for maximum assurance.</p>
+     * <p>Recommended default for production use.</p>
      */
-    DANE_AND_BADGE;
+    ENHANCED,
 
     /**
-     * Returns true if any verification beyond PKI is enabled.
+     * Advanced authentication — Enhanced + DANE verification (DNSSEC-secured TLSA records).
+     */
+    ADVANCED;
+
+    /**
+     * Returns the ATI Console display label (e.g. {@code "L2 增强认证"}).
+     */
+    public String displayName() {
+        return switch (this) {
+            case NONE -> "L0 无认证";
+            case BASIC -> "L1 基础认证";
+            case ENHANCED -> "L2 增强认证";
+            case ADVANCED -> "L3 高级认证";
+        };
+    }
+
+    /**
+     * Parses a policy from a configuration string (case-insensitive).
      *
-     * @return true if this policy requires Badge or DANE verification
+     * @param value the policy name ({@code NONE}, {@code BASIC}, {@code ENHANCED}, or {@code ADVANCED})
+     * @return the matching policy
+     * @throws IllegalArgumentException if the value is not recognized
+     */
+    public static VerificationPolicy fromString(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Verification policy cannot be null or blank");
+        }
+        return valueOf(value.trim().toUpperCase());
+    }
+
+    /**
+     * Returns true if standard TLS PKI validation is enabled.
+     */
+    public boolean hasPkiVerification() {
+        return this != NONE;
+    }
+
+    /**
+     * Returns true if any ATI verification beyond PKI is enabled (Badge or DANE).
      */
     public boolean hasAnyVerification() {
-        return this != PKI_ONLY;
+        return this == ENHANCED || this == ADVANCED;
     }
 
     /**
      * Returns true if badge verification is enabled.
-     *
-     * @return true if this policy is BADGE_REQUIRED or higher
      */
     public boolean hasBadgeVerification() {
-        return this.ordinal() >= BADGE_REQUIRED.ordinal();
+        return this == ENHANCED || this == ADVANCED;
     }
 
     /**
      * Returns true if DANE verification is enabled.
-     *
-     * @return true if this policy is DANE_AND_BADGE
      */
     public boolean hasDaneVerification() {
-        return this == DANE_AND_BADGE;
+        return this == ADVANCED;
+    }
+
+    /**
+     * Returns true if this policy requires an IDCA trust anchor on the server.
+     */
+    public boolean requiresIdcaTrust() {
+        return this == ENHANCED || this == ADVANCED;
     }
 }

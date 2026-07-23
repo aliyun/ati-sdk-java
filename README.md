@@ -17,9 +17,10 @@
 
 | Policy | TLS | DANE | Badge | Description |
 |--------|-----|------|-------|-------------|
-| `PKI_ONLY` | ✓ | - | - | Standard TLS only |
-| `BADGE_REQUIRED` | ✓ | - | ✓ | TLS + Badge verification (default) |
-| `DANE_AND_BADGE` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
+| `NONE` | - | - | - | No authentication (dev/test only) |
+| `BASIC` | ✓ | - | - | Standard TLS only |
+| `ENHANCED` | ✓ | - | ✓ | TLS + Badge verification (default) |
+| `ADVANCED` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
 
 ## Verification Sequence Diagrams
 
@@ -64,7 +65,7 @@ DNS lookups in the diagrams (server-side records collapse onto one FQDN):
 | `{serverIdentityHost}` (= `{serverAccessHost}`) | `_ati` (Discovery), `_ati-badge` (Badge), `_443._tcp` (transport DANE) |
 | `{clientIdentityHost}` | `_ati-badge`, `_ati-identity._tls` (server-side Client Verification) |
 
-### PKI_ONLY: Agent Discovery + Standard TLS (+ IDCA on server side)
+### NONE (L0) & BASIC (L1): Agent Discovery + Standard TLS (+ IDCA on server side)
 
 ```mermaid
 sequenceDiagram
@@ -93,7 +94,7 @@ sequenceDiagram
     C->>S: Encrypted Application Data (bidirectional)
 ```
 
-### BADGE_REQUIRED: TLS + Transparency Log Verification
+### ENHANCED (L2): TLS + Transparency Log Verification
 
 ```mermaid
 sequenceDiagram
@@ -136,7 +137,7 @@ sequenceDiagram
     C->>S: Encrypted Application Data (bidirectional)
 ```
 
-### DANE_AND_BADGE: Full Verification
+### ADVANCED (L3): Full Verification
 
 ```mermaid
 sequenceDiagram
@@ -298,28 +299,27 @@ String agentUrl = detail.getEndpoints().stream()
 
 AgentConnection conn = client.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())    // Badge + _ati-identity._tls
-        .accessHost(detail.getAccessHost())     // _443._tcp transport DANE
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        // Dual-hostname: agentUrl host is accessHost; Badge lookups need identityHost
+        .identityHost(detail.getAgentHost())
+        .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(tl)
         .build());
 
-// Direct connect without Discovery — single-hostname mode (RA: agentHost == u= host)
+// Single-hostname — identityHost equals accessHost; ADVANCED adds transport DANE
 AgentConnection direct = client.connect(
     "https://agent.example.com/mcp",
     ConnectOptions.builder()
         .identityHost("agent.example.com")
-        .accessHost("agent.example.com")
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .verificationPolicy(VerificationPolicy.ADVANCED)
         .transparencyClient(tl)
         .build());
 
-// mTLS client certificate + Bearer token
+// mTLS client certificate + Bearer token (ADVANCED: identityHost + accessHost for DANE)
 AgentConnection mtls = client.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())
-        .accessHost(detail.getAccessHost())
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .identityHost(detail.getAgentHost())    // Badge
+        .accessHost(detail.getAccessHost())     // _443._tcp transport DANE
+        .verificationPolicy(VerificationPolicy.ADVANCED)
         .transparencyClient(tl)
         .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
         .authProvider(HttpAuthHeadersProvider.bearer("token"))
@@ -332,13 +332,12 @@ For PKCS12 keystore-based setup, use `AtiVerifiedClient`:
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/identity.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .policy(VerificationPolicy.ENHANCED)
     .build();
 
 AtiConnection conn = verifiedClient.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())
-        .accessHost(detail.getAccessHost())
+        .identityHost(detail.getAgentHost())   // required in dual-hostname mode
         .build());
 ```
 
@@ -356,7 +355,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
-      policy: BADGE_REQUIRED
+      policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s
@@ -373,8 +372,15 @@ ati:
       private-key: /path/to/server.key
       port: 443
       verification:
-        policy: PKI_ONLY
+        # NONE | BASIC | ENHANCED | ADVANCED (aligned with ATI Console L0–L3)
+        # Drives TLS client-auth automatically — do not set server.ssl.client-auth separately
+        policy: BASIC          # L1 基础认证: optional client cert (client-auth=want)
+        # policy: ENHANCED     # L2 增强认证: require client cert (client-auth=need)
+        # policy: ADVANCED     # L3 高级认证: require client cert + DANE client verification
+        # policy: NONE         # L0 无认证: dev/test only (client-auth=none)
       idca:
+        # CNNIC Identity CA (IDCA) trust anchor PEM — validates client Identity Certificate chains
+        # Required when policy is ENHANCED or ADVANCED; optional for BASIC
         trust-certificate: /path/to/idca-trust.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
@@ -416,24 +422,23 @@ TransparencyClient tl = TransparencyClient.builder()
 Configure the verification level via `ConnectOptions`:
 
 ```java
-// PKI_ONLY — TLS with system CA only
+// BASIC — TLS with system CA only
 ConnectOptions opts = ConnectOptions.builder()
-    .verificationPolicy(VerificationPolicy.PKI_ONLY)
+    .verificationPolicy(VerificationPolicy.BASIC)
     .build();
 
-// BADGE_REQUIRED — TLS + ATI Badge verification (recommended)
+// ENHANCED — TLS + ATI Badge (dual-hostname: set identityHost)
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
-    .accessHost("bailian.aliyun.com")
-    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .verificationPolicy(VerificationPolicy.ENHANCED)
     .transparencyClient(tl)
     .build();
 
-// DANE_AND_BADGE — TLS + DANE TLSA + ATI Badge (highest assurance)
+// ADVANCED — ENHANCED + transport DANE (_443._tcp on accessHost)
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
     .accessHost("bailian.aliyun.com")
-    .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+    .verificationPolicy(VerificationPolicy.ADVANCED)
     .transparencyClient(tl)
     .build();
 ```
@@ -445,7 +450,7 @@ For mutual TLS authentication, provide a client certificate via `ConnectOptions`
 ```java
 // From PEM file paths
 ConnectOptions opts = ConnectOptions.builder()
-    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .verificationPolicy(VerificationPolicy.ENHANCED)
     .transparencyClient(tl)
     .clientCertPath(Path.of("/path/to/client.crt"))
     .clientKeyPath(Path.of("/path/to/client.key"))
@@ -463,7 +468,7 @@ For `AtiVerifiedClient`, use a PKCS12 keystore:
 AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/keystore.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .policy(VerificationPolicy.ENHANCED)
     .build();
 ```
 
@@ -515,7 +520,7 @@ When connecting through a proxy on a non-standard port, override the TLSA lookup
 AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/keystore.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.DANE_AND_BADGE)
+    .policy(VerificationPolicy.ADVANCED)
     .tlsaPort(443)  // Always query _443._tcp.{accessHost} TLSA records
     .build();
 ```
@@ -534,7 +539,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
-      policy: BADGE_REQUIRED
+      policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s
@@ -544,7 +549,7 @@ ati:
 |----------|-------------|--------|
 | `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
-| `ati.sdk.verification.policy` | Client verification policy | `BADGE_REQUIRED` |
+| `ati.sdk.verification.policy` | Client verification policy | `ENHANCED` |
 | `ati.sdk.client.dns-timeout` | DNS lookup timeout | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP connect timeout | `10s` |
 

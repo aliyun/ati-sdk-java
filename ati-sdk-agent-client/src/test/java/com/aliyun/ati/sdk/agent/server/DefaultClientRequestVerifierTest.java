@@ -79,7 +79,7 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Should reject null client certificate")
         void shouldRejectNullClientCert() {
             assertThatThrownBy(() ->
-                verifier.verify(null, VerificationPolicy.PKI_ONLY))
+                verifier.verify(null, VerificationPolicy.BASIC))
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("clientCert cannot be null");
         }
@@ -102,7 +102,7 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Should fail when certificate has no ATI URI SAN")
         void shouldFailWhenNoAtiUriSan() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithoutUriSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithoutUriSan, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("No ATI URI SAN"));
@@ -113,7 +113,7 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Should extract agentHost from ati:// URI SAN")
         void shouldExtractAgentHostFromAtiUri() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isTrue();
             assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
@@ -125,7 +125,7 @@ class DefaultClientRequestVerifierTest {
             X509Certificate cert = createCertificateWithUriSan("ans://v1.legacy-agent.example.com");
 
             ClientRequestVerificationResult result = verifier.verify(
-                cert, VerificationPolicy.PKI_ONLY);
+                cert, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isTrue();
             assertThat(result.agentHost()).isEqualTo("legacy-agent.example.com");
@@ -167,25 +167,41 @@ class DefaultClientRequestVerifierTest {
     }
 
     @Nested
-    @DisplayName("PKI_ONLY policy tests")
+    @DisplayName("NONE policy tests")
+    class NonePolicyTests {
+
+        @Test
+        @DisplayName("Should skip verification without client certificate")
+        void shouldSkipWithoutClientCert() {
+            ClientRequestVerificationResult result = verifier.verify(null, VerificationPolicy.NONE);
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.agentHost()).isNull();
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.NONE);
+            verify(mockBadgeService, never()).verifyClient(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("BASIC policy tests")
     class PkiOnlyTests {
 
         @Test
         @DisplayName("Should succeed with PKI_ONLY when cert has ATI SAN")
         void shouldSucceedWithPkiOnly() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isTrue();
             assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BASIC);
             assertThat(result.errors()).isEmpty();
         }
 
         @Test
         @DisplayName("Should not invoke badge service for PKI_ONLY")
         void shouldNotInvokeBadgeServiceForPkiOnly() {
-            verifier.verify(clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             verify(mockBadgeService, never()).verifyClient(any());
         }
@@ -193,7 +209,7 @@ class DefaultClientRequestVerifierTest {
         @Test
         @DisplayName("Should not invoke DANE verifier for PKI_ONLY")
         void shouldNotInvokeDaneForPkiOnly() throws Exception {
-            verifier.verify(clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString());
         }
@@ -204,7 +220,7 @@ class DefaultClientRequestVerifierTest {
             ClientRequestVerificationResult result = verifier.verify(clientCertWithAtiSan);
 
             assertThat(result.verified()).isTrue();
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BASIC);
         }
     }
 
@@ -225,11 +241,11 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isTrue();
             assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.ENHANCED);
             assertThat(result.errors()).isEmpty();
         }
 
@@ -242,7 +258,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("Badge verification failed"));
@@ -258,7 +274,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("Badge verification failed"));
@@ -274,7 +290,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("REGISTRATION_INVALID"));
@@ -290,7 +306,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
@@ -309,7 +325,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isTrue();
         }
@@ -321,7 +337,7 @@ class DefaultClientRequestVerifierTest {
                 .build();
 
             ClientRequestVerificationResult result = noBadgeVerifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("badgeVerificationService is not configured"));
@@ -337,7 +353,7 @@ class DefaultClientRequestVerifierTest {
                 .build();
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
-            verifier.verify(clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             verify(mockDaneTlsaVerifier, never()).getTlsaExpectations(anyString());
         }
@@ -366,10 +382,10 @@ class DefaultClientRequestVerifierTest {
                 .thenReturn(List.of(tlsaExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isTrue();
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.DANE_AND_BADGE);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.ADVANCED);
         }
 
         @Test
@@ -388,7 +404,7 @@ class DefaultClientRequestVerifierTest {
                 .thenReturn(List.of());
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("No TLSA record"));
@@ -413,7 +429,7 @@ class DefaultClientRequestVerifierTest {
                 .thenReturn(List.of(tlsaExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("does not match any TLSA record"));
@@ -428,7 +444,7 @@ class DefaultClientRequestVerifierTest {
             when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isFalse();
             // DANE should NOT have been invoked since Badge failed first
@@ -450,7 +466,7 @@ class DefaultClientRequestVerifierTest {
                 .build();
 
             ClientRequestVerificationResult result = noDaneVerifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("daneTlsaVerifier is not configured"));
@@ -471,7 +487,7 @@ class DefaultClientRequestVerifierTest {
                 .thenThrow(new RuntimeException("DNS timeout"));
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("DANE TLSA lookup failed"));
@@ -491,7 +507,7 @@ class DefaultClientRequestVerifierTest {
             when(mockDaneTlsaVerifier.getTlsaExpectations(anyString()))
                 .thenReturn(List.of());
 
-            verifier.verify(clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+            verifier.verify(clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             // Verify the correct DNS name was queried
             verify(mockDaneTlsaVerifier).getTlsaExpectations(
@@ -521,7 +537,7 @@ class DefaultClientRequestVerifierTest {
                 .thenReturn(List.of(wrongExpectation, correctExpectation));
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.DANE_AND_BADGE);
+                clientCertWithAtiSan, VerificationPolicy.ADVANCED);
 
             assertThat(result.verified()).isTrue();
         }
@@ -538,7 +554,7 @@ class DefaultClientRequestVerifierTest {
                 .thenThrow(new RuntimeException("Network error"));
 
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.BADGE_REQUIRED);
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).anyMatch(e -> e.contains("Verification error"));
@@ -553,11 +569,11 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Success result should have correct fields")
         void successResultShouldHaveCorrectFields() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isTrue();
             assertThat(result.agentHost()).isEqualTo("client-agent.example.com");
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BASIC);
             assertThat(result.errors()).isEmpty();
             assertThat(result.verificationDuration()).isNotNull();
         }
@@ -566,7 +582,7 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("toString should include verification status")
         void toStringShouldIncludeVerificationStatus() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithAtiSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithAtiSan, VerificationPolicy.BASIC);
 
             assertThat(result.toString()).contains("verified=true");
             assertThat(result.toString()).contains("client-agent.example.com");
@@ -576,7 +592,7 @@ class DefaultClientRequestVerifierTest {
         @DisplayName("Failure result should include errors")
         void failureResultShouldIncludeErrors() {
             ClientRequestVerificationResult result = verifier.verify(
-                clientCertWithoutUriSan, VerificationPolicy.PKI_ONLY);
+                clientCertWithoutUriSan, VerificationPolicy.BASIC);
 
             assertThat(result.verified()).isFalse();
             assertThat(result.errors()).isNotEmpty();

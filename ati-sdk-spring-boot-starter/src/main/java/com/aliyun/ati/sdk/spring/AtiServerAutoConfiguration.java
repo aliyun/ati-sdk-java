@@ -37,13 +37,12 @@ public class AtiServerAutoConfiguration {
     /**
      * Customizes the embedded web server for ATI mTLS.
      *
-     * <p>When {@code ati.sdk.mode} is {@code server} or {@code both}:</p>
+     * <p>TLS {@code client-auth} is derived from {@code ati.sdk.server.verification.policy}
+     * (not configured separately):</p>
      * <ul>
-     *   <li>If {@code ati.sdk.server.idca.trust-certificate} is configured,
-     *       sets {@code server.ssl.client-auth=need} and configures
-     *       the IDCA trust store for client certificate verification.</li>
-     *   <li>If not configured, sets {@code server.ssl.client-auth=want}
-     *       to optionally accept client certificates.</li>
+     *   <li>{@code NONE} → {@code client-auth=none}</li>
+     *   <li>{@code BASIC} → {@code client-auth=want} (optional IDCA trust store)</li>
+     *   <li>{@code ENHANCED}/{@code ADVANCED} → {@code client-auth=need} (IDCA trust store required)</li>
      * </ul>
      *
      * @param properties the ATI SDK properties
@@ -61,8 +60,19 @@ public class AtiServerAutoConfiguration {
 
             AtiSdkProperties.Server serverProps = properties.getServer();
             AtiSdkProperties.Idca idcaProps = serverProps.getIdca();
+            com.aliyun.ati.sdk.agent.VerificationPolicy policy =
+                com.aliyun.ati.sdk.agent.VerificationPolicy.fromString(
+                    serverProps.getVerification().getPolicy());
 
-            // Configure server SSL certificate
+            String trustCert = idcaProps.getTrustCertificate();
+            boolean hasIdcaTrust = trustCert != null && !trustCert.isBlank();
+
+            if (policy.requiresIdcaTrust() && !hasIdcaTrust) {
+                throw new IllegalStateException(
+                    "Server verification policy " + policy + " (" + policy.displayName()
+                        + ") requires ati.sdk.server.idca.trust-certificate");
+            }
+
             Ssl ssl = new Ssl();
             if (serverProps.getCertificate() != null) {
                 ssl.setCertificate(serverProps.getCertificate());
@@ -71,22 +81,31 @@ public class AtiServerAutoConfiguration {
                 ssl.setCertificatePrivateKey(serverProps.getPrivateKey());
             }
 
-            // Configure client authentication based on IDCA trust certificate
-            String trustCert = idcaProps.getTrustCertificate();
-            if (trustCert != null && !trustCert.isBlank()) {
-                LOG.info("IDCA trust certificate configured: setting client-auth=want");
-                ssl.setClientAuth(Ssl.ClientAuth.WANT);
-                ssl.setTrustCertificate(trustCert);
-            } else {
-                LOG.info("No IDCA trust certificate: setting client-auth=want");
-                ssl.setClientAuth(Ssl.ClientAuth.WANT);
+            switch (policy) {
+                case NONE -> {
+                    ssl.setClientAuth(Ssl.ClientAuth.NONE);
+                    LOG.info("Server policy {}: client-auth=NONE", policy);
+                }
+                case BASIC -> {
+                    ssl.setClientAuth(Ssl.ClientAuth.WANT);
+                    if (hasIdcaTrust) {
+                        ssl.setTrustCertificate(trustCert);
+                    }
+                    LOG.info("Server policy {}: client-auth=WANT, idca={}",
+                        policy, hasIdcaTrust ? "configured" : "absent");
+                }
+                case ENHANCED, ADVANCED -> {
+                    ssl.setClientAuth(Ssl.ClientAuth.NEED);
+                    ssl.setTrustCertificate(trustCert);
+                    LOG.info("Server policy {}: client-auth=NEED, idca=configured", policy);
+                }
             }
 
             factory.setSsl(ssl);
             factory.setPort(serverProps.getPort());
 
-            LOG.info("ATI server configured on port {} with client-auth={}",
-                serverProps.getPort(), ssl.getClientAuth());
+            LOG.info("ATI server configured on port {} with policy={} client-auth={}",
+                serverProps.getPort(), policy, ssl.getClientAuth());
         };
     }
 
@@ -130,7 +149,7 @@ public class AtiServerAutoConfiguration {
      * Creates a DaneTlsaVerifier bean for DANE-based client verification.
      *
      * <p>Only created when mode is "server" or "both". Used by
-     * {@link DefaultClientRequestVerifier} for DANE_AND_BADGE policy.</p>
+     * {@link DefaultClientRequestVerifier} for ADVANCED policy.</p>
      *
      * @param properties the ATI SDK properties
      * @return the DANE TLSA verifier, or null if not in server mode

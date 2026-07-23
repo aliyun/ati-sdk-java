@@ -58,7 +58,7 @@ import java.util.concurrent.TimeUnit;
  * AtiHttpClient client = AtiHttpClient.builder()
  *     .delegate(httpClient)
  *     .connectionVerifier(verifier)
- *     .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+ *     .verificationPolicy(VerificationPolicy.ADVANCED)
  *     .build();
  *
  * HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -135,7 +135,7 @@ public class AtiHttpClient {
             return builder()
                 .delegate(delegate)
                 .connectionVerifier(new NoOpConnectionVerifier())
-                .verificationPolicy(VerificationPolicy.PKI_ONLY);
+                .verificationPolicy(VerificationPolicy.BASIC);
         }
 
         @Override

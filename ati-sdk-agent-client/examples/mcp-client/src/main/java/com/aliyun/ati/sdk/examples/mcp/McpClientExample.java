@@ -37,7 +37,7 @@ import java.time.Duration;
  * <ul>
  *   <li>KEYSTORE_PATH - Path to client PKCS12 keystore containing identity cert + key</li>
  *   <li>KEYSTORE_PASS - Keystore password (default: changeit)</li>
- *   <li>ATI_POLICY - Verification policy: PKI_ONLY, BADGE_REQUIRED (default), DANE_AND_BADGE</li>
+ *   <li>ATI_POLICY - Verification policy: BASIC, ENHANCED (default), ADVANCED</li>
  * </ul>
  *
  * <h2>Creating a Client Keystore</h2>
@@ -134,13 +134,9 @@ public class McpClientExample {
 
     private static VerificationPolicy parsePolicy(String policyStr) {
         if (policyStr == null || policyStr.isBlank()) {
-            return VerificationPolicy.BADGE_REQUIRED;
+            return VerificationPolicy.ENHANCED;
         }
-        return switch (policyStr.toUpperCase()) {
-            case "PKI_ONLY" -> VerificationPolicy.PKI_ONLY;
-            case "DANE_AND_BADGE" -> VerificationPolicy.DANE_AND_BADGE;
-            default -> VerificationPolicy.BADGE_REQUIRED;
-        };
+        return VerificationPolicy.fromString(policyStr);
     }
 
     private static String truncate(String s, int maxLen) {

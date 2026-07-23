@@ -68,7 +68,7 @@ class NoOpConnectionVerifierTest {
     void combineReturnsSkippedResult() {
         NoOpConnectionVerifier verifier = new NoOpConnectionVerifier();
 
-        VerificationResult result = verifier.combine(List.of(), VerificationPolicy.PKI_ONLY);
+        VerificationResult result = verifier.combine(List.of(), VerificationPolicy.BASIC);
 
         assertNotNull(result);
         assertEquals(VerificationResult.Status.NOT_FOUND, result.status());
@@ -80,13 +80,13 @@ class NoOpConnectionVerifierTest {
     void combineWithDifferentPoliciesReturnsSkipped() {
         NoOpConnectionVerifier verifier = NoOpConnectionVerifier.INSTANCE;
 
-        VerificationResult result1 = verifier.combine(List.of(), VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult result1 = verifier.combine(List.of(), VerificationPolicy.ADVANCED);
         assertFalse(result1.shouldFail());
 
-        VerificationResult result2 = verifier.combine(List.of(), VerificationPolicy.BADGE_REQUIRED);
+        VerificationResult result2 = verifier.combine(List.of(), VerificationPolicy.ENHANCED);
         assertFalse(result2.shouldFail());
 
-        VerificationResult result3 = verifier.combine(List.of(), VerificationPolicy.DANE_AND_BADGE);
+        VerificationResult result3 = verifier.combine(List.of(), VerificationPolicy.ADVANCED);
         assertFalse(result3.shouldFail());
     }
 

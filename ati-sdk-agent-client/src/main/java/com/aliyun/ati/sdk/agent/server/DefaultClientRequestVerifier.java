@@ -31,11 +31,12 @@ import java.util.regex.Pattern;
  *       URI SAN ({@code ati://v1.client-agent.example.com})</li>
  *   <li>Based on {@link VerificationPolicy}:
  *     <ul>
- *       <li><b>PKI_ONLY</b>: No extra verification, return success</li>
- *       <li><b>BADGE_REQUIRED</b>: Look up DNS {@code _ati-badge.{clientAgentHost}},
+ *       <li><b>NONE</b>: Skip all client verification (dev/test only)</li>
+ *       <li><b>BASIC</b>: No Badge or DANE verification; extract identity from URI SAN</li>
+ *       <li><b>ENHANCED</b>: Look up DNS {@code _ati-badge.{clientAgentHost}},
  *           query transparency log, verify seal signature + Merkle proof,
  *           compare SHA256(clientCert) vs identityCertFingerprint</li>
- *       <li><b>DANE_AND_BADGE</b>: Badge verification + DNS
+ *       <li><b>ADVANCED</b>: Enhanced + DNS
  *           {@code _ati-identity._tls.{clientAgentHost}} TLSA record,
  *           compare client Identity Cert public key fingerprint vs TLSA record</li>
  *     </ul>
@@ -80,7 +81,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
     private static final String IDENTITY_TLSA_PREFIX = "_ati-identity._tls.";
 
     private final BadgeVerificationService badgeVerificationService;
-    private final DaneTlsaVerifier daneTlsaVerifier; // nullable, only needed for DANE_AND_BADGE
+    private final DaneTlsaVerifier daneTlsaVerifier; // nullable, only needed for ADVANCED
 
     private DefaultClientRequestVerifier(Builder builder) {
         this.badgeVerificationService = builder.badgeVerificationService;
@@ -92,10 +93,17 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
             X509Certificate clientCert,
             VerificationPolicy policy) {
 
-        Objects.requireNonNull(clientCert, "clientCert cannot be null");
         Objects.requireNonNull(policy, "policy cannot be null");
 
         long startNanos = System.nanoTime();
+
+        if (policy == VerificationPolicy.NONE) {
+            LOGGER.debug("NONE policy: skipping all client verification");
+            return ClientRequestVerificationResult.success(
+                null, null, policy, elapsed(startNanos));
+        }
+
+        Objects.requireNonNull(clientCert, "clientCert cannot be null");
 
         try {
             // Step 1: Extract clientAgentHost from URI SAN (type 6)
@@ -125,9 +133,9 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
 
             LOGGER.debug("Extracted agentHost='{}' from ATI name '{}'", agentHost, atiName);
 
-            // Step 2: PKI_ONLY -> done (no Badge or DANE verification)
-            if (policy == VerificationPolicy.PKI_ONLY) {
-                LOGGER.debug("PKI_ONLY policy: skipping Badge/DANE verification for {}", agentHost);
+            // Step 2: BASIC -> done (no Badge or DANE verification)
+            if (policy == VerificationPolicy.BASIC) {
+                LOGGER.debug("BASIC policy: skipping Badge/DANE verification for {}", agentHost);
                 return ClientRequestVerificationResult.success(
                     null,
                     agentHost,
@@ -136,7 +144,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
                 );
             }
 
-            // Step 3: Badge verification (BADGE_REQUIRED and DANE_AND_BADGE)
+            // Step 3: Badge verification (ENHANCED and ADVANCED)
             if (badgeVerificationService == null) {
                 LOGGER.error("Badge verification required but badgeVerificationService is not configured");
                 return ClientRequestVerificationResult.failure(
@@ -192,10 +200,10 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
 
             LOGGER.debug("Badge verification succeeded for {} (agentId={})", agentHost, agentId);
 
-            // Step 4: DANE verification (DANE_AND_BADGE only)
+            // Step 4: DANE verification (ADVANCED only)
             String daneActual = null;
             String daneExpected = null;
-            if (policy == VerificationPolicy.DANE_AND_BADGE) {
+            if (policy == VerificationPolicy.ADVANCED) {
                 DaneVerifyResult daneResult = verifyDane(clientCert, agentHost);
                 daneActual = daneResult.actualFingerprint;
                 daneExpected = daneResult.expectedFingerprint;
@@ -394,8 +402,8 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
         /**
          * Sets the badge verification service for transparency log verification.
          *
-         * <p>Required for {@link VerificationPolicy#BADGE_REQUIRED} and
-         * {@link VerificationPolicy#DANE_AND_BADGE} policies.</p>
+         * <p>Required for {@link VerificationPolicy#ENHANCED} and
+         * {@link VerificationPolicy#ADVANCED} policies.</p>
          *
          * @param badgeVerificationService the badge verification service
          * @return this builder
@@ -408,8 +416,8 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
         /**
          * Sets the DANE TLSA verifier for DNSSEC-based verification.
          *
-         * <p>Required for {@link VerificationPolicy#DANE_AND_BADGE} policy.
-         * If not set, DANE_AND_BADGE policy will fail with an error.</p>
+         * <p>Required for {@link VerificationPolicy#ADVANCED} policy.
+         * If not set, ADVANCED policy will fail with an error.</p>
          *
          * @param daneTlsaVerifier the DANE TLSA verifier
          * @return this builder
@@ -425,7 +433,7 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
          * <p>No dependencies are strictly required at build time. The verifier
          * will report errors at verification time if required services are missing
          * for the requested policy (e.g., missing badgeVerificationService for
-         * BADGE_REQUIRED policy).</p>
+         * ENHANCED policy).</p>
          *
          * @return the configured verifier
          */

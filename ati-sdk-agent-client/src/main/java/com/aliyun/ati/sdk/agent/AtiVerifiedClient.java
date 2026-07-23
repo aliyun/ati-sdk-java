@@ -39,9 +39,10 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Supports progressive verification policies:</p>
  * <ul>
- *   <li><b>PKI_ONLY</b>: Standard TLS PKI verification</li>
- *   <li><b>BADGE_REQUIRED</b>: PKI + ATI transparency log verification</li>
- *   <li><b>DANE_AND_BADGE</b>: PKI + Badge + DANE (DNSSEC)</li>
+ *   <li><b>NONE</b>: No TLS or ATI verification (dev/test only)</li>
+ *   <li><b>BASIC</b>: Standard TLS PKI verification</li>
+ *   <li><b>ENHANCED</b>: Basic + ATI transparency log verification</li>
+ *   <li><b>ADVANCED</b>: Enhanced + DANE (DNSSEC)</li>
  * </ul>
  *
  * <h2>Usage with MCP SDK</h2>
@@ -49,7 +50,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * AtiVerifiedClient atiClient = AtiVerifiedClient.builder()
  *     .agentId("my-agent-id")
  *     .keyStorePath("/path/to/client.p12", "password")
- *     .policy(VerificationPolicy.BADGE_REQUIRED)
+ *     .policy(VerificationPolicy.ENHANCED)
  *     .build();
  *
  * AtiConnection connection = atiClient.connect(serverUrl);
@@ -382,7 +383,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         private char[] keyPassword;
         private String keyStorePath;
         private TransparencyClient transparencyClient;
-        private VerificationPolicy policy = VerificationPolicy.BADGE_REQUIRED;
+        private VerificationPolicy policy = VerificationPolicy.ENHANCED;
         private Duration connectTimeout = Duration.ofSeconds(30);
         private SSLContext sslContext;
         private CertificateCapturingTrustManager trustManager;
@@ -440,7 +441,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         /**
          * Sets the verification policy.
          *
-         * @param policy the verification policy (default: BADGE_REQUIRED)
+         * @param policy the verification policy (default: ENHANCED)
          * @return this builder
          */
         public Builder policy(VerificationPolicy policy) {
@@ -507,7 +508,9 @@ public class AtiVerifiedClient implements AutoCloseable {
             char[] passwordCopy = keyPassword != null ? keyPassword.clone() : null;
             try {
                 AtiVerifiedSslContextFactory.SslContextResult result =
-                    AtiVerifiedSslContextFactory.createWithTrustManager(keyStore, passwordCopy);
+                    policy == VerificationPolicy.NONE
+                        ? AtiVerifiedSslContextFactory.createTrustAllWithCapture(keyStore, passwordCopy)
+                        : AtiVerifiedSslContextFactory.createWithTrustManager(keyStore, passwordCopy);
                 sslContext = result.sslContext();
                 trustManager = result.trustManager();
             } catch (GeneralSecurityException e) {

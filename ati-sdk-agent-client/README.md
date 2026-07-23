@@ -6,7 +6,7 @@ Agent client module — provides secure agent-to-agent connections with DANE TLS
 
 - `AtiVerifiedClient` — Main client for verified connections (Builder pattern)
 - `ConnectOptions` — Connection options (verification policy, mTLS certs, auth headers)
-- `VerificationPolicy` — Verification policies (PKI_ONLY, BADGE_REQUIRED, DANE_AND_BADGE)
+- `VerificationPolicy` — Verification policies (NONE, BASIC, ENHANCED, ADVANCED)
 - `AtiConnection` — Established connection handle
 - `HttpAuthHeadersProvider` — HTTP auth header injection (Bearer, API Key, custom)
 - `AtiHttpClient` — Verifying HTTP client wrapper
@@ -16,12 +16,12 @@ Agent client module — provides secure agent-to-agent connections with DANE TLS
 ```java
 AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/identity.p12", "password")
-    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .policy(VerificationPolicy.ENHANCED)
     .build();
 
 AtiConnection conn = client.connect("https://agent.example.com",
     ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .verificationPolicy(VerificationPolicy.ADVANCED)
         .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
         .authProvider(HttpAuthHeadersProvider.bearer("token"))
         .build());

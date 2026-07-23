@@ -37,9 +37,9 @@
 
 | 策略 | TLS | DANE | Badge | 说明 |
 |------|-----|------|-------|------|
-| `PKI_ONLY` | ✓ | - | - | 标准 HTTPS，使用系统信任库 |
-| `BADGE_REQUIRED` | ✓ | - | ✓ | 需要透明日志验证（默认） |
-| `DANE_AND_BADGE` | ✓ | ✓ | ✓ | 同时需要 DANE 和 Badge 验证 |
+| `NONE` (L0) or `BASIC` (L1) | ✓ | - | - | 标准 HTTPS，使用系统信任库 |
+| `ENHANCED` | ✓ | - | ✓ | 需要透明日志验证（默认） |
+| `ADVANCED` | ✓ | ✓ | ✓ | 同时需要 DANE 和 Badge 验证 |
 
 ## 集成模式
 
@@ -55,7 +55,7 @@ AtiClient client = AtiClient.builder()
 AgentConnection conn = client.connect(
     "https://agent.example.com",
     ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(TransparencyClient.builder()
             .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
         .build());
@@ -74,7 +74,7 @@ try (AtiVerifiedClient atiClient = AtiVerifiedClient.builder()
         .keyStorePath("/path/to/client.p12", "changeit")
         .transparencyClient(TransparencyClient.builder()
             .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
-        .policy(VerificationPolicy.BADGE_REQUIRED)
+        .policy(VerificationPolicy.ENHANCED)
         .build()) {
 
     // 2. 连接并执行预验证（DANE/Badge 查询）

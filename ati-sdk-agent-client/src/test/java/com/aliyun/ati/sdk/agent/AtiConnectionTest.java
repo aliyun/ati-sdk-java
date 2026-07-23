@@ -38,7 +38,7 @@ class AtiConnectionTest {
     @Mock
     private CapturedCertificateProvider mockCertProvider;
 
-    private VerificationPolicy policy = VerificationPolicy.BADGE_REQUIRED;
+    private VerificationPolicy policy = VerificationPolicy.ENHANCED;
 
     private AtiConnection connection;
 

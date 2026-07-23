@@ -11,13 +11,13 @@ import java.security.cert.X509Certificate;
  * implementations) to verify that incoming client requests are from legitimate
  * ATI-registered agents.</p>
  *
- * <p>Verification is based on the client's Identity Certificate (presented via mTLS)
- * and proceeds according to the specified {@link VerificationPolicy}:</p>
+ * <p>Verification proceeds according to the specified {@link VerificationPolicy}:</p>
  * <ol>
- *   <li><b>PKI_ONLY</b> - Extract agent identity from the certificate URI SAN only</li>
- *   <li><b>BADGE_REQUIRED</b> - PKI + Badge verification via DNS {@code _ati-badge}
+ *   <li><b>NONE</b> — Skip all client verification (dev/test only)</li>
+ *   <li><b>BASIC</b> — Extract agent identity from the certificate URI SAN only</li>
+ *   <li><b>ENHANCED</b> — Basic + Badge verification via DNS {@code _ati-badge}
  *       record and transparency log (seal signature, Merkle proof, fingerprint match)</li>
- *   <li><b>DANE_AND_BADGE</b> - Badge + DANE verification via DNSSEC-secured
+ *   <li><b>ADVANCED</b> — Enhanced + DANE verification via DNSSEC-secured
  *       {@code _ati-identity._tls} TLSA record</li>
  * </ol>
  *
@@ -31,7 +31,7 @@ import java.security.cert.X509Certificate;
  * X509Certificate clientCert = (X509Certificate) sslSession.getPeerCertificates()[0];
  *
  * ClientRequestVerificationResult result = verifier.verify(
- *     clientCert, VerificationPolicy.BADGE_REQUIRED);
+ *     clientCert, VerificationPolicy.ENHANCED);
  *
  * if (!result.verified()) {
  *     return Response.status(403)
@@ -67,7 +67,7 @@ public interface ClientRequestVerifier {
     );
 
     /**
-     * Verifies an incoming client request using the default PKI_ONLY policy.
+     * Verifies an incoming client request using the default BASIC policy.
      *
      * <p>This is the simplest verification level: it extracts the agent identity
      * from the certificate URI SAN but performs no Badge or DANE checks.</p>
@@ -77,6 +77,6 @@ public interface ClientRequestVerifier {
      * @throws NullPointerException if clientCert is null
      */
     default ClientRequestVerificationResult verify(X509Certificate clientCert) {
-        return verify(clientCert, VerificationPolicy.PKI_ONLY);
+        return verify(clientCert, VerificationPolicy.BASIC);
     }
 }

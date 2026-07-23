@@ -92,10 +92,13 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
                 clientKeyStore = buildClientKeyStore(options);
             }
 
-            // Create SSLContext with certificate capture via shared factory
+            VerificationPolicy policy = options.getVerificationPolicy();
             AtiVerifiedSslContextFactory.SslContextResult sslResult =
-                AtiVerifiedSslContextFactory.createWithTrustManager(clientKeyStore,
-                    DEFAULT_KEY_PASSWORD.toCharArray());
+                policy == VerificationPolicy.NONE
+                    ? AtiVerifiedSslContextFactory.createTrustAllWithCapture(
+                        clientKeyStore, DEFAULT_KEY_PASSWORD.toCharArray())
+                    : AtiVerifiedSslContextFactory.createWithTrustManager(
+                        clientKeyStore, DEFAULT_KEY_PASSWORD.toCharArray());
 
             HttpClient httpClient = HttpClient.newBuilder()
                 .sslContext(sslResult.sslContext())

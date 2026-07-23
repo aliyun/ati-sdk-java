@@ -58,7 +58,7 @@ class AtiVerifiedClientTest {
 
             assertThat(client).isNotNull();
             assertThat(client.sslContext()).isNotNull();
-            assertThat(client.policy()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(client.policy()).isEqualTo(VerificationPolicy.ENHANCED);
             client.close();
         }
 
@@ -71,10 +71,10 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
-            assertThat(client.policy()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(client.policy()).isEqualTo(VerificationPolicy.BASIC);
             client.close();
         }
 
@@ -134,7 +134,7 @@ class AtiVerifiedClientTest {
                 .agentId("test-agent-123")
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             // In simplified policy, SCITT is not enabled so headers are always empty
@@ -171,7 +171,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             Map<String, String> headers = client.fetchScittHeadersAsync().join();
@@ -188,7 +188,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             assertThatThrownBy(() -> client.fetchScittHeadersAsync().join().put("key", "value"))
@@ -232,7 +232,7 @@ class AtiVerifiedClientTest {
                 .agentId("test-agent")
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.BADGE_REQUIRED)
+                .policy(VerificationPolicy.ENHANCED)
                 .build();
 
             // Both calls should return the same cached result
@@ -276,7 +276,7 @@ class AtiVerifiedClientTest {
 
             assertThatThrownBy(() -> AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("TransparencyClient is required");
@@ -296,10 +296,10 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.BADGE_REQUIRED)
+                .policy(VerificationPolicy.ENHANCED)
                 .build();
 
-            assertThat(client.policy()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(client.policy()).isEqualTo(VerificationPolicy.ENHANCED);
             assertThat(client.policy().hasBadgeVerification()).isTrue();
             assertThat(client.policy().hasDaneVerification()).isFalse();
             client.close();
@@ -314,10 +314,10 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.DANE_AND_BADGE)
+                .policy(VerificationPolicy.ADVANCED)
                 .build();
 
-            assertThat(client.policy()).isEqualTo(VerificationPolicy.DANE_AND_BADGE);
+            assertThat(client.policy()).isEqualTo(VerificationPolicy.ADVANCED);
             assertThat(client.policy().hasDaneVerification()).isTrue();
             assertThat(client.policy().hasBadgeVerification()).isTrue();
             client.close();
@@ -332,10 +332,10 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
-            assertThat(client.policy()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(client.policy()).isEqualTo(VerificationPolicy.BASIC);
             assertThat(client.policy().hasAnyVerification()).isFalse();
             client.close();
         }
@@ -355,7 +355,7 @@ class AtiVerifiedClientTest {
                 .agentId("   ") // Blank
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.BADGE_REQUIRED)
+                .policy(VerificationPolicy.ENHANCED)
                 .build();
 
             assertThat(client.fetchScittHeadersAsync().join()).isEmpty();
@@ -372,7 +372,7 @@ class AtiVerifiedClientTest {
                 .agentId("") // Empty
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.BADGE_REQUIRED)
+                .policy(VerificationPolicy.ENHANCED)
                 .build();
 
             assertThat(client.fetchScittHeadersAsync().join()).isEmpty();
@@ -394,7 +394,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             String serverUrl = wmRuntimeInfo.getHttpBaseUrl() + "/mcp";
@@ -420,7 +420,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             String serverUrl = wmRuntimeInfo.getHttpBaseUrl() + "/api";
@@ -448,7 +448,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             String serverUrl = wmRuntimeInfo.getHttpBaseUrl() + "/mcp";
@@ -474,7 +474,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             CompletableFuture<AtiConnection> future = client.connectAsync("not a valid url ://");
@@ -495,7 +495,7 @@ class AtiVerifiedClientTest {
             AtiVerifiedClient client = AtiVerifiedClient.builder()
                 .keyStore(keyStore, "password".toCharArray())
                 .transparencyClient(mockTransparencyClient)
-                .policy(VerificationPolicy.PKI_ONLY)
+                .policy(VerificationPolicy.BASIC)
                 .build();
 
             String serverUrl = wmRuntimeInfo.getHttpBaseUrl() + "/api";

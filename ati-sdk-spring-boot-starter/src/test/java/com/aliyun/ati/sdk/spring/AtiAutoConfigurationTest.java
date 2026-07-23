@@ -89,12 +89,12 @@ class AtiAutoConfigurationTest {
         void shouldApplyVerificationPolicy() {
             contextRunner
                 .withPropertyValues(
-                    "ati.sdk.verification.policy=DANE_AND_BADGE"
+                    "ati.sdk.verification.policy=ADVANCED"
                 )
                 .run(context -> {
                     AtiSdkProperties props = context.getBean(AtiSdkProperties.class);
                     assertThat(props.getVerification().getPolicy())
-                        .isEqualTo("DANE_AND_BADGE");
+                        .isEqualTo("ADVANCED");
                 });
         }
     }

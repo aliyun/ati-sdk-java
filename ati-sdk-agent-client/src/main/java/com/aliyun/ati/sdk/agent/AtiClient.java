@@ -29,7 +29,7 @@ import java.util.Objects;
  * // Connect with badge verification (recommended)
  * AgentConnection conn = client.connect("https://agent.example.com",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+ *         .verificationPolicy(VerificationPolicy.ENHANCED)
  *         .build());
  *
  * // Use the connection

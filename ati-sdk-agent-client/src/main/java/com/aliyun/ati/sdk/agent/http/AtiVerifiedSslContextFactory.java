@@ -131,12 +131,29 @@ public final class AtiVerifiedSslContextFactory {
      * @return the SSLContext and trust manager instance
      * @throws GeneralSecurityException if SSL initialization fails
      */
+    /**
+     * Creates an SSLContext that accepts any server certificate (trust-all) while still
+     * capturing the peer certificate for logging or optional post-handshake inspection.
+     *
+     * <p>For {@link com.aliyun.ati.sdk.agent.VerificationPolicy#NONE} only. Do not use in production.</p>
+     */
+    public static SslContextResult createTrustAllWithCapture(KeyStore clientKeyStore, char[] keyPassword)
+            throws GeneralSecurityException {
+        return buildSslContextResult(createTrustAllTrustManager(), clientKeyStore, keyPassword);
+    }
+
     public static SslContextResult createWithTrustManager(KeyStore clientKeyStore, char[] keyPassword)
             throws GeneralSecurityException {
+        return buildSslContextResult(getSystemTrustManager(), clientKeyStore, keyPassword);
+    }
 
-        X509TrustManager systemTrustManager = getSystemTrustManager();
+    private static SslContextResult buildSslContextResult(
+            X509TrustManager delegateTrustManager,
+            KeyStore clientKeyStore,
+            char[] keyPassword) throws GeneralSecurityException {
+
         CertificateCapturingTrustManager capturingTm =
-                new CertificateCapturingTrustManager(systemTrustManager);
+                new CertificateCapturingTrustManager(delegateTrustManager);
 
         KeyManager[] keyManagers = null;
         if (clientKeyStore != null) {
@@ -150,6 +167,25 @@ public final class AtiVerifiedSslContextFactory {
         sslContext.init(keyManagers, new TrustManager[]{capturingTm}, null);
 
         return new SslContextResult(sslContext, capturingTm);
+    }
+
+    private static X509TrustManager createTrustAllTrustManager() {
+        return new X509TrustManager() {
+            @Override
+            public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                // trust-all for NONE policy (dev/test only)
+            }
+
+            @Override
+            public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {
+                // trust-all for NONE policy (dev/test only)
+            }
+
+            @Override
+            public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                return new java.security.cert.X509Certificate[0];
+            }
+        };
     }
 
     /**

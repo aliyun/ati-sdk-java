@@ -26,7 +26,7 @@ class ClientRequestVerificationResultTest {
                 "agent-123",
                 "agent.example.com",
                 null,
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 Duration.ofMillis(100),
                 null, null, null, null
             )).isInstanceOf(NullPointerException.class)
@@ -56,7 +56,7 @@ class ClientRequestVerificationResultTest {
                 "agent-123",
                 "agent.example.com",
                 List.of(),
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 null,
                 null, null, null, null
             )).isInstanceOf(NullPointerException.class)
@@ -74,7 +74,7 @@ class ClientRequestVerificationResultTest {
                 null,
                 null,
                 errors,
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 Duration.ofMillis(100),
                 null, null, null, null
             );
@@ -94,7 +94,7 @@ class ClientRequestVerificationResultTest {
                 null,
                 null,
                 List.of("some error"),
-                VerificationPolicy.PKI_ONLY,
+                VerificationPolicy.BASIC,
                 Duration.ofMillis(50),
                 null, null, null, null
             );
@@ -116,7 +116,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
                 "ati://v1.agent.example.com",
                 "agent.example.com",
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 duration
             );
 
@@ -124,7 +124,7 @@ class ClientRequestVerificationResultTest {
             assertThat(result.agentId()).isEqualTo("ati://v1.agent.example.com");
             assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).isEmpty();
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.ENHANCED);
             assertThat(result.verificationDuration()).isEqualTo(duration);
         }
 
@@ -134,7 +134,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
                 null,
                 "agent.example.com",
-                VerificationPolicy.PKI_ONLY,
+                VerificationPolicy.BASIC,
                 Duration.ofMillis(10)
             );
 
@@ -152,7 +152,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 errors,
                 "agent.example.com",
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 duration
             );
 
@@ -160,7 +160,7 @@ class ClientRequestVerificationResultTest {
             assertThat(result.agentId()).isNull();
             assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).containsExactly("error1", "error2");
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BADGE_REQUIRED);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.ENHANCED);
             assertThat(result.verificationDuration()).isEqualTo(duration);
         }
 
@@ -172,7 +172,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 "Single error message",
                 "agent.example.com",
-                VerificationPolicy.PKI_ONLY,
+                VerificationPolicy.BASIC,
                 duration
             );
 
@@ -180,7 +180,7 @@ class ClientRequestVerificationResultTest {
             assertThat(result.agentId()).isNull();
             assertThat(result.agentHost()).isEqualTo("agent.example.com");
             assertThat(result.errors()).containsExactly("Single error message");
-            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.PKI_ONLY);
+            assertThat(result.policyUsed()).isEqualTo(VerificationPolicy.BASIC);
             assertThat(result.verificationDuration()).isEqualTo(duration);
         }
 
@@ -190,7 +190,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 "No ATI SAN found",
                 null,
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 Duration.ofMillis(100)
             );
 
@@ -208,7 +208,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.success(
                 "ati://v1.test-agent.example.com",
                 "test-agent.example.com",
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 Duration.ofMillis(123)
             );
 
@@ -225,7 +225,7 @@ class ClientRequestVerificationResultTest {
             ClientRequestVerificationResult result = ClientRequestVerificationResult.failure(
                 List.of("error1", "error2"),
                 "agent.example.com",
-                VerificationPolicy.BADGE_REQUIRED,
+                VerificationPolicy.ENHANCED,
                 Duration.ofMillis(456)
             );
 

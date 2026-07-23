@@ -195,14 +195,14 @@ class AtiServerAutoConfigurationTest {
             contextRunner
                 .withPropertyValues(
                     "ati.sdk.mode=server",
-                    "ati.sdk.server.verification.policy=DANE_AND_BADGE"
+                    "ati.sdk.server.verification.policy=ADVANCED"
                 )
                 .run(context -> {
                     AtiSdkProperties props =
                         context.getBean(AtiSdkProperties.class);
 
                     assertThat(props.getServer().getVerification().getPolicy())
-                        .isEqualTo("DANE_AND_BADGE");
+                        .isEqualTo("ADVANCED");
                 });
         }
 

@@ -229,11 +229,14 @@ A CNNIC transparency log hostname allowed in Badge URL pointers and `Transparenc
 _Avoid_: trusted domain (alone — specify Trusted TL Domain), TL URL (too vague)
 
 **Verification Policy**:
-The trust verification level applied when establishing an agent-to-agent connection. Policies are progressive — each level includes all checks from the previous level.
+The trust verification level applied when establishing an agent-to-agent connection. Aligned with ATI Console levels L0–L3. Policies are progressive — each level includes all checks from the previous level (except None).
 
-- **PKI Only** (`PKI_ONLY`) — 基础认证: standard TLS with system CA validation only.
-- **Badge Required** (`BADGE_REQUIRED`) — 增强认证: PKI + Badge verification via the Transparency Log. Recommended production default.
-- **DANE and Badge** (`DANE_AND_BADGE`) — 最高认证: PKI + Badge + DANE TLSA verification. Requires DNSSEC infrastructure.
+- **None** (`NONE`) — L0 无认证: no TLS certificate validation, no ATI verification; development and testing only.
+- **Basic** (`BASIC`) — L1 基础认证: standard TLS PKI (system CA or IDCA on servers).
+- **Enhanced** (`ENHANCED`) — L2 增强认证: Basic + Badge verification via the Transparency Log. Recommended production default.
+- **Advanced** (`ADVANCED`) — L3 高级认证: Enhanced + DANE TLSA verification. Requires DNSSEC infrastructure.
+
+On server agents, Verification Policy drives TLS `client-auth` (None → no client certificate requested; Enhanced/Advanced → client certificate required with IDCA trust anchor). The IDCA trust certificate path is configured separately via `ati.sdk.server.idca.trust-certificate`.
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
 
 **Pre-verification**:

@@ -26,7 +26,7 @@ import java.time.Duration;
  * // Create verified client (performs DANE/Badge outside handshake)
  * VerifiedClientResult result = factory.createVerified("agent.example.com",
  *     ConnectOptions.builder()
- *         .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+ *         .verificationPolicy(VerificationPolicy.ADVANCED)
  *         .build(),
  *     Duration.ofSeconds(10));
  *

@@ -51,7 +51,7 @@ public record ClientRequestVerificationResult(
     /**
      * Creates a successful verification result.
      *
-     * @param agentId the verified agent ID (may be null for PKI_ONLY)
+     * @param agentId the verified agent ID (may be null for BASIC)
      * @param agentHost the agent hostname from the certificate URI SAN
      * @param policy the policy that was used
      * @param duration how long verification took
@@ -76,7 +76,7 @@ public record ClientRequestVerificationResult(
     /**
      * Creates a successful verification result with fingerprint details.
      *
-     * @param agentId the verified agent ID (may be null for PKI_ONLY)
+     * @param agentId the verified agent ID (may be null for BASIC)
      * @param agentHost the agent hostname from the certificate URI SAN
      * @param policy the policy that was used
      * @param duration how long verification took

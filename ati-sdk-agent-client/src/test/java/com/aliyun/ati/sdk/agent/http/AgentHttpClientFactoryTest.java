@@ -101,7 +101,7 @@ class AgentHttpClientFactoryTest {
             .build();
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .build();
 
         // When

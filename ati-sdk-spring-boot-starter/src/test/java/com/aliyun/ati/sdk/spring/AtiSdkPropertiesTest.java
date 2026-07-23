@@ -200,22 +200,22 @@ class AtiSdkPropertiesTest {
     class VerificationTests {
 
         @Test
-        @DisplayName("policy should default to BADGE_REQUIRED")
+        @DisplayName("policy should default to ENHANCED")
         void policyShouldDefaultToBadgeRequired() {
             AtiSdkProperties props = new AtiSdkProperties();
 
             assertThat(props.getVerification().getPolicy())
-                .isEqualTo("BADGE_REQUIRED");
+                .isEqualTo("ENHANCED");
         }
 
         @Test
         @DisplayName("Should set and get policy")
         void shouldSetAndGetPolicy() {
             AtiSdkProperties props = new AtiSdkProperties();
-            props.getVerification().setPolicy("DANE_AND_BADGE");
+            props.getVerification().setPolicy("ADVANCED");
 
             assertThat(props.getVerification().getPolicy())
-                .isEqualTo("DANE_AND_BADGE");
+                .isEqualTo("ADVANCED");
         }
 
         @Test
@@ -224,12 +224,12 @@ class AtiSdkPropertiesTest {
             AtiSdkProperties props = new AtiSdkProperties();
             AtiSdkProperties.Verification newVerification =
                 new AtiSdkProperties.Verification();
-            newVerification.setPolicy("PKI_ONLY");
+            newVerification.setPolicy("BASIC");
 
             props.setVerification(newVerification);
 
             assertThat(props.getVerification().getPolicy())
-                .isEqualTo("PKI_ONLY");
+                .isEqualTo("BASIC");
         }
     }
 
@@ -329,22 +329,22 @@ class AtiSdkPropertiesTest {
         }
 
         @Test
-        @DisplayName("Server verification policy should default to PKI_ONLY")
+        @DisplayName("Server verification policy should default to BASIC")
         void serverVerificationPolicyShouldDefault() {
             AtiSdkProperties props = new AtiSdkProperties();
 
             assertThat(props.getServer().getVerification().getPolicy())
-                .isEqualTo("PKI_ONLY");
+                .isEqualTo("BASIC");
         }
 
         @Test
         @DisplayName("Should set server verification policy")
         void shouldSetServerVerificationPolicy() {
             AtiSdkProperties props = new AtiSdkProperties();
-            props.getServer().getVerification().setPolicy("DANE_AND_BADGE");
+            props.getServer().getVerification().setPolicy("ADVANCED");
 
             assertThat(props.getServer().getVerification().getPolicy())
-                .isEqualTo("DANE_AND_BADGE");
+                .isEqualTo("ADVANCED");
         }
 
         @Test
@@ -365,12 +365,12 @@ class AtiSdkPropertiesTest {
             AtiSdkProperties props = new AtiSdkProperties();
             AtiSdkProperties.Verification newVerification =
                 new AtiSdkProperties.Verification();
-            newVerification.setPolicy("PKI_ONLY");
+            newVerification.setPolicy("BASIC");
 
             props.getServer().setVerification(newVerification);
 
             assertThat(props.getServer().getVerification().getPolicy())
-                .isEqualTo("PKI_ONLY");
+                .isEqualTo("BASIC");
         }
     }
 

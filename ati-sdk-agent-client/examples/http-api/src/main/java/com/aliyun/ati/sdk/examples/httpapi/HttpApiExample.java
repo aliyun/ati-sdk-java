@@ -33,9 +33,9 @@ import java.time.Duration;
  *
  * <h2>Verification Policies</h2>
  * <ul>
- *   <li><b>PKI_ONLY</b> - Standard HTTPS with system trust store</li>
- *   <li><b>BADGE_REQUIRED</b> - Requires transparency log verification (recommended default)</li>
- *   <li><b>DANE_AND_BADGE</b> - Requires both DANE and Badge verification</li>
+ *   <li><b>BASIC</b> - Standard HTTPS with system trust store</li>
+ *   <li><b>ENHANCED</b> - Requires transparency log verification (recommended default)</li>
+ *   <li><b>ADVANCED</b> - Requires both DANE and Badge verification</li>
  * </ul>
  */
 public class HttpApiExample {
@@ -59,13 +59,13 @@ public class HttpApiExample {
     }
 
     /**
-     * Example 1: PKI_ONLY - Standard HTTPS.
+     * Example 1: BASIC - Standard HTTPS.
      *
      * <p>Uses the system trust store for certificate validation.
      * This is the simplest approach but provides no ATI-specific verification.</p>
      */
     private static void examplePkiOnly(String serverUrl) {
-        System.out.println("Example 1: PKI_ONLY - Standard HTTPS");
+        System.out.println("Example 1: BASIC - Standard HTTPS");
         System.out.println("-".repeat(40));
 
         try {
@@ -77,15 +77,15 @@ public class HttpApiExample {
             System.out.println("  Created AtiClient");
 
             AgentConnection conn = client.connect(serverUrl, ConnectOptions.builder()
-                .verificationPolicy(VerificationPolicy.PKI_ONLY)
+                .verificationPolicy(VerificationPolicy.BASIC)
                 .build());
-            System.out.println("  Connected with PKI_ONLY");
+            System.out.println("  Connected with BASIC");
 
             HttpApiClient api = conn.httpApiAt(serverUrl);
             String response = api.get("/health");
             System.out.println("  GET /health: " + truncate(response, 100));
 
-            System.out.println("  [SUCCESS] PKI_ONLY example completed\n");
+            System.out.println("  [SUCCESS] BASIC example completed\n");
 
         } catch (Exception e) {
             System.out.println("  [ERROR] " + e.getMessage() + "\n");
@@ -93,13 +93,13 @@ public class HttpApiExample {
     }
 
     /**
-     * Example 2: BADGE_REQUIRED - Transparency log verification.
+     * Example 2: ENHANCED - Transparency log verification.
      *
      * <p>Verifies the agent's certificate against the ATI transparency log (CNNIC TL).
      * This is the recommended approach for most use cases.</p>
      */
     private static void exampleBadgeRequired(String serverUrl) {
-        System.out.println("Example 2: BADGE_REQUIRED - Transparency Log Verification");
+        System.out.println("Example 2: ENHANCED - Transparency Log Verification");
         System.out.println("-".repeat(40));
 
         try {
@@ -107,7 +107,7 @@ public class HttpApiExample {
             System.out.println("  Created AtiClient");
 
             ConnectOptions options = ConnectOptions.builder()
-                .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+                .verificationPolicy(VerificationPolicy.ENHANCED)
                 .transparencyClient(TransparencyClient.builder()
                     .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
                 .build();
@@ -116,13 +116,13 @@ public class HttpApiExample {
             System.out.println("  Will verify certificate against ATI transparency log (CNNIC TL)");
 
             AgentConnection conn = client.connect(serverUrl, options);
-            System.out.println("  Connected with BADGE_REQUIRED");
+            System.out.println("  Connected with ENHANCED");
 
             HttpApiClient api = conn.httpApiAt(serverUrl);
             String response = api.get("/health");
             System.out.println("  GET /health: " + truncate(response, 100));
 
-            System.out.println("  [SUCCESS] BADGE_REQUIRED example completed\n");
+            System.out.println("  [SUCCESS] ENHANCED example completed\n");
 
         } catch (Exception e) {
             System.out.println("  [ERROR] " + e.getMessage());
@@ -148,7 +148,7 @@ public class HttpApiExample {
             AtiClient client = AtiClient.create();
 
             ConnectOptions options = ConnectOptions.builder()
-                .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+                .verificationPolicy(VerificationPolicy.ADVANCED)
                 .transparencyClient(TransparencyClient.builder()
                     .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
                 .build();

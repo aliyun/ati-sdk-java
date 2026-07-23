@@ -24,7 +24,7 @@ AgentConnection conn = atiClient.connect(agentUrl,
     ConnectOptions.builder()
         .identityHost(agent.getAgentHost())
         .accessHost(agent.getAccessHost())
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .verificationPolicy(VerificationPolicy.ENHANCED)
         .build());
 ```
 

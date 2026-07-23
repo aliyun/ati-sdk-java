@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -13,36 +14,66 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class VerificationPolicyTest {
 
     @Test
-    void enumHasThreeValues() {
-        assertEquals(3, VerificationPolicy.values().length);
+    void enumHasFourValues() {
+        assertEquals(4, VerificationPolicy.values().length);
     }
 
     @Test
-    void pkiOnlyHasNoVerification() {
-        assertFalse(VerificationPolicy.PKI_ONLY.hasAnyVerification());
-        assertFalse(VerificationPolicy.PKI_ONLY.hasBadgeVerification());
-        assertFalse(VerificationPolicy.PKI_ONLY.hasDaneVerification());
+    void noneSkipsAllVerification() {
+        assertFalse(VerificationPolicy.NONE.hasPkiVerification());
+        assertFalse(VerificationPolicy.NONE.hasAnyVerification());
+        assertFalse(VerificationPolicy.NONE.hasBadgeVerification());
+        assertFalse(VerificationPolicy.NONE.hasDaneVerification());
+        assertFalse(VerificationPolicy.NONE.requiresIdcaTrust());
     }
 
     @Test
-    void badgeRequiredHasBadgeOnly() {
-        assertTrue(VerificationPolicy.BADGE_REQUIRED.hasAnyVerification());
-        assertTrue(VerificationPolicy.BADGE_REQUIRED.hasBadgeVerification());
-        assertFalse(VerificationPolicy.BADGE_REQUIRED.hasDaneVerification());
+    void basicHasPkiOnly() {
+        assertTrue(VerificationPolicy.BASIC.hasPkiVerification());
+        assertFalse(VerificationPolicy.BASIC.hasAnyVerification());
+        assertFalse(VerificationPolicy.BASIC.hasBadgeVerification());
+        assertFalse(VerificationPolicy.BASIC.hasDaneVerification());
+        assertFalse(VerificationPolicy.BASIC.requiresIdcaTrust());
     }
 
     @Test
-    void daneAndBadgeHasBothVerifications() {
-        assertTrue(VerificationPolicy.DANE_AND_BADGE.hasAnyVerification());
-        assertTrue(VerificationPolicy.DANE_AND_BADGE.hasBadgeVerification());
-        assertTrue(VerificationPolicy.DANE_AND_BADGE.hasDaneVerification());
+    void enhancedHasBadgeOnly() {
+        assertTrue(VerificationPolicy.ENHANCED.hasPkiVerification());
+        assertTrue(VerificationPolicy.ENHANCED.hasAnyVerification());
+        assertTrue(VerificationPolicy.ENHANCED.hasBadgeVerification());
+        assertFalse(VerificationPolicy.ENHANCED.hasDaneVerification());
+        assertTrue(VerificationPolicy.ENHANCED.requiresIdcaTrust());
     }
 
     @Test
-    void ordinalValues() {
-        assertEquals(0, VerificationPolicy.PKI_ONLY.ordinal());
-        assertEquals(1, VerificationPolicy.BADGE_REQUIRED.ordinal());
-        assertEquals(2, VerificationPolicy.DANE_AND_BADGE.ordinal());
+    void advancedHasBothVerifications() {
+        assertTrue(VerificationPolicy.ADVANCED.hasAnyVerification());
+        assertTrue(VerificationPolicy.ADVANCED.hasBadgeVerification());
+        assertTrue(VerificationPolicy.ADVANCED.hasDaneVerification());
+        assertTrue(VerificationPolicy.ADVANCED.requiresIdcaTrust());
+    }
+
+    @Test
+    void displayNamesMatchConsole() {
+        assertEquals("L0 无认证", VerificationPolicy.NONE.displayName());
+        assertEquals("L1 基础认证", VerificationPolicy.BASIC.displayName());
+        assertEquals("L2 增强认证", VerificationPolicy.ENHANCED.displayName());
+        assertEquals("L3 高级认证", VerificationPolicy.ADVANCED.displayName());
+    }
+
+    @Test
+    void fromStringIsCaseInsensitive() {
+        assertEquals(VerificationPolicy.NONE, VerificationPolicy.fromString("none"));
+        assertEquals(VerificationPolicy.BASIC, VerificationPolicy.fromString("BASIC"));
+        assertEquals(VerificationPolicy.ENHANCED, VerificationPolicy.fromString("enhanced"));
+        assertEquals(VerificationPolicy.ADVANCED, VerificationPolicy.fromString("Advanced"));
+    }
+
+    @Test
+    void fromStringRejectsLegacyNames() {
+        assertThrows(IllegalArgumentException.class, () -> VerificationPolicy.fromString("PKI_ONLY"));
+        assertThrows(IllegalArgumentException.class, () -> VerificationPolicy.fromString("BADGE_REQUIRED"));
+        assertThrows(IllegalArgumentException.class, () -> VerificationPolicy.fromString("L2"));
     }
 
     @Test
@@ -50,30 +81,7 @@ class VerificationPolicyTest {
         for (VerificationPolicy policy : VerificationPolicy.values()) {
             assertNotNull(policy);
             assertNotNull(policy.name());
+            assertNotNull(policy.displayName());
         }
-    }
-
-    @Test
-    void valueOfWorks() {
-        assertEquals(VerificationPolicy.PKI_ONLY, VerificationPolicy.valueOf("PKI_ONLY"));
-        assertEquals(VerificationPolicy.BADGE_REQUIRED, VerificationPolicy.valueOf("BADGE_REQUIRED"));
-        assertEquals(VerificationPolicy.DANE_AND_BADGE, VerificationPolicy.valueOf("DANE_AND_BADGE"));
-    }
-
-    @Test
-    void hasBadgeVerificationIsProgressive() {
-        // PKI_ONLY (ordinal 0) -> no badge
-        assertFalse(VerificationPolicy.PKI_ONLY.hasBadgeVerification());
-        // BADGE_REQUIRED (ordinal 1) -> has badge
-        assertTrue(VerificationPolicy.BADGE_REQUIRED.hasBadgeVerification());
-        // DANE_AND_BADGE (ordinal 2) -> has badge (includes all from lower levels)
-        assertTrue(VerificationPolicy.DANE_AND_BADGE.hasBadgeVerification());
-    }
-
-    @Test
-    void hasDaneVerificationOnlyAtHighestLevel() {
-        assertFalse(VerificationPolicy.PKI_ONLY.hasDaneVerification());
-        assertFalse(VerificationPolicy.BADGE_REQUIRED.hasDaneVerification());
-        assertTrue(VerificationPolicy.DANE_AND_BADGE.hasDaneVerification());
     }
 }

@@ -17,9 +17,10 @@
 
 | 策略 | TLS | DANE | Badge | 说明 |
 |------|-----|------|-------|------|
-| `PKI_ONLY` | ✓ | - | - | 仅标准 TLS |
-| `BADGE_REQUIRED` | ✓ | - | ✓ | TLS + Badge 验证（默认） |
-| `DANE_AND_BADGE` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
+| `NONE` | - | - | - | No authentication (dev/test only) |
+| `BASIC` | ✓ | - | - | 仅标准 TLS |
+| `ENHANCED` | ✓ | - | ✓ | TLS + Badge 验证（默认） |
+| `ADVANCED` | ✓ | ✓ | ✓ | TLS + DANE + Badge |
 
 ## 验证时序图
 
@@ -298,28 +299,27 @@ String agentUrl = detail.getEndpoints().stream()
 
 AgentConnection conn = client.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())    // Badge + _ati-identity._tls
-        .accessHost(detail.getAccessHost())     // _443._tcp 传输层 DANE
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        // 双 hostname：agentUrl 的 host 即 accessHost；Badge 查询需指定 identityHost
+        .identityHost(detail.getAgentHost())
+        .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(tl)
         .build());
 
-// 不经 Discovery 直接连接 — 单域名模式（RA：agentHost == u= host）
+// 单域名 — identityHost 等于 accessHost；ADVANCED 额外做传输层 DANE
 AgentConnection direct = client.connect(
     "https://agent.example.com/mcp",
     ConnectOptions.builder()
         .identityHost("agent.example.com")
-        .accessHost("agent.example.com")
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .verificationPolicy(VerificationPolicy.ADVANCED)
         .transparencyClient(tl)
         .build());
 
-// mTLS 客户端证书 + Bearer token
+// mTLS 客户端证书 + Bearer token（ADVANCED：identityHost + accessHost 用于 DANE）
 AgentConnection mtls = client.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())
-        .accessHost(detail.getAccessHost())
-        .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+        .identityHost(detail.getAgentHost())    // Badge
+        .accessHost(detail.getAccessHost())     // _443._tcp 传输层 DANE
+        .verificationPolicy(VerificationPolicy.ADVANCED)
         .transparencyClient(tl)
         .clientCertPath(Path.of("/path/to/client.crt"), Path.of("/path/to/client.key"))
         .authProvider(HttpAuthHeadersProvider.bearer("token"))
@@ -332,13 +332,12 @@ AgentConnection mtls = client.connect(agentUrl,
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/identity.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .policy(VerificationPolicy.ENHANCED)
     .build();
 
 AtiConnection conn = verifiedClient.connect(agentUrl,
     ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())
-        .accessHost(detail.getAccessHost())
+        .identityHost(detail.getAgentHost())   // 双 hostname 模式下必填
         .build());
 ```
 
@@ -356,7 +355,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
-      policy: BADGE_REQUIRED
+      policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s
@@ -373,8 +372,15 @@ ati:
       private-key: /path/to/server.key
       port: 443
       verification:
-        policy: PKI_ONLY
+        # NONE | BASIC | ENHANCED | ADVANCED（与 ATI 控制台 L0–L3 对应）
+        # 自动派生 TLS client-auth，请勿单独配置 server.ssl.client-auth
+        policy: BASIC          # L1 基础认证：可选客户端证书（client-auth=want）
+        # policy: ENHANCED     # L2 增强认证：必须客户端证书（client-auth=need）
+        # policy: ADVANCED     # L3 高级认证：必须客户端证书 + DANE 客户端验证
+        # policy: NONE         # L0 无认证：仅开发/测试（client-auth=none）
       idca:
+        # CNNIC 身份 CA（IDCA）信任锚 PEM 路径，用于校验客户端 Identity Certificate 证书链
+        # policy 为 ENHANCED 或 ADVANCED 时必填；BASIC 下可选
         trust-certificate: /path/to/idca-trust.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
@@ -416,24 +422,23 @@ TransparencyClient tl = TransparencyClient.builder()
 通过 `ConnectOptions` 配置验证级别：
 
 ```java
-// PKI_ONLY — 仅 TLS + 系统 CA
+// BASIC — 仅 TLS + 系统 CA
 ConnectOptions opts = ConnectOptions.builder()
-    .verificationPolicy(VerificationPolicy.PKI_ONLY)
+    .verificationPolicy(VerificationPolicy.BASIC)
     .build();
 
-// BADGE_REQUIRED — TLS + ATI Badge 验证（推荐）
+// ENHANCED — TLS + ATI Badge（双 hostname 需设置 identityHost）
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
-    .accessHost("bailian.aliyun.com")
-    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .verificationPolicy(VerificationPolicy.ENHANCED)
     .transparencyClient(tl)
     .build();
 
-// DANE_AND_BADGE — TLS + DANE TLSA + ATI Badge（最高级别）
+// ADVANCED — ENHANCED + 传输层 DANE（accessHost 上的 _443._tcp）
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
     .accessHost("bailian.aliyun.com")
-    .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+    .verificationPolicy(VerificationPolicy.ADVANCED)
     .transparencyClient(tl)
     .build();
 ```
@@ -445,7 +450,7 @@ ConnectOptions opts = ConnectOptions.builder()
 ```java
 // 从 PEM 文件路径加载
 ConnectOptions opts = ConnectOptions.builder()
-    .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+    .verificationPolicy(VerificationPolicy.ENHANCED)
     .transparencyClient(tl)
     .clientCertPath(Path.of("/path/to/client.crt"))
     .clientKeyPath(Path.of("/path/to/client.key"))
@@ -463,7 +468,7 @@ ConnectOptions opts = ConnectOptions.builder()
 AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/keystore.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.BADGE_REQUIRED)
+    .policy(VerificationPolicy.ENHANCED)
     .build();
 ```
 
@@ -515,7 +520,7 @@ AtiConfiguration config = AtiConfiguration.builder()
 AtiVerifiedClient client = AtiVerifiedClient.builder()
     .keyStorePath("/path/to/keystore.p12", "password")
     .transparencyClient(tl)
-    .policy(VerificationPolicy.DANE_AND_BADGE)
+    .policy(VerificationPolicy.ADVANCED)
     .tlsaPort(443)  // 始终查询 _443._tcp.{accessHost} TLSA 记录
     .build();
 ```
@@ -534,7 +539,7 @@ ati:
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
     verification:
-      policy: BADGE_REQUIRED
+      policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s
@@ -544,7 +549,7 @@ ati:
 |------|------|--------|
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
-| `ati.sdk.verification.policy` | 客户端验证策略 | `BADGE_REQUIRED` |
+| `ati.sdk.verification.policy` | 客户端验证策略 | `ENHANCED` |
 | `ati.sdk.client.dns-timeout` | DNS 查询超时 | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP 连接超时 | `10s` |
 

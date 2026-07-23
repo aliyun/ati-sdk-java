@@ -38,9 +38,9 @@ All examples support different ATI verification policies:
 
 | Policy | TLS | DANE | Badge | Description |
 |--------|-----|------|-------|-------------|
-| `PKI_ONLY` | ✓ | - | - | Standard HTTPS with system trust store |
-| `BADGE_REQUIRED` | ✓ | - | ✓ | Requires transparency log verification (default) |
-| `DANE_AND_BADGE` | ✓ | ✓ | ✓ | Requires both DANE and Badge |
+| `NONE` (L0) or `BASIC` (L1) | ✓ | - | - | Standard HTTPS with system trust store |
+| `ENHANCED` | ✓ | - | ✓ | Requires transparency log verification (default) |
+| `ADVANCED` | ✓ | ✓ | ✓ | Requires both DANE and Badge |
 
 ## Integration Patterns
 
@@ -56,7 +56,7 @@ AtiClient client = AtiClient.builder()
 AgentConnection conn = client.connect(
     "https://agent.example.com",
     ConnectOptions.builder()
-        .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+        .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(TransparencyClient.builder()
             .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
         .build());
@@ -75,7 +75,7 @@ try (AtiVerifiedClient atiClient = AtiVerifiedClient.builder()
         .keyStorePath("/path/to/client.p12", "changeit")
         .transparencyClient(TransparencyClient.builder()
             .baseUrl(TransparencyClient.CNNIC_BASE_URL).build())
-        .policy(VerificationPolicy.BADGE_REQUIRED)
+        .policy(VerificationPolicy.ENHANCED)
         .build()) {
 
     // 2. Connect and pre-verify (DANE/Badge lookup)

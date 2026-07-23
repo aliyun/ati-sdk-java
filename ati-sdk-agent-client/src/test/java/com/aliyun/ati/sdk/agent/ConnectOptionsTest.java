@@ -25,7 +25,7 @@ class ConnectOptionsTest {
     @Test
     void defaultsShouldUseBadgeRequiredPolicy() {
         ConnectOptions options = ConnectOptions.defaults();
-        assertEquals(VerificationPolicy.BADGE_REQUIRED, options.getVerificationPolicy());
+        assertEquals(VerificationPolicy.ENHANCED, options.getVerificationPolicy());
     }
 
     @Test
@@ -103,11 +103,11 @@ class ConnectOptionsTest {
     void toStringShouldIncludeKeyProperties() {
         ConnectOptions options = ConnectOptions.builder()
             .port(8443)
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .build();
 
         String str = options.toString();
-        assertTrue(str.contains("BADGE_REQUIRED"));
+        assertTrue(str.contains("ENHANCED"));
         assertTrue(str.contains("8443"));
     }
 
@@ -116,10 +116,10 @@ class ConnectOptionsTest {
     @Test
     void builderShouldSetVerificationPolicy() {
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .build();
 
-        assertEquals(VerificationPolicy.BADGE_REQUIRED, options.getVerificationPolicy());
+        assertEquals(VerificationPolicy.ENHANCED, options.getVerificationPolicy());
         assertTrue(options.getVerificationPolicy().hasBadgeVerification());
         assertFalse(options.getVerificationPolicy().hasDaneVerification());
     }
@@ -127,11 +127,11 @@ class ConnectOptionsTest {
     @Test
     void daneAndBadgePolicyShouldWork() {
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .build();
 
         VerificationPolicy policy = options.getVerificationPolicy();
-        assertEquals(VerificationPolicy.DANE_AND_BADGE, policy);
+        assertEquals(VerificationPolicy.ADVANCED, policy);
         assertTrue(policy.hasDaneVerification());
         assertTrue(policy.hasBadgeVerification());
     }
@@ -139,11 +139,11 @@ class ConnectOptionsTest {
     @Test
     void pkiOnlyPolicyShouldWork() {
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         VerificationPolicy policy = options.getVerificationPolicy();
-        assertEquals(VerificationPolicy.PKI_ONLY, policy);
+        assertEquals(VerificationPolicy.BASIC, policy);
         assertFalse(policy.hasAnyVerification());
     }
 

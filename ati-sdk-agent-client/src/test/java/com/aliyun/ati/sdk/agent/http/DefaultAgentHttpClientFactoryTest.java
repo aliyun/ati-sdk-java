@@ -61,7 +61,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createVerifiedRejectsNullHostname() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build();
 
         assertThrows(NullPointerException.class, () ->
             factory.createVerified(null, options, Duration.ofSeconds(10)));
@@ -78,7 +78,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createVerifiedRejectsNullTimeout() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build();
 
         assertThrows(NullPointerException.class, () ->
             factory.createVerified("example.com", options, null));
@@ -88,7 +88,7 @@ class DefaultAgentHttpClientFactoryTest {
     void createVerifiedWithPkiOnly() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -103,7 +103,7 @@ class DefaultAgentHttpClientFactoryTest {
     void createVerifiedWithDaneRequired() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .transparencyClient(mock(TransparencyClient.class))
             .build();
 
@@ -116,7 +116,7 @@ class DefaultAgentHttpClientFactoryTest {
     @Test
     void createReturnsHttpClient() {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build();
 
         HttpClient client = factory.create("example.com", options, Duration.ofSeconds(10));
 
@@ -128,7 +128,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
 
         assertThrows(NullPointerException.class, () ->
-            factory.create(null, ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build(), Duration.ofSeconds(10)));
+            factory.create(null, ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build(), Duration.ofSeconds(10)));
     }
 
     @Test
@@ -136,7 +136,7 @@ class DefaultAgentHttpClientFactoryTest {
         // Badge verification requires an explicit TransparencyClient
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .build();
 
         AgentConnectionException thrown = assertThrows(AgentConnectionException.class, () ->
@@ -150,7 +150,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -168,7 +168,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -186,7 +186,7 @@ class DefaultAgentHttpClientFactoryTest {
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -202,7 +202,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -226,7 +226,7 @@ class DefaultAgentHttpClientFactoryTest {
         // Tests creating with PKI_ONLY mode (no extra verifiers)
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -241,7 +241,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -259,7 +259,7 @@ class DefaultAgentHttpClientFactoryTest {
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         TransparencyClient mockTransparencyClient = mock(TransparencyClient.class);
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
 
@@ -274,7 +274,7 @@ class DefaultAgentHttpClientFactoryTest {
     void createReturnsUnderlyingHttpClient() {
         // Tests that create() returns the underlying HttpClient, not the wrapper
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
-        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.PKI_ONLY).build();
+        ConnectOptions options = ConnectOptions.builder().verificationPolicy(VerificationPolicy.BASIC).build();
 
         HttpClient client = factory.create("example.com", options, Duration.ofSeconds(10));
 
@@ -288,7 +288,7 @@ class DefaultAgentHttpClientFactoryTest {
         // so that post-handshake certificate verification can run.
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
 
         VerifiedClientResult result = factory.createVerified(
@@ -312,7 +312,7 @@ class DefaultAgentHttpClientFactoryTest {
         X509Certificate cert = createTestCertificate("CN=TestClient", keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .clientCertificate(cert, keyPair.getPrivate())
             .build();
 
@@ -332,7 +332,7 @@ class DefaultAgentHttpClientFactoryTest {
         X509Certificate cert = createTestCertificate("CN=TestClient", keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .clientCertificate(cert, keyPair.getPrivate())
             .build();
 
@@ -350,7 +350,7 @@ class DefaultAgentHttpClientFactoryTest {
         X509Certificate cert = createTestCertificate("CN=TestClient", keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .clientCertificate(cert, keyPair.getPrivate())
             .transparencyClient(mock(TransparencyClient.class))
             .build();
@@ -372,7 +372,7 @@ class DefaultAgentHttpClientFactoryTest {
         X509Certificate cert = createTestCertificate("CN=TestClient", keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .clientCertificate(cert, keyPair.getPrivate())
             .build();
@@ -393,7 +393,7 @@ class DefaultAgentHttpClientFactoryTest {
         X509Certificate cert = createTestCertificate("CN=TestClient", keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .transparencyClient(mockTransparencyClient)
             .clientCertificate(cert, keyPair.getPrivate())
             .build();
@@ -416,7 +416,7 @@ class DefaultAgentHttpClientFactoryTest {
         Path keyPath = writeKeyToPem(tempDir.resolve("test-key.pem"), keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .clientCertPath(certPath, keyPath)
             .build();
 
@@ -439,7 +439,7 @@ class DefaultAgentHttpClientFactoryTest {
         Path keyPath = writeKeyToPem(tempDir.resolve("test-key.pem"), keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .clientCertPath(certPath, keyPath)
             .build();
 
@@ -460,7 +460,7 @@ class DefaultAgentHttpClientFactoryTest {
         Path keyPath = writeKeyToPem(tempDir.resolve("test-key.pem"), keyPair);
 
         ConnectOptions options = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .clientCertPath(certPath, keyPath)
             .transparencyClient(mock(TransparencyClient.class))
             .build();
@@ -482,7 +482,7 @@ class DefaultAgentHttpClientFactoryTest {
 
         // PKI_ONLY
         ConnectOptions pkiOptions = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.PKI_ONLY)
+            .verificationPolicy(VerificationPolicy.BASIC)
             .build();
         VerifiedClientResult pkiResult = factory.createVerified(
             "example.com", pkiOptions, Duration.ofSeconds(10));
@@ -490,7 +490,7 @@ class DefaultAgentHttpClientFactoryTest {
 
         // BADGE_REQUIRED
         ConnectOptions badgeOptions = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.BADGE_REQUIRED)
+            .verificationPolicy(VerificationPolicy.ENHANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
         VerifiedClientResult badgeResult = factory.createVerified(
@@ -500,7 +500,7 @@ class DefaultAgentHttpClientFactoryTest {
 
         // DANE_AND_BADGE
         ConnectOptions daneOptions = ConnectOptions.builder()
-            .verificationPolicy(VerificationPolicy.DANE_AND_BADGE)
+            .verificationPolicy(VerificationPolicy.ADVANCED)
             .transparencyClient(mockTransparencyClient)
             .build();
         VerifiedClientResult daneResult = factory.createVerified(
