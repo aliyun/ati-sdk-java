@@ -1,3 +1,7 @@
+plugins {
+    `java-test-fixtures`
+}
+
 dependencies {
     api(project(":ati-sdk-core"))
     api(project(":ati-sdk-transparency"))
@@ -17,4 +21,7 @@ dependencies {
     testImplementation("com.upokecenter:cbor:4.5.4")
     testImplementation("io.github.erdtman:java-json-canonicalization:1.1")
     testRuntimeOnly("org.slf4j:slf4j-simple:${project.property("slf4jVersion")}")
+
+    testFixturesImplementation("org.bouncycastle:bcprov-jdk18on:${project.property("bouncyCastleVersion")}")
+    testFixturesImplementation("org.bouncycastle:bcpkix-jdk18on:${project.property("bouncyCastleVersion")}")
 }

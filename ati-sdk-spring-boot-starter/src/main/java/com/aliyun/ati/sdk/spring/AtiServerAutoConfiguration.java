@@ -4,6 +4,9 @@ import com.aliyun.ati.sdk.agent.server.DefaultClientRequestVerifier;
 import com.aliyun.ati.sdk.agent.verification.DaneConfig;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultDaneTlsaVerifier;
+import com.aliyun.ati.sdk.agent.verification.crl.CrlFetcher;
+import com.aliyun.ati.sdk.agent.verification.crl.CrlRevocationChecker;
+import com.aliyun.ati.sdk.agent.verification.crl.DefaultCrlHttpClient;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import org.slf4j.Logger;
@@ -13,6 +16,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
 import org.springframework.boot.web.server.Ssl;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
@@ -49,8 +53,10 @@ public class AtiServerAutoConfiguration {
      * @return the web server factory customizer
      */
     @Bean
+    @ConditionalOnMissingBean
     public WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> atiServerCustomizer(
-            AtiSdkProperties properties) {
+            AtiSdkProperties properties,
+            ObjectProvider<CrlRevocationChecker> crlRevocationCheckerProvider) {
 
         return factory -> {
             if (!properties.isServerMode()) {
@@ -74,6 +80,7 @@ public class AtiServerAutoConfiguration {
             }
 
             Ssl ssl = new Ssl();
+            ssl.setEnabled(true);
             if (serverProps.getCertificate() != null) {
                 ssl.setCertificate(serverProps.getCertificate());
             }
@@ -104,9 +111,29 @@ public class AtiServerAutoConfiguration {
             factory.setSsl(ssl);
             factory.setPort(serverProps.getPort());
 
+            if (shouldInstallCrlChecking(hasIdcaTrust, policy)
+                    && factory instanceof TomcatServletWebServerFactory tomcatFactory) {
+                CrlRevocationChecker crlRevocationChecker = crlRevocationCheckerProvider.getIfAvailable();
+                if (crlRevocationChecker != null) {
+                    tomcatFactory.addConnectorCustomizers(
+                        new AtiIdcaCrlTomcatCustomizer(crlRevocationChecker));
+                    LOG.info("Registered IDCA CRL Tomcat connector customizer for policy={}", policy);
+                }
+            }
+
             LOG.info("ATI server configured on port {} with policy={} client-auth={}",
                 serverProps.getPort(), policy, ssl.getClientAuth());
         };
+    }
+
+    /**
+     * CRL revocation checker used at the TLS layer when IDCA trust is configured.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "ati.sdk", name = "enabled", havingValue = "true", matchIfMissing = true)
+    public CrlRevocationChecker crlRevocationChecker() {
+        return new CrlRevocationChecker(new CrlFetcher(new DefaultCrlHttpClient()));
     }
 
     /**
@@ -204,5 +231,11 @@ public class AtiServerAutoConfiguration {
             builder.daneTlsaVerifier(daneTlsaVerifier);
         }
         return builder.build();
+    }
+
+    static boolean shouldInstallCrlChecking(
+            boolean hasIdcaTrust,
+            com.aliyun.ati.sdk.agent.VerificationPolicy policy) {
+        return hasIdcaTrust && policy != com.aliyun.ati.sdk.agent.VerificationPolicy.NONE;
     }
 }

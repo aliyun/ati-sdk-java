@@ -9,6 +9,11 @@ dependencies {
     annotationProcessor("org.springframework.boot:spring-boot-configuration-processor:$springBootVersion")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test:$springBootVersion")
+    testImplementation("org.springframework.boot:spring-boot-starter-web:$springBootVersion")
+    testImplementation(testFixtures(project(":ati-sdk-agent-client")))
+    testImplementation("org.wiremock:wiremock:${project.property("wiremockVersion")}")
+    testImplementation("org.bouncycastle:bcprov-jdk18on:${project.property("bouncyCastleVersion")}")
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:${project.property("bouncyCastleVersion")}")
     testImplementation("org.junit.jupiter:junit-jupiter:${project.property("junitVersion")}")
     testImplementation("org.assertj:assertj-core:${project.property("assertjVersion")}")
 }
