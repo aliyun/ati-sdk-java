@@ -39,12 +39,15 @@ public final class CrlRevocationChecker {
         Objects.requireNonNull(clientCert, "clientCert");
         Objects.requireNonNull(chain, "chain");
 
-        Optional<URI> cdpUriOpt = CdpExtractor.extractFirstCdpUri(chain);
-        if (cdpUriOpt.isEmpty()) {
+        CdpExtractor.CdpLookupResult cdpLookup = CdpExtractor.resolveFirstCdpUri(chain);
+        if (cdpLookup.isSkipped()) {
             return CrlRevocationResult.skipped();
         }
+        if (cdpLookup.isFailed()) {
+            return CrlRevocationResult.failed(cdpLookup.failureMessage(), null);
+        }
 
-        URI cdpUri = cdpUriOpt.get();
+        URI cdpUri = cdpLookup.cdpUri();
         Optional<X509Certificate> issuingCaOpt = CdpExtractor.findIssuingCa(clientCert, chain);
         if (issuingCaOpt.isEmpty()) {
             return CrlRevocationResult.failed("Cannot determine issuing CA for CRL validation", cdpUri);

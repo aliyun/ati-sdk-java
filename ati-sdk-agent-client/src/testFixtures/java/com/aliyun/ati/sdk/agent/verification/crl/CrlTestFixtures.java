@@ -45,11 +45,15 @@ public final class CrlTestFixtures {
     }
 
     public static TestCa createTestCa(String crlUrl) throws Exception {
+        return createTestCa(crlUrl, "ATI Mock Issuing CA");
+    }
+
+    public static TestCa createTestCa(String crlUrl, String commonName) throws Exception {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
         keyGen.initialize(256);
         KeyPair keyPair = keyGen.generateKeyPair();
 
-        X500Name subject = new X500Name("CN=ATI Mock Issuing CA, O=Test, C=CN");
+        X500Name subject = new X500Name("CN=" + commonName + ", O=Test, C=CN");
         BigInteger serial = BigInteger.valueOf(1);
         Instant now = Instant.now();
 
@@ -120,6 +124,36 @@ public final class CrlTestFixtures {
             .getCertificate(certBuilder.build(signer));
 
         return new ClientCert(keyPair, certificate, serial);
+    }
+
+    public static ClientCert createClientCertWithMalformedCdpExtension(TestCa ca, BigInteger serial) throws Exception {
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
+        keyGen.initialize(256);
+        KeyPair keyPair = keyGen.generateKeyPair();
+
+        X500Name subject = new X500Name("CN=Mock Client, O=Test, C=CN");
+        Instant now = Instant.now();
+
+        X509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
+            ca.subject(),
+            serial,
+            Date.from(now.minus(1, ChronoUnit.HOURS)),
+            Date.from(now.plus(30, ChronoUnit.DAYS)),
+            subject,
+            keyPair.getPublic()
+        );
+        certBuilder.addExtension(Extension.cRLDistributionPoints, false, new byte[] { 1, 2, 3 });
+
+        ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA")
+            .build(ca.keyPair().getPrivate());
+        X509Certificate certificate = new JcaX509CertificateConverter()
+            .getCertificate(certBuilder.build(signer));
+
+        return new ClientCert(keyPair, certificate, serial);
+    }
+
+    public static ClientCert createClientCertWithLdapOnlyCdp(TestCa ca, BigInteger serial) throws Exception {
+        return createClientCert(ca, serial, "ldap://crl.example.test/cn=MockCA");
     }
 
     public static byte[] createCrlBytes(TestCa ca, Instant nextUpdate, Set<BigInteger> revokedSerials)

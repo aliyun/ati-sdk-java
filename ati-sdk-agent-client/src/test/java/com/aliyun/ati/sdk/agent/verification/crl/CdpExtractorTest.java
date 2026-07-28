@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 import java.net.URI;
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -20,11 +19,12 @@ class CdpExtractorTest {
         CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(
             ca, BigInteger.valueOf(42), "http://crl.example.test/leaf.crl");
 
-        Optional<URI> cdp = CdpExtractor.extractFirstCdpUri(new X509Certificate[] {
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
             client.certificate(), ca.certificate()
         });
 
-        assertThat(cdp).contains(URI.create("http://crl.example.test/leaf.crl"));
+        assertThat(result.isFound()).isTrue();
+        assertThat(result.cdpUri()).isEqualTo(URI.create("http://crl.example.test/leaf.crl"));
     }
 
     @Test
@@ -34,24 +34,25 @@ class CdpExtractorTest {
         CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa(issuerCrlUrl);
         CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(ca, BigInteger.valueOf(7), null);
 
-        Optional<URI> cdp = CdpExtractor.extractFirstCdpUri(new X509Certificate[] {
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
             client.certificate(), ca.certificate()
         });
 
-        assertThat(cdp).contains(URI.create(issuerCrlUrl));
+        assertThat(result.isFound()).isTrue();
+        assertThat(result.cdpUri()).isEqualTo(URI.create(issuerCrlUrl));
     }
 
     @Test
-    @DisplayName("returns empty when chain has no CDP")
+    @DisplayName("returns skipped when chain has no CDP")
     void skipsWhenNoCdpOnChain() throws Exception {
         CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa(null);
         CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(ca, BigInteger.valueOf(9), null);
 
-        Optional<URI> cdp = CdpExtractor.extractFirstCdpUri(new X509Certificate[] {
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
             client.certificate(), ca.certificate()
         });
 
-        assertThat(cdp).isEmpty();
+        assertThat(result.isSkipped()).isTrue();
     }
 
     @Test
@@ -61,10 +62,59 @@ class CdpExtractorTest {
         CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(
             ca, BigInteger.valueOf(11), "http://crl.example.test/leaf.crl");
 
-        Optional<URI> cdp = CdpExtractor.extractFirstCdpUri(new X509Certificate[] {
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
             client.certificate(), ca.certificate()
         });
 
-        assertThat(cdp).contains(URI.create("http://crl.example.test/leaf.crl"));
+        assertThat(result.isFound()).isTrue();
+        assertThat(result.cdpUri()).isEqualTo(URI.create("http://crl.example.test/leaf.crl"));
+    }
+
+    @Test
+    @DisplayName("fail-closed when CDP extension cannot be parsed")
+    void failsWhenCdpExtensionIsMalformed() throws Exception {
+        CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa(null);
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCertWithMalformedCdpExtension(
+            ca, BigInteger.valueOf(12));
+
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
+            client.certificate(), ca.certificate()
+        });
+
+        assertThat(result.isFailed()).isTrue();
+        assertThat(result.failureMessage()).contains("Failed to parse CDP extension");
+    }
+
+    @Test
+    @DisplayName("fail-closed when CDP extension has no HTTP(S) URI")
+    void failsWhenCdpHasOnlyNonHttpUri() throws Exception {
+        CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa(null);
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCertWithLdapOnlyCdp(
+            ca, BigInteger.valueOf(13));
+
+        CdpExtractor.CdpLookupResult result = CdpExtractor.resolveFirstCdpUri(new X509Certificate[] {
+            client.certificate(), ca.certificate()
+        });
+
+        assertThat(result.isFailed()).isTrue();
+        assertThat(result.failureMessage()).contains("no HTTP(S) URI");
+    }
+
+    @Test
+    @DisplayName("findIssuingCa matches issuer DN instead of chain position")
+    void findIssuingCaMatchesIssuerDn() throws Exception {
+        CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa("http://crl.example.test/issuer.crl");
+        CrlTestFixtures.TestCa unrelatedCa = CrlTestFixtures.createTestCa(null, "Unrelated Intermediate CA");
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(ca, BigInteger.valueOf(14), null);
+
+        assertThat(CdpExtractor.findIssuingCa(
+            client.certificate(),
+            new X509Certificate[] { client.certificate(), unrelatedCa.certificate(), ca.certificate() }
+        )).contains(ca.certificate());
+
+        assertThat(CdpExtractor.findIssuingCa(
+            client.certificate(),
+            new X509Certificate[] { client.certificate(), unrelatedCa.certificate() }
+        )).isEmpty();
     }
 }

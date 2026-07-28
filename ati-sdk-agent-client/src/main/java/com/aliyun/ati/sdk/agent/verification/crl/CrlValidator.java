@@ -78,7 +78,7 @@ public final class CrlValidator {
         verifySignature(crl, issuingCa);
         if (isSerialRevoked(crl, clientSerial)) {
             LOGGER.debug("Client certificate serial {} is present on CRL", clientSerial);
-            throw new CrlValidationException("Certificate serial is revoked");
+            throw CrlValidationException.revoked();
         }
     }
 
@@ -87,16 +87,27 @@ public final class CrlValidator {
      */
     public static final class CrlValidationException extends Exception {
 
+        private final boolean revoked;
+
         public CrlValidationException(String message) {
-            super(message);
+            this(message, null, false);
         }
 
         public CrlValidationException(String message, Throwable cause) {
+            this(message, cause, false);
+        }
+
+        private CrlValidationException(String message, Throwable cause, boolean revoked) {
             super(message, cause);
+            this.revoked = revoked;
+        }
+
+        public static CrlValidationException revoked() {
+            return new CrlValidationException("Certificate serial is revoked", null, true);
         }
 
         public boolean isRevoked() {
-            return "Certificate serial is revoked".equals(getMessage());
+            return revoked;
         }
     }
 }

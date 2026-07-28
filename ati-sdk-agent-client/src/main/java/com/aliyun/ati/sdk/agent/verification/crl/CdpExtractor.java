@@ -32,42 +32,90 @@ public final class CdpExtractor {
     }
 
     /**
-     * Returns the first usable CDP URI from the certificate chain, or empty if none is present.
+     * Result of CDP discovery on a certificate chain.
+     */
+    public record CdpLookupResult(
+            Status status,
+            URI cdpUri,
+            String failureMessage) {
+
+        public enum Status {
+            /** No CDP extension on the chain; CRL check should be skipped. */
+            SKIPPED,
+            /** A usable HTTP(S) CDP URI was found. */
+            FOUND,
+            /** CDP extension is present but unusable; CRL check should fail-closed. */
+            FAILED
+        }
+
+        public static CdpLookupResult skipped() {
+            return new CdpLookupResult(Status.SKIPPED, null, null);
+        }
+
+        public static CdpLookupResult found(URI uri) {
+            return new CdpLookupResult(Status.FOUND, Objects.requireNonNull(uri, "uri"), null);
+        }
+
+        public static CdpLookupResult failed(String message) {
+            return new CdpLookupResult(Status.FAILED, null, Objects.requireNonNull(message, "message"));
+        }
+
+        public boolean isSkipped() {
+            return status == Status.SKIPPED;
+        }
+
+        public boolean isFound() {
+            return status == Status.FOUND;
+        }
+
+        public boolean isFailed() {
+            return status == Status.FAILED;
+        }
+    }
+
+    /**
+     * Resolves the first usable CDP URI from the certificate chain.
      *
      * @param chain presented certificate chain (index 0 = client leaf)
-     * @return optional CDP URI
+     * @return CDP lookup outcome
      */
-    public static Optional<URI> extractFirstCdpUri(X509Certificate[] chain) {
+    public static CdpLookupResult resolveFirstCdpUri(X509Certificate[] chain) {
         Objects.requireNonNull(chain, "chain");
         if (chain.length == 0) {
-            return Optional.empty();
+            return CdpLookupResult.skipped();
         }
 
-        List<URI> leafUris = extractCdpUris(chain[0]);
-        if (!leafUris.isEmpty()) {
-            return Optional.of(leafUris.get(0));
+        CdpUriExtraction leafExtraction = extractCdpUris(chain[0]);
+        if (leafExtraction.failed()) {
+            return CdpLookupResult.failed(leafExtraction.failureMessage());
+        }
+        if (leafExtraction.hasUri()) {
+            return CdpLookupResult.found(leafExtraction.firstUri());
         }
 
-        X509Certificate issuer = findIssuingCa(chain[0], chain).orElse(null);
-        if (issuer != null && issuer != chain[0]) {
-            List<URI> issuerUris = extractCdpUris(issuer);
-            if (!issuerUris.isEmpty()) {
-                return Optional.of(issuerUris.get(0));
+        Optional<X509Certificate> issuer = findIssuingCa(chain[0], chain);
+        if (issuer.isPresent() && issuer.get() != chain[0]) {
+            CdpUriExtraction issuerExtraction = extractCdpUris(issuer.get());
+            if (issuerExtraction.failed()) {
+                return CdpLookupResult.failed(issuerExtraction.failureMessage());
+            }
+            if (issuerExtraction.hasUri()) {
+                return CdpLookupResult.found(issuerExtraction.firstUri());
             }
         }
 
         LOGGER.debug("No CDP found on Identity Certificate chain; skipping CRL check");
-        return Optional.empty();
+        return CdpLookupResult.skipped();
     }
 
     /**
      * Extracts all HTTP(S) URIs from the CRL Distribution Points extension.
      */
-    static List<URI> extractCdpUris(X509Certificate certificate) {
+    static CdpUriExtraction extractCdpUris(X509Certificate certificate) {
         Objects.requireNonNull(certificate, "certificate");
         byte[] extensionValue = certificate.getExtensionValue(Extension.cRLDistributionPoints.getId());
         if (extensionValue == null) {
-            return List.of();
+            return CdpUriExtraction.absent();
         }
 
         try {
@@ -76,18 +124,18 @@ public final class CdpExtractor {
             for (DistributionPoint dp : distPoints.getDistributionPoints()) {
                 uris.addAll(extractUrisFromDistributionPoint(dp));
             }
-            return Collections.unmodifiableList(uris);
+            if (uris.isEmpty()) {
+                return CdpUriExtraction.failed("CDP extension contains no HTTP(S) URI");
+            }
+            return CdpUriExtraction.found(Collections.unmodifiableList(uris));
         } catch (Exception e) {
             LOGGER.debug("Failed to parse CDP extension on {}: {}",
                 certificate.getSubjectX500Principal(), e.getMessage());
-            return List.of();
+            return CdpUriExtraction.failed("Failed to parse CDP extension: " + e.getMessage());
         }
     }
 
     static Optional<X509Certificate> findIssuingCa(X509Certificate leaf, X509Certificate[] chain) {
-        if (chain.length >= 2) {
-            return Optional.of(chain[1]);
-        }
         for (int i = 1; i < chain.length; i++) {
             if (leaf.getIssuerX500Principal().equals(chain[i].getSubjectX500Principal())) {
                 return Optional.of(chain[i]);
@@ -121,5 +169,32 @@ public final class CdpExtractor {
             }
         }
         return uris;
+    }
+
+    record CdpUriExtraction(boolean extensionPresent, List<URI> uris, String failureMessage) {
+
+        static CdpUriExtraction absent() {
+            return new CdpUriExtraction(false, List.of(), null);
+        }
+
+        static CdpUriExtraction found(List<URI> uris) {
+            return new CdpUriExtraction(true, uris, null);
+        }
+
+        static CdpUriExtraction failed(String message) {
+            return new CdpUriExtraction(true, List.of(), message);
+        }
+
+        boolean failed() {
+            return failureMessage != null;
+        }
+
+        boolean hasUri() {
+            return !uris.isEmpty();
+        }
+
+        URI firstUri() {
+            return uris.get(0);
+        }
     }
 }

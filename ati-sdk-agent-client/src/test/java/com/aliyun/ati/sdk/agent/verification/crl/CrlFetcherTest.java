@@ -75,4 +75,29 @@ class CrlFetcherTest {
             .isInstanceOf(java.io.IOException.class)
             .hasMessageContaining("connection refused");
     }
+
+    @Test
+    @DisplayName("refetches CRL after max cache age expires")
+    void refetchesAfterMaxCacheAgeExpires() throws Exception {
+        CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa("http://crl.example.test/refresh.crl");
+        Instant nextUpdate = Instant.now().plus(48, ChronoUnit.HOURS);
+        byte[] crlBytes = CrlTestFixtures.createCrlBytes(ca, nextUpdate, Set.of());
+        AtomicInteger fetchCount = new AtomicInteger();
+
+        CrlHttpClient httpClient = uri -> {
+            fetchCount.incrementAndGet();
+            return crlBytes;
+        };
+        CrlFetcher fetcher = new CrlFetcher(httpClient, new CrlValidator(), Duration.ofMillis(50));
+        URI cdpUri = URI.create("http://crl.example.test/refresh.crl");
+
+        assertThat(fetcher.fetch(cdpUri)).isEqualTo(crlBytes);
+        assertThat(fetcher.fetch(cdpUri)).isEqualTo(crlBytes);
+        assertThat(fetchCount).hasValue(1);
+
+        Thread.sleep(100);
+
+        assertThat(fetcher.fetch(cdpUri)).isEqualTo(crlBytes);
+        assertThat(fetchCount).hasValue(2);
+    }
 }

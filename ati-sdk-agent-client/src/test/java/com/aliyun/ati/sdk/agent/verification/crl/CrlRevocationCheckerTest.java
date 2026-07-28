@@ -142,4 +142,54 @@ class CrlRevocationCheckerTest {
 
         assertThat(result.status()).isEqualTo(CrlRevocationResult.Status.PASSED);
     }
+
+    @Test
+    @DisplayName("fail-closed when CRL bytes are unparsable")
+    void failClosedOnUnparsableCrl() throws Exception {
+        BigInteger serial = BigInteger.valueOf(9006);
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(
+            ca, serial, "http://crl.example.test/garbage.crl");
+        URI cdpUri = URI.create("http://crl.example.test/garbage.crl");
+        crlResponses.put(cdpUri, new byte[] { 1, 2, 3 });
+
+        CrlRevocationResult result = checker.check(
+            client.certificate(),
+            new X509Certificate[] { client.certificate(), ca.certificate() }
+        );
+
+        assertThat(result.status()).isEqualTo(CrlRevocationResult.Status.FAILED);
+        assertThat(result.shouldRejectConnection()).isTrue();
+    }
+
+    @Test
+    @DisplayName("fail-closed when issuing CA cannot be determined")
+    void failClosedWhenIssuingCaUnknown() throws Exception {
+        BigInteger serial = BigInteger.valueOf(9007);
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCert(
+            ca, serial, "http://crl.example.test/revocation.crl");
+
+        CrlRevocationResult result = checker.check(
+            client.certificate(),
+            new X509Certificate[] { client.certificate() }
+        );
+
+        assertThat(result.status()).isEqualTo(CrlRevocationResult.Status.FAILED);
+        assertThat(result.message().orElse("")).contains("Cannot determine issuing CA");
+        assertThat(result.shouldRejectConnection()).isTrue();
+    }
+
+    @Test
+    @DisplayName("fail-closed when CDP extension is malformed")
+    void failClosedOnMalformedCdpExtension() throws Exception {
+        CrlTestFixtures.ClientCert client = CrlTestFixtures.createClientCertWithMalformedCdpExtension(
+            ca, BigInteger.valueOf(9008));
+
+        CrlRevocationResult result = checker.check(
+            client.certificate(),
+            new X509Certificate[] { client.certificate(), ca.certificate() }
+        );
+
+        assertThat(result.status()).isEqualTo(CrlRevocationResult.Status.FAILED);
+        assertThat(result.shouldRejectConnection()).isTrue();
+    }
 }

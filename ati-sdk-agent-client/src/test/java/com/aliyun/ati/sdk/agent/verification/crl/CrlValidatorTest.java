@@ -36,7 +36,7 @@ class CrlValidatorTest {
 
         assertThatThrownBy(() -> validator.validateNotRevoked(crlBytes, ca.certificate(), revokedSerial))
             .isInstanceOf(CrlValidator.CrlValidationException.class)
-            .hasMessage("Certificate serial is revoked");
+            .matches(e -> ((CrlValidator.CrlValidationException) e).isRevoked());
     }
 
     @Test
@@ -73,6 +73,39 @@ class CrlValidatorTest {
     void rejectsUnparsableCrl() {
         assertThatThrownBy(() -> validator.parse(new byte[] { 1, 2, 3 }))
             .isInstanceOf(CrlValidator.CrlValidationException.class)
-            .hasMessageContaining("Unable to parse CRL");
+            .hasMessageContaining("Unable to parse CRL")
+            .matches(e -> !((CrlValidator.CrlValidationException) e).isRevoked());
+    }
+
+    @Test
+    @DisplayName("verifySignature rejects CRL signed by another CA")
+    void verifySignatureRejectsWrongSigner() throws Exception {
+        CrlTestFixtures.TestCa otherCa = CrlTestFixtures.createTestCa("http://crl.example.test/other.crl");
+        byte[] crlBytes = CrlTestFixtures.createCrlBytes(
+            otherCa,
+            Instant.now().plus(1, ChronoUnit.DAYS),
+            Set.of()
+        );
+        var crl = validator.parse(crlBytes);
+
+        assertThatThrownBy(() -> validator.verifySignature(crl, ca.certificate()))
+            .isInstanceOf(CrlValidator.CrlValidationException.class)
+            .hasMessageContaining("signature")
+            .matches(e -> !((CrlValidator.CrlValidationException) e).isRevoked());
+    }
+
+    @Test
+    @DisplayName("isSerialRevoked detects revoked entries")
+    void isSerialRevokedDetectsRevokedEntry() throws Exception {
+        BigInteger revokedSerial = BigInteger.valueOf(3001);
+        byte[] crlBytes = CrlTestFixtures.createCrlBytes(
+            ca,
+            Instant.now().plus(1, ChronoUnit.DAYS),
+            Set.of(revokedSerial)
+        );
+        var crl = validator.parse(crlBytes);
+
+        assertThat(validator.isSerialRevoked(crl, revokedSerial)).isTrue();
+        assertThat(validator.isSerialRevoked(crl, BigInteger.valueOf(3002))).isFalse();
     }
 }

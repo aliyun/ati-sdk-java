@@ -28,15 +28,21 @@ public final class CrlFetcher {
 
     private final CrlHttpClient httpClient;
     private final CrlValidator crlValidator;
+    private final Duration maxCacheAge;
     private final LoadingCache<URI, CachedCrl> cache;
 
     public CrlFetcher(CrlHttpClient httpClient) {
-        this(httpClient, new CrlValidator());
+        this(httpClient, new CrlValidator(), MAX_CACHE_AGE);
     }
 
     CrlFetcher(CrlHttpClient httpClient, CrlValidator crlValidator) {
+        this(httpClient, crlValidator, MAX_CACHE_AGE);
+    }
+
+    CrlFetcher(CrlHttpClient httpClient, CrlValidator crlValidator, Duration maxCacheAge) {
         this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
         this.crlValidator = Objects.requireNonNull(crlValidator, "crlValidator");
+        this.maxCacheAge = Objects.requireNonNull(maxCacheAge, "maxCacheAge");
         this.cache = Caffeine.newBuilder()
             .expireAfter(new CrlCacheExpiry())
             .build(this::load);
@@ -69,10 +75,14 @@ public final class CrlFetcher {
      * Exposes cache expiry calculation for tests.
      */
     static Duration computeCacheTtl(X509CRL crl, Instant fetchedAt) {
-        Instant maxStaleAt = fetchedAt.plus(MAX_CACHE_AGE);
+        return computeCacheTtl(crl, fetchedAt, MAX_CACHE_AGE);
+    }
+
+    static Duration computeCacheTtl(X509CRL crl, Instant fetchedAt, Duration maxCacheAge) {
+        Instant maxStaleAt = fetchedAt.plus(maxCacheAge);
         Date nextUpdate = crl.getNextUpdate();
         if (nextUpdate == null) {
-            return MAX_CACHE_AGE;
+            return maxCacheAge;
         }
         Instant nextUpdateInstant = nextUpdate.toInstant();
         if (!nextUpdateInstant.isAfter(fetchedAt)) {
@@ -89,7 +99,7 @@ public final class CrlFetcher {
         try {
             X509CRL crl = crlValidator.parse(bytes);
             Instant fetchedAt = Instant.now();
-            Duration ttl = computeCacheTtl(crl, fetchedAt);
+            Duration ttl = computeCacheTtl(crl, fetchedAt, maxCacheAge);
             return new CachedCrl(bytes, fetchedAt, ttl);
         } catch (CrlValidator.CrlValidationException e) {
             throw new IOException("Fetched bytes are not a valid CRL", e);
