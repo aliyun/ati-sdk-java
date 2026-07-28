@@ -11,4 +11,5 @@
 - [x] CRL 通过 + TL Badge Registration Status `REVOKED` → Client Verification 拒绝连接
 - [x] serial 在 CRL 上 → TLS 层拒绝（无需依赖 Badge 路径拦截）
 - [x] ENHANCED/ADVANCED server policy 下双轨均生效；Badge 逻辑未被 CRL 实现绕过或移除
+- [x] AC2：`AtiIdcaCrlBadgeDualTrackIntegrationTest` 验证 mTLS CRL 通过后 Badge 仍执行
 - [x] 相关集成/回归测试绿

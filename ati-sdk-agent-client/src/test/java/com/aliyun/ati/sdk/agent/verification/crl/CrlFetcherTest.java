@@ -3,7 +3,6 @@ package com.aliyun.ati.sdk.agent.verification.crl;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigInteger;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;

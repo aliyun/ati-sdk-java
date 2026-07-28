@@ -119,6 +119,11 @@ public class AtiServerAutoConfiguration {
                         new AtiIdcaCrlTomcatCustomizer(crlRevocationChecker));
                     LOG.info("Registered IDCA CRL Tomcat connector customizer for policy={}", policy);
                 }
+            } else if (shouldInstallCrlChecking(hasIdcaTrust, policy)) {
+                LOG.warn(
+                    "IDCA CRL checking requires embedded Tomcat; current factory={}. "
+                        + "Certificate revocation will not run at the TLS layer.",
+                    factory.getClass().getSimpleName());
             }
 
             LOG.info("ATI server configured on port {} with policy={} client-auth={}",

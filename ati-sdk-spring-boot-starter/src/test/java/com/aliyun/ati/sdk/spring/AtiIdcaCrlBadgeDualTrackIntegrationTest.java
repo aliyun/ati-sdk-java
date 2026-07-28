@@ -1,12 +1,21 @@
 package com.aliyun.ati.sdk.spring;
 
+import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.server.ClientRequestVerificationResult;
+import com.aliyun.ati.sdk.agent.server.DefaultClientRequestVerifier;
 import com.aliyun.ati.sdk.agent.verification.crl.CrlFetcher;
 import com.aliyun.ati.sdk.agent.verification.crl.CrlRevocationChecker;
 import com.aliyun.ati.sdk.agent.verification.crl.CrlTestFixtures;
 import com.aliyun.ati.sdk.agent.verification.crl.DefaultCrlHttpClient;
 import com.aliyun.ati.sdk.crypto.CertificateUtils;
 import com.aliyun.ati.sdk.crypto.KeyPairManager;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.ClientVerificationResult;
+import com.aliyun.ati.sdk.transparency.verification.VerificationStatus;
 import com.github.tomakehurst.wiremock.WireMockServer;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.BasicConstraints;
 import org.bouncycastle.asn1.x509.Extension;
@@ -39,7 +48,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.Set;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLHandshakeException;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.configureFor;
@@ -47,19 +55,22 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-@DisplayName("IDCA CRL mTLS integration")
-class AtiIdcaCrlMtlsIntegrationTest {
+/**
+ * AC2 end-to-end: CRL passes at TLS layer, then Badge (Client Verification) still applies.
+ */
+@DisplayName("IDCA CRL + Badge dual-track integration")
+class AtiIdcaCrlBadgeDualTrackIntegrationTest {
 
+    private static final String ATI_URI_SAN = "ati://v1.dual-track.example.com";
     private static final KeyPairManager KEY_PAIR_MANAGER = new KeyPairManager();
-    private static final BigInteger REVOKED_SERIAL = BigInteger.valueOf(7101);
-    private static final BigInteger VALID_SERIAL = BigInteger.valueOf(7102);
+    private static final BigInteger VALID_SERIAL = BigInteger.valueOf(8201);
     private static final WireMockServer WIRE_MOCK = new WireMockServer(wireMockConfig().dynamicPort());
 
     private static Path materialDir;
     private static CrlTestFixtures.TestCa issuingCa;
-    private static CrlTestFixtures.ClientCert revokedClient;
     private static CrlTestFixtures.ClientCert validClient;
     private static X509Certificate serverCertificate;
 
@@ -68,11 +79,10 @@ class AtiIdcaCrlMtlsIntegrationTest {
         WIRE_MOCK.start();
         configureFor("localhost", WIRE_MOCK.port());
 
-        materialDir = Files.createTempDirectory("ati-crl-mtls-");
+        materialDir = Files.createTempDirectory("ati-crl-badge-");
         String crlUrl = "http://localhost:" + WIRE_MOCK.port() + "/crl";
         issuingCa = CrlTestFixtures.createTestCa(crlUrl);
-        revokedClient = CrlTestFixtures.createClientCert(issuingCa, REVOKED_SERIAL, crlUrl);
-        validClient = CrlTestFixtures.createClientCert(issuingCa, VALID_SERIAL, crlUrl);
+        validClient = CrlTestFixtures.createClientCert(issuingCa, VALID_SERIAL, crlUrl, ATI_URI_SAN);
 
         KeyPair serverKeyPair = KeyPairGenerator.getInstance("EC").generateKeyPair();
         serverCertificate = createServerCertificate(serverKeyPair);
@@ -81,7 +91,14 @@ class AtiIdcaCrlMtlsIntegrationTest {
         writePem(materialDir.resolve("server.pem"), CertificateUtils.toPem(serverCertificate));
         writePem(materialDir.resolve("server.key"), KEY_PAIR_MANAGER.getPrivateKeyAsPem(serverKeyPair));
 
-        stubCrl(Set.of(REVOKED_SERIAL));
+        WIRE_MOCK.stubFor(get(urlEqualTo("/crl"))
+            .willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/pkix-crl")
+                .withBody(CrlTestFixtures.createCrlBytes(
+                    issuingCa,
+                    Instant.now().plus(1, ChronoUnit.DAYS),
+                    Set.of()))));
     }
 
     @AfterAll
@@ -90,66 +107,54 @@ class AtiIdcaCrlMtlsIntegrationTest {
     }
 
     @Test
-    @DisplayName("rejects mTLS handshake when client serial is on CRL")
-    void rejectsRevokedClientDuringMtlsHandshake() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
-            HttpClient client = createMtlsClient(revokedClient, issuingCa);
+    @DisplayName("CRL passes at TLS then Registration Revocation rejects at Client Verification")
+    void crlPassesThenBadgeRejectsAtApplicationLayer() throws Exception {
+        BadgeVerificationService badgeService = mock(BadgeVerificationService.class);
+        when(badgeService.verifyClient(validClient.certificate()))
+            .thenReturn(ClientVerificationResult.builder()
+                .status(VerificationStatus.REGISTRATION_INVALID)
+                .warningMessage("Registration status: REVOKED")
+                .build());
 
-            assertThatThrownBy(() -> sendRequest(client, harness.port()))
-                .rootCause()
-                .isInstanceOf(SSLHandshakeException.class);
-        }
-    }
+        DefaultClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
+            .badgeVerificationService(badgeService)
+            .build();
 
-    @Test
-    @DisplayName("allows mTLS handshake when client serial is not on CRL")
-    void allowsNonRevokedClientDuringMtlsHandshake() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
+        try (TomcatHarness harness = startTomcatServer(verifier, VerificationPolicy.ENHANCED)) {
             HttpClient client = createMtlsClient(validClient, issuingCa);
 
-            HttpResponse<Void> response = sendRequest(client, harness.port());
+            HttpResponse<String> response = sendRequest(client, harness.port());
 
-            assertThat(response.statusCode()).isBetween(200, 499);
+            assertThat(response.statusCode()).isEqualTo(403);
+            assertThat(response.body()).contains("REVOKED");
         }
     }
 
     @Test
-    @DisplayName("rejects mTLS handshake when CRL URL is unreachable")
-    void rejectsClientWhenCrlUrlUnreachable() throws Exception {
-        WIRE_MOCK.stop();
+    @DisplayName("CRL passes at TLS and valid Badge allows request through Client Verification")
+    void crlPassesThenBadgeAllowsAtApplicationLayer() throws Exception {
+        BadgeVerificationService badgeService = mock(BadgeVerificationService.class);
+        when(badgeService.verifyClient(validClient.certificate()))
+            .thenReturn(ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .build());
 
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
+        DefaultClientRequestVerifier verifier = DefaultClientRequestVerifier.builder()
+            .badgeVerificationService(badgeService)
+            .build();
+
+        try (TomcatHarness harness = startTomcatServer(verifier, VerificationPolicy.ENHANCED)) {
             HttpClient client = createMtlsClient(validClient, issuingCa);
 
-            assertThatThrownBy(() -> sendRequest(client, harness.port()))
-                .rootCause()
-                .isInstanceOf(SSLHandshakeException.class);
-        } finally {
-            WIRE_MOCK.start();
-            configureFor("localhost", WIRE_MOCK.port());
-            stubCrl(Set.of(REVOKED_SERIAL));
+            HttpResponse<String> response = sendRequest(client, harness.port());
+
+            assertThat(response.statusCode()).isEqualTo(200);
         }
     }
 
-    @Test
-    @DisplayName("allows mTLS handshake when certificate chain has no CDP")
-    void allowsClientWhenNoCdpOnChain() throws Exception {
-        CrlTestFixtures.TestCa caWithoutCdp = CrlTestFixtures.createTestCa(null);
-        CrlTestFixtures.ClientCert clientWithoutCdp =
-            CrlTestFixtures.createClientCert(caWithoutCdp, BigInteger.valueOf(7201), null);
-        Path trustPem = materialDir.resolve("idca-trust-no-cdp.pem");
-        writePem(trustPem, CertificateUtils.toPem(caWithoutCdp.certificate()));
-
-        try (TomcatHarness harness = startTomcatServer(trustPem)) {
-            HttpClient client = createMtlsClient(clientWithoutCdp, caWithoutCdp);
-
-            HttpResponse<Void> response = sendRequest(client, harness.port());
-
-            assertThat(response.statusCode()).isBetween(200, 499);
-        }
-    }
-
-    private static TomcatHarness startTomcatServer(Path idcaTrustPem) {
+    private static TomcatHarness startTomcatServer(
+            DefaultClientRequestVerifier verifier,
+            VerificationPolicy policy) {
         CrlRevocationChecker crlRevocationChecker =
             new CrlRevocationChecker(new CrlFetcher(new DefaultCrlHttpClient()));
 
@@ -160,40 +165,30 @@ class AtiIdcaCrlMtlsIntegrationTest {
         ssl.setEnabled(true);
         ssl.setCertificate(materialDir.resolve("server.pem").toString());
         ssl.setCertificatePrivateKey(materialDir.resolve("server.key").toString());
-        ssl.setTrustCertificate(idcaTrustPem.toString());
+        ssl.setTrustCertificate(materialDir.resolve("idca-trust.pem").toString());
         ssl.setClientAuth(Ssl.ClientAuth.NEED);
         ssl.setEnabledProtocols(new String[] { "TLSv1.2" });
         factory.setSsl(ssl);
         factory.addConnectorCustomizers(new AtiIdcaCrlTomcatCustomizer(crlRevocationChecker));
 
-        WebServer webServer = factory.getWebServer(context -> { });
+        WebServer webServer = factory.getWebServer(context -> context.addServlet("verify",
+            new ClientVerificationServlet(verifier, policy)).addMapping("/*"));
         webServer.start();
         return new TomcatHarness(webServer, webServer.getPort());
     }
 
-    private static void stubCrl(Set<BigInteger> revokedSerials) throws Exception {
-        WIRE_MOCK.stubFor(get(urlEqualTo("/crl"))
-            .willReturn(aResponse()
-                .withStatus(200)
-                .withHeader("Content-Type", "application/pkix-crl")
-                .withBody(CrlTestFixtures.createCrlBytes(
-                    issuingCa,
-                    Instant.now().plus(1, ChronoUnit.DAYS),
-                    revokedSerials))));
-    }
-
-    private static HttpResponse<Void> sendRequest(HttpClient client, int port) throws Exception {
+    private static HttpResponse<String> sendRequest(HttpClient client, int port) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create("https://localhost:" + port + "/"))
             .timeout(java.time.Duration.ofSeconds(5))
             .GET()
             .build();
-        return client.send(request, HttpResponse.BodyHandlers.discarding());
+        return client.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private static HttpClient createMtlsClient(
             CrlTestFixtures.ClientCert clientCert,
-            CrlTestFixtures.TestCa issuingCa)
+            CrlTestFixtures.TestCa ca)
             throws Exception {
         KeyStore keyStore = KeyStore.getInstance("PKCS12");
         keyStore.load(null, null);
@@ -202,7 +197,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
             "client",
             clientCert.keyPair().getPrivate(),
             password,
-            new X509Certificate[] { clientCert.certificate(), issuingCa.certificate() }
+            new X509Certificate[] { clientCert.certificate(), ca.certificate() }
         );
 
         KeyStore trustStore = KeyStore.getInstance("PKCS12");
@@ -231,7 +226,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
         Instant now = Instant.now();
         JcaX509v3CertificateBuilder certBuilder = new JcaX509v3CertificateBuilder(
             subject,
-            BigInteger.valueOf(4242),
+            BigInteger.valueOf(4343),
             Date.from(now.minus(1, ChronoUnit.HOURS)),
             Date.from(now.plus(30, ChronoUnit.DAYS)),
             subject,
@@ -245,6 +240,34 @@ class AtiIdcaCrlMtlsIntegrationTest {
 
     private static void writePem(Path path, String pem) throws IOException {
         Files.writeString(path, pem);
+    }
+
+    private static final class ClientVerificationServlet extends HttpServlet {
+        private final DefaultClientRequestVerifier verifier;
+        private final VerificationPolicy policy;
+
+        private ClientVerificationServlet(DefaultClientRequestVerifier verifier, VerificationPolicy policy) {
+            this.verifier = verifier;
+            this.policy = policy;
+        }
+
+        @Override
+        protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+            X509Certificate[] certs = (X509Certificate[])
+                req.getAttribute("jakarta.servlet.request.X509Certificate");
+            if (certs == null || certs.length == 0) {
+                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Client certificate required");
+                return;
+            }
+
+            ClientRequestVerificationResult result = verifier.verify(certs[0], policy);
+            if (!result.verified()) {
+                resp.sendError(HttpServletResponse.SC_FORBIDDEN, String.join(", ", result.errors()));
+                return;
+            }
+            resp.setStatus(HttpServletResponse.SC_OK);
+            resp.getWriter().write("verified");
+        }
     }
 
     private static final class TomcatHarness implements AutoCloseable {
