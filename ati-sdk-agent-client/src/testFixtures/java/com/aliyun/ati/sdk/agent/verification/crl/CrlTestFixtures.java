@@ -77,6 +77,19 @@ public final class CrlTestFixtures {
     }
 
     public static ClientCert createClientCert(TestCa ca, BigInteger serial, String crlUrl) throws Exception {
+        return createClientCert(ca, serial, crlUrl, null);
+    }
+
+    /**
+     * Creates a mock client Identity Certificate with optional CDP and ATI URI SAN.
+     *
+     * @param atiUriSan URI SAN value (e.g. {@code ati://v1.client-agent.example.com}); may be null
+     */
+    public static ClientCert createClientCert(
+            TestCa ca,
+            BigInteger serial,
+            String crlUrl,
+            String atiUriSan) throws Exception {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("EC");
         keyGen.initialize(256);
         KeyPair keyPair = keyGen.generateKeyPair();
@@ -94,6 +107,11 @@ public final class CrlTestFixtures {
         );
         if (crlUrl != null) {
             addCdpExtension(certBuilder, crlUrl);
+        }
+        if (atiUriSan != null) {
+            GeneralName uriGeneralName = new GeneralName(GeneralName.uniformResourceIdentifier, atiUriSan);
+            GeneralNames subjectAltNames = new GeneralNames(uriGeneralName);
+            certBuilder.addExtension(Extension.subjectAlternativeName, false, subjectAltNames);
         }
 
         ContentSigner signer = new JcaContentSignerBuilder("SHA256withECDSA")
