@@ -76,7 +76,7 @@ class CrlFetcherTest {
     }
 
     @Test
-    @DisplayName("refetches CRL after max cache age expires")
+    @DisplayName("AC5: refetches CRL after max 12h cache age expires (behavioral)")
     void refetchesAfterMaxCacheAgeExpires() throws Exception {
         CrlTestFixtures.TestCa ca = CrlTestFixtures.createTestCa("http://crl.example.test/refresh.crl");
         Instant nextUpdate = Instant.now().plus(48, ChronoUnit.HOURS);

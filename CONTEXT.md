@@ -255,11 +255,23 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{64-char hex}` when comp
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring the IDCA trust anchor enables mTLS client Identity Certificate chain validation and **Client Verification**. Spring Boot: `ati.sdk.server.idca.trust-certificate` (path to CNNIC IDCA PEM). Programmatic: pass IDCA trust material to `ClientRequestVerifier` / `DefaultClientRequestVerifier`. When IDCA is not configured, caller Identity Certificate verification is skipped to reduce integration complexity.
+The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring the IDCA trust anchor enables mTLS client Identity Certificate chain validation and **Client Verification**. CNNIC embeds **CRL Distribution Points** on the Identity Certificate chain so relying parties can perform **Certificate Revocation** checks. Spring Boot: `ati.sdk.server.idca.trust-certificate` (path to CNNIC IDCA PEM). When IDCA is not configured, caller Identity Certificate verification is skipped.
 _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA, ATI CA (IDCA is CNNIC-operated)
 
+**CRL Distribution Point (CDP)**:
+An X.509 certificate extension (RFC 5280) embedding the HTTP URI where the issuing CA publishes its **Certificate Revocation List**. For Identity Certificates, CNNIC provides CDP on the certificate chain; the SDK reads CDP from the client Identity Certificate first, then from the issuing CA if absent. No operator-configured CRL URL — CDP is the sole production source.
+_Avoid_: CRL URL (alone — prefer CDP when referring to the cert extension), revocation endpoint (too vague)
+
+**Certificate Revocation**:
+PKIX-layer revocation of an Identity Certificate — the certificate's serial number appears on the CA's CRL fetched via **CDP**. Checked during mTLS chain validation when IDCA is configured and the client presents an Identity Certificate. Distinct from **Registration Revocation**, which is enforced via TL Badge **Registration Status**. Both checks are complementary; either failure rejects the connection.
+_Avoid_: cert revocation (alone — specify Certificate Revocation vs Registration Revocation), CRL check (implementation detail — prefer Certificate Revocation)
+
+**Registration Revocation**:
+Application-layer revocation of an agent's registration — TL Badge **Registration Status** is `REVOKED` or `EXPIRED`. Enforced during **Client Verification** (Badge lookup) for `ENHANCED`/`ADVANCED` server policies. Distinct from **Certificate Revocation** (CRL at the TLS layer). An agent may be revoked in the TL before the CRL reflects it, or vice versa; both paths must be checked when enabled.
+_Avoid_: revocation (alone — ambiguous), CRL revocation (CRL is Certificate Revocation, not Registration Revocation)
+
 **Client Verification**:
-Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. When IDCA is configured, the server agent validates the caller's Identity Certificate chain (IDCA) and applies Badge/DANE checks per Verification Policy — extracting the caller's ATI Name from the certificate URI SAN, then verifying via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
+Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. Comprises two complementary layers when IDCA is configured: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **ClientRequestVerifier**:

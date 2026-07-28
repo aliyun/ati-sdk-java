@@ -54,6 +54,7 @@ When a server agent validates a client **Identity Certificate** over mTLS, rejec
 
 - Unit/integration tests use mock CDP/CRL fixtures only.
 - No production configuration for CRL URLs.
+- Unrelated test-file splits (checkstyle/refactor) are out of scope for CRL acceptance; CRL behavior is covered by `*Crl*` and dual-track tests below.
 
 ## Implementation sketch
 

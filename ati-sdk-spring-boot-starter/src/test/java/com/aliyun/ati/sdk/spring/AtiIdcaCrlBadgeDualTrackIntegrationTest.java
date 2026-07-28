@@ -286,6 +286,7 @@ class AtiIdcaCrlBadgeDualTrackIntegrationTest {
         @Override
         public void close() {
             webServer.stop();
+            IdcaCrlTrustManagerConfig.clear();
         }
     }
 }

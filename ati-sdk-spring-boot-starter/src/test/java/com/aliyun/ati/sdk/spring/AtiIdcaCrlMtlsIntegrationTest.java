@@ -92,7 +92,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
     @Test
     @DisplayName("rejects mTLS handshake when client serial is on CRL")
     void rejectsRevokedClientDuringMtlsHandshake() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
             HttpClient client = createMtlsClient(revokedClient, issuingCa);
 
             assertThatThrownBy(() -> sendRequest(client, harness.port()))
@@ -104,7 +104,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
     @Test
     @DisplayName("allows mTLS handshake when client serial is not on CRL")
     void allowsNonRevokedClientDuringMtlsHandshake() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
             HttpClient client = createMtlsClient(validClient, issuingCa);
 
             HttpResponse<Void> response = sendRequest(client, harness.port());
@@ -118,7 +118,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
     void rejectsClientWhenCrlUrlUnreachable() throws Exception {
         WIRE_MOCK.stop();
 
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"))) {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
             HttpClient client = createMtlsClient(validClient, issuingCa);
 
             assertThatThrownBy(() -> sendRequest(client, harness.port()))
@@ -140,7 +140,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
         Path trustPem = materialDir.resolve("idca-trust-no-cdp.pem");
         writePem(trustPem, CertificateUtils.toPem(caWithoutCdp.certificate()));
 
-        try (TomcatHarness harness = startTomcatServer(trustPem)) {
+        try (TomcatHarness harness = startTomcatServer(trustPem, Ssl.ClientAuth.NEED)) {
             HttpClient client = createMtlsClient(clientWithoutCdp, caWithoutCdp);
 
             HttpResponse<Void> response = sendRequest(client, harness.port());
@@ -149,7 +149,46 @@ class AtiIdcaCrlMtlsIntegrationTest {
         }
     }
 
-    private static TomcatHarness startTomcatServer(Path idcaTrustPem) {
+    @Test
+    @DisplayName("BASIC policy (client-auth=want): allows mTLS when client serial is not on CRL")
+    void allowsNonRevokedClientUnderBasicPolicy() throws Exception {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.WANT)) {
+            HttpClient client = createMtlsClient(validClient, issuingCa);
+
+            HttpResponse<Void> response = sendRequest(client, harness.port());
+
+            assertThat(response.statusCode()).isBetween(200, 499);
+        }
+    }
+
+    @Test
+    @DisplayName("BASIC policy (client-auth=want): allows TLS without client certificate (CRL skipped)")
+    void allowsTlsWithoutClientCertUnderBasicPolicy() throws Exception {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.WANT)) {
+            HttpClient client = createTlsClientWithoutClientCert();
+
+            HttpResponse<Void> response = sendRequest(client, harness.port());
+
+            assertThat(response.statusCode()).isBetween(200, 499);
+        }
+    }
+
+    @Test
+    @DisplayName("rejects mTLS handshake at TLS layer when CDP extension is malformed")
+    void rejectsClientWithMalformedCdpAtTlsLayer() throws Exception {
+        CrlTestFixtures.ClientCert malformedClient =
+            CrlTestFixtures.createClientCertWithMalformedCdpExtension(issuingCa, BigInteger.valueOf(7301));
+
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
+            HttpClient client = createMtlsClient(malformedClient, issuingCa);
+
+            assertThatThrownBy(() -> sendRequest(client, harness.port()))
+                .rootCause()
+                .isInstanceOf(SSLHandshakeException.class);
+        }
+    }
+
+    private static TomcatHarness startTomcatServer(Path idcaTrustPem, Ssl.ClientAuth clientAuth) {
         CrlRevocationChecker crlRevocationChecker =
             new CrlRevocationChecker(new CrlFetcher(new DefaultCrlHttpClient()));
 
@@ -161,7 +200,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
         ssl.setCertificate(materialDir.resolve("server.pem").toString());
         ssl.setCertificatePrivateKey(materialDir.resolve("server.key").toString());
         ssl.setTrustCertificate(idcaTrustPem.toString());
-        ssl.setClientAuth(Ssl.ClientAuth.NEED);
+        ssl.setClientAuth(clientAuth);
         ssl.setEnabledProtocols(new String[] { "TLSv1.2" });
         factory.setSsl(ssl);
         factory.addConnectorCustomizers(new AtiIdcaCrlTomcatCustomizer(crlRevocationChecker));
@@ -169,6 +208,24 @@ class AtiIdcaCrlMtlsIntegrationTest {
         WebServer webServer = factory.getWebServer(context -> { });
         webServer.start();
         return new TomcatHarness(webServer, webServer.getPort());
+    }
+
+    private static HttpClient createTlsClientWithoutClientCert() throws Exception {
+        KeyStore trustStore = KeyStore.getInstance("PKCS12");
+        trustStore.load(null, null);
+        trustStore.setCertificateEntry("server", serverCertificate);
+
+        javax.net.ssl.TrustManagerFactory trustManagerFactory =
+            javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+        trustManagerFactory.init(trustStore);
+
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, trustManagerFactory.getTrustManagers(), null);
+
+        return HttpClient.newBuilder()
+            .sslContext(sslContext)
+            .connectTimeout(java.time.Duration.ofSeconds(5))
+            .build();
     }
 
     private static void stubCrl(Set<BigInteger> revokedSerials) throws Exception {
@@ -263,6 +320,7 @@ class AtiIdcaCrlMtlsIntegrationTest {
         @Override
         public void close() {
             webServer.stop();
+            IdcaCrlTrustManagerConfig.clear();
         }
     }
 }

@@ -14,50 +14,100 @@ import java.security.cert.X509Certificate;
  */
 public final class TomcatDelegatingCrlTrustManager extends X509ExtendedTrustManager {
 
-    private final CrlCheckingTrustManager delegate;
+    private volatile CrlCheckingTrustManager delegate;
 
     public TomcatDelegatingCrlTrustManager() throws Exception {
-        IdcaCrlTrustManagerConfig.Config config = IdcaCrlTrustManagerConfig.requireConfigured();
-        X509TrustManager idcaTrustManager = AtiIdcaCrlTomcatCustomizer.createTrustManager(config.trustStore());
-        this.delegate = new CrlCheckingTrustManager(idcaTrustManager, config.crlRevocationChecker());
+        if (IdcaCrlTrustManagerConfig.configCount() == 1) {
+            this.delegate = buildDelegate(IdcaCrlTrustManagerConfig.requireSingleConfigured());
+        }
     }
 
     @Override
     public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
-        delegate.checkClientTrusted(chain, authType);
+        delegateFor(chain).checkClientTrusted(chain, authType);
     }
 
     @Override
     public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket)
             throws CertificateException {
-        delegate.checkClientTrusted(chain, authType, socket);
+        delegateFor(chain).checkClientTrusted(chain, authType, socket);
     }
 
     @Override
     public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
             throws CertificateException {
-        delegate.checkClientTrusted(chain, authType, engine);
+        delegateFor(chain).checkClientTrusted(chain, authType, engine);
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
-        delegate.checkServerTrusted(chain, authType);
+        serverDelegate().checkServerTrusted(chain, authType);
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket)
             throws CertificateException {
-        delegate.checkServerTrusted(chain, authType, socket);
+        serverDelegate().checkServerTrusted(chain, authType, socket);
     }
 
     @Override
     public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine)
             throws CertificateException {
-        delegate.checkServerTrusted(chain, authType, engine);
+        serverDelegate().checkServerTrusted(chain, authType, engine);
     }
 
     @Override
     public X509Certificate[] getAcceptedIssuers() {
-        return delegate.getAcceptedIssuers();
+        try {
+            return serverDelegate().getAcceptedIssuers();
+        } catch (CertificateException e) {
+            return new X509Certificate[0];
+        }
+    }
+
+    private CrlCheckingTrustManager delegateFor(X509Certificate[] chain) throws CertificateException {
+        CrlCheckingTrustManager current = delegate;
+        if (current != null) {
+            return current;
+        }
+        synchronized (this) {
+            if (delegate == null) {
+                try {
+                    IdcaCrlTrustManagerConfig.Config config = IdcaCrlTrustManagerConfig.resolveForChain(chain);
+                    delegate = buildDelegate(config);
+                } catch (CertificateException e) {
+                    throw e;
+                } catch (Exception e) {
+                    throw new CertificateException("Failed to initialize IDCA CRL trust manager", e);
+                }
+            }
+            return delegate;
+        }
+    }
+
+    private CrlCheckingTrustManager serverDelegate() throws CertificateException {
+        CrlCheckingTrustManager current = delegate;
+        if (current != null) {
+            return current;
+        }
+        if (IdcaCrlTrustManagerConfig.configCount() == 1) {
+            synchronized (this) {
+                if (delegate == null) {
+                    try {
+                        delegate = buildDelegate(IdcaCrlTrustManagerConfig.requireSingleConfigured());
+                    } catch (Exception e) {
+                        throw new CertificateException("Failed to initialize IDCA CRL trust manager", e);
+                    }
+                }
+                return delegate;
+            }
+        }
+        throw new CertificateException("Cannot resolve IDCA trust manager without a client certificate chain");
+    }
+
+    private static CrlCheckingTrustManager buildDelegate(IdcaCrlTrustManagerConfig.Config config)
+            throws Exception {
+        X509TrustManager idcaTrustManager = AtiIdcaCrlTomcatCustomizer.createTrustManager(config.trustStore());
+        return new CrlCheckingTrustManager(idcaTrustManager, config.crlRevocationChecker());
     }
 }

@@ -53,11 +53,14 @@ final class AtiIdcaCrlTomcatCustomizer implements TomcatConnectorCustomizer {
             throws GeneralSecurityException, IOException {
         KeyStore trustStore = sslHostConfig.getTruststore();
         if (trustStore == null) {
-            LOG.debug("Skipping CRL wiring: no IDCA trust store configured");
-            return;
+            throw new IllegalStateException(
+                "IDCA CRL checking is enabled but Tomcat SSL host '"
+                    + sslHostConfig.getHostName()
+                    + "' has no trust store; refusing fail-open mTLS");
         }
 
-        IdcaCrlTrustManagerConfig.configure(trustStore, crlRevocationChecker);
+        IdcaCrlTrustManagerConfig.configure(
+            sslHostConfig.getHostName(), trustStore, crlRevocationChecker);
         sslHostConfig.setTrustManagerClassName(TomcatDelegatingCrlTrustManager.class.getName());
         LOG.info("Installed CRL-checking trust manager for Tomcat SSL host {}", sslHostConfig.getHostName());
     }

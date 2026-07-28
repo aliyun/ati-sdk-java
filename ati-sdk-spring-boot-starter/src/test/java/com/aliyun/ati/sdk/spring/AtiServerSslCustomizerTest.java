@@ -50,14 +50,24 @@ class AtiServerSslCustomizerTest {
     }
 
     @Test
-    @DisplayName("Should skip server customization in client mode")
-    void shouldSkipCustomizationInClientMode() {
+    @DisplayName("Should skip CrlRevocationChecker bean in client mode")
+    void shouldSkipCrlRevocationCheckerInClientMode() {
         new ApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(AtiServerAutoConfiguration.class))
             .withPropertyValues("ati.sdk.mode=client")
-            .run(context -> {
-                AtiSdkProperties properties = context.getBean(AtiSdkProperties.class);
-                assertThat(properties.isServerMode()).isFalse();
-            });
+            .run(context -> assertThat(context.getBeansOfType(
+                com.aliyun.ati.sdk.agent.verification.crl.CrlRevocationChecker.class))
+                .isEmpty());
+    }
+
+    @Test
+    @DisplayName("Should create CrlRevocationChecker bean in server mode")
+    void shouldCreateCrlRevocationCheckerInServerMode() {
+        new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(AtiServerAutoConfiguration.class))
+            .withPropertyValues("ati.sdk.mode=server")
+            .run(context -> assertThat(context.getBean(
+                com.aliyun.ati.sdk.agent.verification.crl.CrlRevocationChecker.class))
+                .isNotNull());
     }
 }

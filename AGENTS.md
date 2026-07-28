@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live on internal GitLab (`gitlab.alibaba-inc.com`, project `alibaba-dns/ati-java-sdk`). Use `glab` CLI. See `docs/agents/issue-tracker.md`.
+Issues live as markdown under `.scratch/<feature-slug>/` in this repo. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

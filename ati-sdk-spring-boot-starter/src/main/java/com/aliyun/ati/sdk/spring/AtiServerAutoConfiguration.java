@@ -136,8 +136,11 @@ public class AtiServerAutoConfiguration {
      */
     @Bean
     @ConditionalOnMissingBean
-    @ConditionalOnProperty(prefix = "ati.sdk", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public CrlRevocationChecker crlRevocationChecker() {
+    public CrlRevocationChecker crlRevocationChecker(AtiSdkProperties properties) {
+        if (!properties.isServerMode()) {
+            LOG.debug("Skipping CrlRevocationChecker bean: mode={}", properties.getMode());
+            return null;
+        }
         return new CrlRevocationChecker(new CrlFetcher(new DefaultCrlHttpClient()));
     }
 
