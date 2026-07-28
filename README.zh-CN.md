@@ -6,9 +6,10 @@
 
 ## 特性
 
-- **基于 DNS 的 Agent 发现** — 通过 Identity Hostname 上的 `_ati` TXT 记录解析 Agent，支持 SemVer 版本约束
+- **基于 DNS TXT 的 Agent 发现** — 通过 Identity Hostname 上的 `_ati` TXT 记录解析 Agent，支持 SemVer 版本约束
 - **DANE TLSA 验证** — 通过 DNS TLSA 记录验证服务器证书
 - **Badge 验证** — 通过 CNNIC 透明日志（Transparency Log）加密验证 Agent 注册信息
+- **IDCA CRL 证书吊销（服务端）** — 配置 IDCA 信任时在 TLS 层通过 CDP/CRL 校验客户端 Identity Certificate（嵌入式 Tomcat）
 - **mTLS 安全连接** — 支持身份证书的双向 TLS
 - **SCITT 透明性头（计划中）** — 通过 Receipt 与 Status Token 实现可审计的 HTTP 证明；`ati-sdk-transparency` 已有底层基础设施，尚未接入 Connection 验证流程
 - **Spring Boot 自动配置** — 通过 `ati.sdk.*` 属性实现零配置集成
@@ -31,7 +32,8 @@
 **说明：**
 
 - **Discovery（步骤 1–2）为可选** — 已知 `agentUrl` 直接连接时可跳过。
-- **客户端与服务端 policy 独立配置** — 例如客户端 `ENHANCED` 不意味着服务端会执行步骤 15–20，除非服务端 policy 也为 `ENHANCED`/`ADVANCED` 且已配置 IDCA。
+- **客户端与服务端 policy 独立配置** — 例如客户端 `ENHANCED` 不意味着服务端会执行步骤 16–21，除非服务端 policy 也为 `ENHANCED`/`ADVANCED` 且已配置 IDCA。
+- **服务端双轨吊销** — 配置 IDCA 后，**Certificate Revocation**（TLS 层 CRL）与 **Registration Revocation**（Client Verification 层 Badge）相互独立，任一失败即拒绝。见 [服务端双轨吊销](#服务端双轨吊销)。
 - **`NONE` 仅适用于服务端** — 客户端不能配置 `NONE`；客户端始终校验服务端证书（最低 `BASIC`）。
 - **服务端 `client-auth`** 由 `ati.sdk.server.verification.policy` 自动派生（勿单独配置）：`NONE` → none，`BASIC` → want，`ENHANCED`/`ADVANCED` → need。
 
@@ -138,7 +140,7 @@ sequenceDiagram
 
 ### ENHANCED（L2）：TLS + 透明日志验证
 
-客户端 policy 为 `ENHANCED`。服务端步骤 15–20 仅在**服务端 policy 为 ENHANCED/ADVANCED 且已配置 IDCA** 时执行（`client-auth=need`）。
+客户端 policy 为 `ENHANCED`。服务端步骤 16–21 仅在**服务端 policy 为 ENHANCED/ADVANCED 且已配置 IDCA** 时执行（`client-auth=need`）。
 
 ```mermaid
 sequenceDiagram
@@ -187,7 +189,7 @@ sequenceDiagram
 
 ### ADVANCED（L3）：完整验证
 
-客户端 policy 为 `ADVANCED`。服务端 Client Verification 含客户端 DANE 步骤仅在**服务端 policy 为 ADVANCED 且已配置 IDCA** 时执行（`client-auth=need`）。
+客户端 policy 为 `ADVANCED`。客户端传输层 DANE 对所有 `ADVANCED` 连接生效。服务端 Client Verification（Badge，以及服务端 policy 为 `ADVANCED` 时的客户端 DANE）仅在**已配置 IDCA** 时执行（`client-auth=need`）。
 
 ```mermaid
 sequenceDiagram
@@ -290,12 +292,12 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 ```
 
 1. **生成身份密钥对** — 线下为身份证书创建 RSA/EC 密钥对
-2. **生成身份 CSR** — 创建包含 ATI Name URI SAN 的证书签名请求
+2. **生成身份 CSR** — 创建包含 `ati://` URI SAN（Identity Hostname）的证书签名请求
 3. **提交注册** — 在 ATI 控制台输入服务证书 + 身份 CSR，并注册 agentHost、version、endpoints（服务证书由用户提供）
 4. **ACME 验证** — 添加 DNS TXT 记录证明域名所有权
 5. **身份证书签发** — CNNIC 通过 IDCA 签发身份证书（服务证书由用户提供，非 CNNIC 或 RA 签发）
 6. **DNS 验证** — 添加 TLSA 和 badge DNS 记录
-7. **激活** — Agent 可通过 ATI Name 发现
+7. **激活** — Agent 可通过 `_ati.{identityHost}` DNS TXT 发现
 
 > **注意：** 所有步骤均在 ATI 控制台完成，注册过程不需要 SDK 代码。
 
@@ -383,7 +385,7 @@ AgentConnection mtls = client.connect(agentUrl,
         .build());
 ```
 
-使用 PKCS12 密钥库时，可用 `AtiVerifiedClient`：
+使用 PKCS12 密钥库时，可用 `AtiVerifiedClient`（适用于 **agentUrl 的 host 等于 Identity Hostname** 的单域名部署）。双 hostname 模式请使用上文 `AtiClient` + `ConnectOptions`：
 
 ```java
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
@@ -392,10 +394,8 @@ AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .policy(VerificationPolicy.ENHANCED)
     .build();
 
-AtiConnection conn = verifiedClient.connect(agentUrl,
-    ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())   // 双 hostname 模式下必填
-        .build());
+// 单域名：https://agent.example.com/mcp — host 同时作为 access 与 identity
+AtiConnection conn = verifiedClient.connect("https://agent.example.com/mcp");
 ```
 
 ### Spring Boot 自动配置
@@ -438,11 +438,25 @@ ati:
         # policy: NONE         # L0 无认证：仅开发/测试（client-auth=none）
       idca:
         # CNNIC 身份 CA（IDCA）信任锚 PEM 路径，用于校验客户端 Identity Certificate 证书链
+        # policy 不为 NONE 时同时启用 TLS 层 CRL（从证书链 CDP 拉取）
         # policy 为 ENHANCED 或 ADVANCED 时必填；BASIC 下可选
         trust-certificate: /path/to/idca-trust.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
+
+### 服务端双轨吊销
+
+当配置了 `ati.sdk.server.idca.trust-certificate` 且服务端 policy 不为 `NONE` 时，入站客户端 Identity Certificate 会经过两条独立校验轨道：
+
+| 轨道 | 层级 | 机制 | 服务端 policy |
+|------|------|------|---------------|
+| **Certificate Revocation** | TLS（mTLS 握手） | 从证书链 CDP 拉取 PKIX CRL | `BASIC`、`ENHANCED`、`ADVANCED` |
+| **Registration Revocation** | 应用层（Client Verification） | TL Badge 注册状态 | `ENHANCED`、`ADVANCED` |
+
+任一失败即拒绝连接。无需单独配置 CRL URL — SDK 从证书链读取 **CDP**（leaf → issuing CA）。链上无 CDP → 跳过 CRL（debug 日志）；有 CDP 但拉取/签名校验失败 → 握手拒绝（fail-closed）。
+
+**TLS 层 CRL 仅支持嵌入式 Tomcat**；其他嵌入式容器会打 WARN 并跳过 CRL。详见 [ADR-0004](docs/adr/0004-idca-crl-revocation.md)。
 
 通过 `ati.sdk.mode` 控制启用哪一侧：
 
@@ -608,6 +622,8 @@ ati:
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `ENHANCED` |
+| `ati.sdk.server.verification.policy` | 服务端验证策略（`NONE` 仅服务端） | `BASIC` |
+| `ati.sdk.server.idca.trust-certificate` | IDCA 信任锚 PEM（policy ≠ `NONE` 时含 TLS CRL） | — |
 | `ati.sdk.client.dns-timeout` | DNS 查询超时 | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP 连接超时 | `10s` |
 
@@ -680,7 +696,8 @@ try {
 | `1.2.3` | 精确版本 1.2.3 |
 | `^1.2.0` | 兼容 1.2.0（>=1.2.0 <2.0.0）|
 | `~1.2.0` | 近似 1.2.0（>=1.2.0 <1.3.0）|
-| `*` | 任意版本（最新）|
+
+选择最新版本请**省略版本参数**（勿传 `"*"` — 不会被当作通配符）。
 
 ```java
 AtiDiscoveryClient client = new AtiDiscoveryClient();

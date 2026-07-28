@@ -1,14 +1,15 @@
 # ATI Java SDK
 
-> Agent Trust Infrastructure (ATI) Java SDK — secure agent-to-agent communication with DNS-based discovery, DANE TLSA verification, and transparency log attestation.
+> Agent Trust Infrastructure (ATI) Java SDK — secure agent-to-agent communication with DNS TXT discovery, DANE TLSA verification, and transparency log attestation.
 
 [English](README.md) | [中文](README.zh-CN.md)
 
 ## Features
 
-- **DNS-based agent discovery** — resolve agents via `_ati.{identityHost}` TXT records with optional SemVer constraints
+- **DNS TXT agent discovery** — resolve agents via `_ati.{identityHost}` TXT records with optional SemVer constraints
 - **DANE TLSA verification** — verify server certificates via DNS TLSA records
 - **Badge verification** — cryptographically verify agent registration via the CNNIC Transparency Log
+- **IDCA CRL certificate revocation (server)** — PKIX CRL from CDP at the TLS layer when IDCA trust is configured (embedded Tomcat)
 - **mTLS secure connections** — mutual TLS with identity certificate support
 - **SCITT transparency headers (planned)** — auditable HTTP attestation via Receipt and Status Token; low-level infrastructure exists in `ati-sdk-transparency`, not yet wired into Connection verification
 - **Spring Boot auto-configuration** — zero-config integration with `ati.sdk.*` properties
@@ -31,7 +32,8 @@ The diagrams below use `{serverIdentityHost}`, `{serverAccessHost}`, and `{clien
 **Notes:**
 
 - **Discovery (steps 1–2)** is optional — skip when connecting directly via a known `agentUrl`.
-- **Client and server policies are configured independently** — e.g. client `ENHANCED` does not imply the server runs steps 15–20 unless the server policy is also `ENHANCED` or `ADVANCED` and IDCA is configured.
+- **Client and server policies are configured independently** — e.g. client `ENHANCED` does not imply the server runs steps 16–21 unless the server policy is also `ENHANCED` or `ADVANCED` and IDCA is configured.
+- **Server-side dual-track revocation** — when IDCA is configured, **Certificate Revocation** (CRL at TLS) and **Registration Revocation** (Badge at Client Verification) are independent; either failure rejects. See [Server-side dual-track revocation](#server-side-dual-track-revocation).
 - **`NONE` is server-only** — clients cannot set `NONE`; they always validate the server certificate (minimum `BASIC`).
 - **`client-auth`** on the server is derived from `ati.sdk.server.verification.policy` (not set separately): `NONE` → none, `BASIC` → want, `ENHANCED`/`ADVANCED` → need.
 
@@ -138,7 +140,7 @@ sequenceDiagram
 
 ### ENHANCED (L2): TLS + Transparency Log Verification
 
-Client policy `ENHANCED`. Server-side steps 15–20 run only when **server policy is ENHANCED or ADVANCED** and **IDCA trust is configured** (`client-auth=need`).
+Client policy `ENHANCED`. Server-side steps 16–21 run only when **server policy is ENHANCED or ADVANCED** and **IDCA trust is configured** (`client-auth=need`).
 
 ```mermaid
 sequenceDiagram
@@ -187,7 +189,7 @@ sequenceDiagram
 
 ### ADVANCED (L3): Full Verification
 
-Client policy `ADVANCED`. Server-side Client Verification includes client DANE when **server policy is ADVANCED** and **IDCA is configured** (`client-auth=need`).
+Client policy `ADVANCED`. Client-side transport DANE runs for every `ADVANCED` connection. Server-side Client Verification (Badge, and client DANE when server policy is `ADVANCED`) runs only when **IDCA is configured** (`client-auth=need`).
 
 ```mermaid
 sequenceDiagram
@@ -290,12 +292,12 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 ```
 
 1. **Generate identity key pair** — Create RSA/EC key pair for identity certificate (offline)
-2. **Generate identity CSR** — Create Certificate Signing Request with ATI Name URI SAN
+2. **Generate identity CSR** — Create Certificate Signing Request with an `ati://` URI SAN (Identity Hostname)
 3. **Submit registration** — Input service certificate + identity CSR in ATI Console with agentHost, version, endpoints (service certificate is user-provided)
 4. **ACME verification** — Add DNS TXT record for domain ownership proof
 5. **Identity certificate issuance** — CNNIC issues the identity certificate via IDCA (service certificate is user-provided, not issued by CNNIC or the RA)
 6. **DNS verification** — Add TLSA and badge DNS records
-7. **Active** — Agent is discoverable via ATI Name
+7. **Active** — Agent is discoverable via `_ati.{identityHost}` DNS TXT
 
 > **Note:** All steps are performed in the ATI Console. No SDK code is needed for registration.
 
@@ -383,7 +385,7 @@ AgentConnection mtls = client.connect(agentUrl,
         .build());
 ```
 
-For PKCS12 keystore-based setup, use `AtiVerifiedClient`:
+For PKCS12 keystore-based setup, use `AtiVerifiedClient` when the **agentUrl host equals the Identity Hostname** (single-hostname deployments). Dual-hostname mode requires `AtiClient` + `ConnectOptions` as shown above:
 
 ```java
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
@@ -392,10 +394,8 @@ AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .policy(VerificationPolicy.ENHANCED)
     .build();
 
-AtiConnection conn = verifiedClient.connect(agentUrl,
-    ConnectOptions.builder()
-        .identityHost(detail.getAgentHost())   // required in dual-hostname mode
-        .build());
+// Single-hostname: https://agent.example.com/mcp — host is both access and identity
+AtiConnection conn = verifiedClient.connect("https://agent.example.com/mcp");
 ```
 
 ### Spring Boot Auto-Configuration
@@ -432,17 +432,31 @@ ati:
       verification:
         # NONE | BASIC | ENHANCED | ADVANCED (aligned with ATI Console L0–L3)
         # Drives TLS client-auth automatically — do not set server.ssl.client-auth separately
-        policy: BASIC          # L1 基础认证: optional client cert (client-auth=want)
-        # policy: ENHANCED     # L2 增强认证: require client cert (client-auth=need)
-        # policy: ADVANCED     # L3 高级认证: require client cert + DANE client verification
-        # policy: NONE         # L0 无认证: dev/test only (client-auth=none)
+        policy: BASIC          # L1: optional client cert (client-auth=want)
+        # policy: ENHANCED     # L2: require client cert (client-auth=need)
+        # policy: ADVANCED     # L3: require client cert + DANE client verification
+        # policy: NONE         # L0: dev/test only (client-auth=none)
       idca:
         # CNNIC Identity CA (IDCA) trust anchor PEM — validates client Identity Certificate chains
+        # Also enables TLS-layer CRL (CDP on cert chain) when policy is not NONE
         # Required when policy is ENHANCED or ADVANCED; optional for BASIC
         trust-certificate: /path/to/idca-trust.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
+
+### Server-side dual-track revocation
+
+When `ati.sdk.server.idca.trust-certificate` is configured and server policy is not `NONE`, inbound client Identity Certificates are checked on two independent tracks:
+
+| Track | Layer | Mechanism | Server policies |
+|-------|-------|-----------|-----------------|
+| **Certificate Revocation** | TLS (mTLS handshake) | PKIX CRL from CDP on the certificate chain | `BASIC`, `ENHANCED`, `ADVANCED` |
+| **Registration Revocation** | Application (Client Verification) | TL Badge registration status | `ENHANCED`, `ADVANCED` |
+
+Either failure rejects the connection. There is no operator-configured CRL URL — the SDK reads **CDP** from the presented chain (leaf, then issuing CA). No CDP → CRL skipped (debug log). CDP present but fetch/signature failure → handshake rejected (fail-closed).
+
+**Embedded Tomcat only** for TLS-layer CRL. Other embedded containers log a warning and skip CRL until supported. See [ADR-0004](docs/adr/0004-idca-crl-revocation.md).
 
 Set `ati.sdk.mode` to control which side to enable:
 
@@ -608,6 +622,8 @@ ati:
 | `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | Client verification policy | `ENHANCED` |
+| `ati.sdk.server.verification.policy` | Server verification policy (`NONE` is server-only) | `BASIC` |
+| `ati.sdk.server.idca.trust-certificate` | IDCA trust anchor PEM (+ TLS CRL when policy ≠ `NONE`) | — |
 | `ati.sdk.client.dns-timeout` | DNS lookup timeout | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP connect timeout | `10s` |
 
@@ -680,7 +696,8 @@ When discovering agents, you can specify a version constraint to select a specif
 | `1.2.3` | Exact version 1.2.3 |
 | `^1.2.0` | Compatible with 1.2.0 (>=1.2.0 <2.0.0) |
 | `~1.2.0` | Approximately 1.2.0 (>=1.2.0 <1.3.0) |
-| `*` | Any version (latest) |
+
+To select the latest version, **omit the version parameter** (do not pass `"*"` — it is not treated as a wildcard).
 
 ```java
 AtiDiscoveryClient client = new AtiDiscoveryClient();
