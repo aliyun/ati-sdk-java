@@ -18,3 +18,13 @@ Thumbs.db
 
 # Claude Code
 .claude/
+
+# Agent workspace (local only)
+.scratch/
+.superpowers/
+
+# Private keys and certificates (never commit)
+*.pem
+*.key
+*.p12
+*.jks
