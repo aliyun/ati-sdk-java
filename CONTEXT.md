@@ -79,8 +79,8 @@ The authoritative system that manages agent registration and lifecycle. In this 
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
 
 **CNNIC**:
-China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration via Console.
-_Avoid_: TL operator (alone — CNNIC also operates IDCA), CA provider (prefer CNNIC when referring to the institutional role)
+China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. CNNIC commissions **UniTrust** to operate the **IDCA Root** and issues Identity Certificates from the **IDCA Intermediate**. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration via Console.
+_Avoid_: TL operator (alone — CNNIC also owns IDCA), CA provider (prefer CNNIC when referring to the institutional role)
 
 **ATI Console**:
 The RA's web UI for registering agents, completing ACME/DNS verification, and managing lifecycle.
@@ -177,7 +177,7 @@ SDK record (`com.aliyun.ati.sdk.agent.verification.VerificationResult`) returned
 _Avoid_: VerificationResult (alone — specify Connection Verification Result in discussion, or use the fully qualified class name in code references)
 
 **mTLS (Mutual TLS)**:
-A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates depends on IDCA configuration. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
+A TLS connection where both parties may present certificates — the server agent presents its Server Certificate, the client agent may present its Identity Certificate. Client-side connections typically use mTLS; server-side acceptance of client Identity Certificates follows **Verification Policy** and uses the **IDCA Chain** as trust material when policy is not None. Pre/Post-verification (Badge/DANE) runs on top of the TLS layer.
 _Avoid_: two-way TLS (prefer mTLS), client-auth (implementation detail, not the domain concept)
 
 **Server Certificate**:
@@ -185,7 +185,7 @@ The TLS certificate a server agent uses to serve HTTPS — proves the server's i
 _Avoid_: Service cert (prefer Server Certificate), TLS cert (alone — ambiguous with client-side TLS material)
 
 **Identity Certificate**:
-A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC operates the identity CA and issues one to every registered agent, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation of a caller's Identity Certificate requires IDCA to be configured on the server agent; without IDCA, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
+A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC issues one to every registered agent from the **IDCA Intermediate**, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation uses the **IDCA Chain** when Verification Policy is not None; when policy is None, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
 _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert, ATI-issued (identity certs are CNNIC-issued)
 
 ### Trust & Verification
@@ -236,7 +236,13 @@ The trust verification level applied when establishing an agent-to-agent connect
 - **Enhanced** (`ENHANCED`) — L2 增强认证: Basic + Badge verification via the Transparency Log. Recommended production default.
 - **Advanced** (`ADVANCED`) — L3 高级认证: Enhanced + DANE TLSA verification. Requires DNSSEC infrastructure.
 
-On server agents, Verification Policy drives TLS `client-auth` (None → no client certificate requested; Enhanced/Advanced → client certificate required with IDCA trust anchor). The IDCA trust certificate path is configured separately via `ati.sdk.server.idca.trust-certificate`.
+On server agents, Verification Policy drives both TLS `client-auth` and whether Client Verification runs against the **IDCA Chain**:
+
+- **None** — no client certificate requested; IDCA Chain unused.
+- **Basic** — client certificate optional (`want`); production IDCA Chain is the default trust material.
+- **Enhanced** / **Advanced** — client certificate required (`need`); production IDCA Chain is the default trust material.
+
+A Server Agent may override the production IDCA Chain with a **Test IDCA Chain** or other non-production chain. The SDK ships the production IDCA Chain; supplying a chain path is optional.
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
 
 **Pre-verification**:
@@ -255,8 +261,28 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{64-char hex}` when comp
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private certificate authority operated by CNNIC to issue Identity Certificates. Distinct from public CAs used for Server Certificates. Optional on server agents — configuring the IDCA trust anchor enables mTLS client Identity Certificate chain validation and **Client Verification**. CNNIC embeds **CRL Distribution Points** on the Identity Certificate chain so relying parties can perform **Certificate Revocation** checks. Spring Boot: `ati.sdk.server.idca.trust-certificate` (path to CNNIC IDCA PEM). When IDCA is not configured, caller Identity Certificate verification is skipped.
-_Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), root CA, ATI CA (IDCA is CNNIC-operated)
+The private two-tier certificate authority owned by CNNIC that issues Identity Certificates: an **IDCA Root** (operated by **UniTrust** under CNNIC commission) plus an **IDCA Intermediate** (CNNIC). Distinct from public CAs used for Server Certificates. The production **IDCA Chain** is the default trust material for **Client Verification** when Verification Policy is not None. A Server Agent may override it with a **Test IDCA Chain**. CNNIC embeds **CRL Distribution Points** on the Identity Certificate chain so relying parties can perform **Certificate Revocation** checks. When Verification Policy is None, Identity Certificate verification is skipped.
+_Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), ATI CA (prefer IDCA)
+
+**IDCA Root**:
+The production private root CA certificate that anchors the **IDCA Chain**. CNNIC commissions **UniTrust** to operate this root; it is not a CNNIC-named root certificate.
+_Avoid_: 私签根证书, private root (alone), root CA (alone), CNNIC root (the Root is UniTrust-operated)
+
+**IDCA Intermediate**:
+The production private issuing CA certificate that signs Identity Certificates, itself signed by the **IDCA Root**. Operated by CNNIC.
+_Avoid_: 私签二级证书, issuing CA (alone), intermediate CA (alone — prefer IDCA Intermediate)
+
+**UniTrust**:
+The organization CNNIC commissioned to operate the **IDCA Root**. Distinct from CNNIC, which issues Identity Certificates from the **IDCA Intermediate**.
+_Avoid_: SHECA (CRL/OCSP host, not the Root operator), CNNIC (principal that owns IDCA, not the Root operator)
+
+**IDCA Chain**:
+Exactly two certificates: one production **IDCA Root** and one production **IDCA Intermediate**. A Server Agent loads **both** as trust material for **Client Verification** — not the Root alone — so a Client Agent may present only the leaf Identity Certificate. The SDK ships this pair as the default **server-side** trust material only; it is not attached to a Client Agent's outbound Identity Certificate. A Server Agent may replace it entirely with another two-certificate chain (a **Test IDCA Chain** or a rotated production pair) — override never merges with the shipped chain. Production **IDCA Intermediate** rotation is a hard cutover via that override; the shipped pair is updated in a later SDK release. Same process never trusts two production pairs at once. Distinct from the leaf Identity Certificate presented during mTLS.
+_Avoid_: 私签证书链, trust PEM (alone), IDCA trust certificate (prefer IDCA Chain)
+
+**Test IDCA Chain**:
+A non-production IDCA Chain used only for tests and local demos. Distinct from the production **IDCA Chain**; must not be used as the Server Agent's production trust material.
+_Avoid_: idca-chain (alone), ANS chain, test CA (prefer Test IDCA Chain)
 
 **CRL Distribution Point (CDP)**:
 An X.509 certificate extension (RFC 5280) embedding the HTTP URI where the issuing CA publishes its **Certificate Revocation List**. For Identity Certificates, CNNIC provides CDP on the certificate chain; the SDK reads CDP from the client Identity Certificate first, then from the issuing CA if absent. No operator-configured CRL URL — CDP is the sole production source.
@@ -271,11 +297,11 @@ Application-layer revocation of an agent's registration — TL Badge **Registrat
 _Avoid_: revocation (alone — ambiguous), CRL revocation (CRL is Certificate Revocation, not Registration Revocation)
 
 **Client Verification**:
-Server-side verification of an incoming client agent, governed jointly by **Verification Policy** and **IDCA** configuration. Comprises two complementary layers when IDCA is configured: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When IDCA is not configured, client identity certificate verification is not performed. Does not rely on SCITT headers.
+Server-side verification of an incoming client agent, governed by **Verification Policy**. When policy is not None, the production **IDCA Chain** is the default trust material (overridable by a **Test IDCA Chain**). Comprises two complementary layers: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When policy is None, client identity certificate verification is not performed. Does not rely on SCITT headers.
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **ClientRequestVerifier**:
-SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and `agentHost`, returns `ClientVerificationResult` with a `VerificationStatus`. Requires IDCA trust configuration and Verification Policy. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
+SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and `agentHost`, returns `ClientVerificationResult` with a `VerificationStatus`. Uses the **IDCA Chain** and **Verification Policy**. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
 _Avoid_: client verifier (alone), inbound verifier (too vague)
 
 **SCITT Header**:

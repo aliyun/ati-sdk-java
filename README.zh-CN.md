@@ -437,17 +437,17 @@ ati:
         # policy: ADVANCED     # L3 高级认证：必须客户端证书 + DANE 客户端验证
         # policy: NONE         # L0 无认证：仅开发/测试（client-auth=none）
       idca:
-        # CNNIC 身份 CA（IDCA）信任锚 PEM 路径，用于校验客户端 Identity Certificate 证书链
-        # policy 不为 NONE 时同时启用 TLS 层 CRL（从证书链 CDP 拉取）
-        # policy 为 ENHANCED 或 ADVANCED 时必填；BASIC 下可选
-        trust-certificate: /path/to/idca-trust.pem
+        # 可选覆盖：整链替换 SDK 内嵌的生产 IDCA Chain（Root + Intermediate）。
+        # 省略则使用内嵌的 CNNIC/UniTrust 生产链。仅测试链或轮换生产对时需要配置。
+        # 与内嵌链互斥，不会合并。
+        # trust-certificate: /path/to/idca-chain.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
 
 ### 服务端双轨吊销
 
-当配置了 `ati.sdk.server.idca.trust-certificate` 且服务端 policy 不为 `NONE` 时，入站客户端 Identity Certificate 会经过两条独立校验轨道：
+当服务端 policy 不为 `NONE` 时，入站客户端 Identity Certificate 会经过两条独立校验轨道。SDK 默认加载内嵌的生产 **IDCA Chain**；配置 `ati.sdk.server.idca.trust-certificate` 则整链替换：
 
 | 轨道 | 层级 | 机制 | 服务端 policy |
 |------|------|------|---------------|
@@ -457,6 +457,33 @@ ati:
 任一失败即拒绝连接。无需单独配置 CRL URL — SDK 从证书链读取 **CDP**（leaf → issuing CA）。链上无 CDP → 跳过 CRL（debug 日志）；有 CDP 但拉取/签名校验失败 → 握手拒绝（fail-closed）。
 
 **TLS 层 CRL 仅支持嵌入式 Tomcat**；其他嵌入式容器会打 WARN 并跳过 CRL。详见 [ADR-0004](docs/adr/0004-idca-crl-revocation.md)。
+
+### 更换内嵌 IDCA Chain（无需升级 SDK）
+
+默认信任材料是 SDK 内嵌的生产 **IDCA Chain**（恰好一张 Root + 一张 Intermediate）。CNNIC 换发新中间证、或测试环境要用 **Test IDCA Chain** 时，**不必等 SDK 发版**：把新的两张证拼成一份 PEM，配置覆盖路径即可。覆盖与内嵌链互斥（整链替换，不合并）。`NONE` 不加载链，配了也不会生效。
+
+```yaml
+ati:
+  sdk:
+    server:
+      verification:
+        policy: ENHANCED   # BASIC / ENHANCED / ADVANCED 才会加载链
+      idca:
+        trust-certificate: /etc/ati/idca-chain.pem   # 恰好两张证：Root + Intermediate
+```
+
+PEM 示例（顺序不限，SDK 会识别自签 Root 和由其签发的 Intermediate）：
+
+```
+-----BEGIN CERTIFICATE-----
+# IDCA Root
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+# IDCA Intermediate
+-----END CERTIFICATE-----
+```
+
+这是硬切：同一进程只信这一对。切过去之后，旧中间证签发的 Identity Certificate 会被拒绝；内嵌对会在后续 SDK 发版里更新。详见 [ADR-0005](docs/adr/0005-sdk-ships-idca-chain.md)。
 
 通过 `ati.sdk.mode` 控制启用哪一侧：
 
@@ -623,7 +650,7 @@ ati:
 | `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | 服务端验证策略（`NONE` 仅服务端） | `BASIC` |
-| `ati.sdk.server.idca.trust-certificate` | IDCA 信任锚 PEM（policy ≠ `NONE` 时含 TLS CRL） | — |
+| `ati.sdk.server.idca.trust-certificate` | 可选 IDCA Chain PEM 覆盖（恰好两张证；整链替换内嵌生产链） | 内嵌生产 IDCA Chain |
 | `ati.sdk.client.dns-timeout` | DNS 查询超时 | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP 连接超时 | `10s` |
 

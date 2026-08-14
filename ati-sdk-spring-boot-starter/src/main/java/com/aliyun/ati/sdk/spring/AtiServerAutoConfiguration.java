@@ -4,6 +4,7 @@ import com.aliyun.ati.sdk.agent.server.DefaultClientRequestVerifier;
 import com.aliyun.ati.sdk.agent.verification.DaneConfig;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.DefaultDaneTlsaVerifier;
+import com.aliyun.ati.sdk.agent.verification.IdcaChain;
 import com.aliyun.ati.sdk.agent.verification.crl.CrlFetcher;
 import com.aliyun.ati.sdk.agent.verification.crl.CrlRevocationChecker;
 import com.aliyun.ati.sdk.agent.verification.crl.DefaultCrlHttpClient;
@@ -28,8 +29,9 @@ import org.springframework.context.annotation.Bean;
  * <p>Activated when {@code ati.sdk.enabled=true} (default) and
  * {@code ati.sdk.mode} is {@code server} or {@code both}.</p>
  *
- * <p>Configures the embedded web server for mTLS with IDCA trust
- * when {@code ati.sdk.server.idca.trust-certificate} is set.</p>
+ * <p>Configures the embedded web server for mTLS. When verification policy is not
+ * {@code NONE}, the SDK-shipped production IDCA Chain is the default trust material.
+ * {@code ati.sdk.server.idca.trust-certificate} optionally replaces that chain.</p>
  */
 @AutoConfiguration
 @ConditionalOnProperty(prefix = "ati.sdk", name = "enabled", havingValue = "true", matchIfMissing = true)
@@ -44,9 +46,9 @@ public class AtiServerAutoConfiguration {
      * <p>TLS {@code client-auth} is derived from {@code ati.sdk.server.verification.policy}
      * (not configured separately):</p>
      * <ul>
-     *   <li>{@code NONE} → {@code client-auth=none}</li>
-     *   <li>{@code BASIC} → {@code client-auth=want} (optional IDCA trust store)</li>
-     *   <li>{@code ENHANCED}/{@code ADVANCED} → {@code client-auth=need} (IDCA trust store required)</li>
+     *   <li>{@code NONE} → {@code client-auth=none} (IDCA Chain unused)</li>
+     *   <li>{@code BASIC} → {@code client-auth=want} (shipped IDCA Chain, optional override)</li>
+     *   <li>{@code ENHANCED}/{@code ADVANCED} → {@code client-auth=need} (shipped IDCA Chain, optional override)</li>
      * </ul>
      *
      * @param properties the ATI SDK properties
@@ -70,14 +72,11 @@ public class AtiServerAutoConfiguration {
                 com.aliyun.ati.sdk.agent.VerificationPolicy.fromString(
                     serverProps.getVerification().getPolicy());
 
-            String trustCert = idcaProps.getTrustCertificate();
-            boolean hasIdcaTrust = trustCert != null && !trustCert.isBlank();
-
-            if (policy.requiresIdcaTrust() && !hasIdcaTrust) {
-                throw new IllegalStateException(
-                    "Server verification policy " + policy + " (" + policy.displayName()
-                        + ") requires ati.sdk.server.idca.trust-certificate");
-            }
+            String trustOverride = idcaProps.getTrustCertificate();
+            boolean hasIdcaTrust = policy.requiresIdcaTrust();
+            String trustCert = hasIdcaTrust
+                ? IdcaChain.trustCertificateLocation(trustOverride)
+                : null;
 
             Ssl ssl = new Ssl();
             ssl.setEnabled(true);
@@ -95,16 +94,15 @@ public class AtiServerAutoConfiguration {
                 }
                 case BASIC -> {
                     ssl.setClientAuth(Ssl.ClientAuth.WANT);
-                    if (hasIdcaTrust) {
-                        ssl.setTrustCertificate(trustCert);
-                    }
+                    ssl.setTrustCertificate(trustCert);
                     LOG.info("Server policy {}: client-auth=WANT, idca={}",
-                        policy, hasIdcaTrust ? "configured" : "absent");
+                        policy, trustOverride == null || trustOverride.isBlank() ? "shipped" : "override");
                 }
                 case ENHANCED, ADVANCED -> {
                     ssl.setClientAuth(Ssl.ClientAuth.NEED);
                     ssl.setTrustCertificate(trustCert);
-                    LOG.info("Server policy {}: client-auth=NEED, idca=configured", policy);
+                    LOG.info("Server policy {}: client-auth=NEED, idca={}",
+                        policy, trustOverride == null || trustOverride.isBlank() ? "shipped" : "override");
                 }
             }
 
@@ -132,7 +130,7 @@ public class AtiServerAutoConfiguration {
     }
 
     /**
-     * CRL revocation checker used at the TLS layer when IDCA trust is configured.
+     * CRL revocation checker used at the TLS layer when the IDCA Chain is loaded.
      */
     @Bean
     @ConditionalOnMissingBean

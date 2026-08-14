@@ -22,7 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       verification:
  *         policy: BASIC          # NONE | BASIC | ENHANCED | ADVANCED
  *       idca:
- *         trust-certificate: /path/to/idca-trust.pem  # required for ENHANCED/ADVANCED
+ *         trust-certificate: /path/to/idca-trust.pem  # optional; replaces shipped IDCA Chain
  *     transparency:
  *       base-url: https://ati-tl.cnnic.cn:8180
  *     verification:
@@ -197,7 +197,8 @@ public class AtiSdkProperties {
     }
 
     /**
-     * IDCA (Identity CA) trust configuration.
+     * IDCA (Identity CA) trust configuration. When unset, the SDK-shipped production
+     * IDCA Chain is used. A configured path replaces that chain entirely.
      */
     public static class Idca {
         private String trustCertificate;

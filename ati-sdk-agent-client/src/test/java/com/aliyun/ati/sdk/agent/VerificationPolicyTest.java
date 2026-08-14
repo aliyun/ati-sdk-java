@@ -33,7 +33,7 @@ class VerificationPolicyTest {
         assertFalse(VerificationPolicy.BASIC.hasAnyVerification());
         assertFalse(VerificationPolicy.BASIC.hasBadgeVerification());
         assertFalse(VerificationPolicy.BASIC.hasDaneVerification());
-        assertFalse(VerificationPolicy.BASIC.requiresIdcaTrust());
+        assertTrue(VerificationPolicy.BASIC.requiresIdcaTrust());
     }
 
     @Test

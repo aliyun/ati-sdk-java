@@ -31,7 +31,9 @@ public enum VerificationPolicy {
     NONE,
 
     /**
-     * Basic authentication — standard PKI trust via the JVM default trust store (or IDCA on servers).
+     * Basic authentication — standard PKI via the production IDCA Chain on servers
+     * (optional client certificate). Client agents use the JVM default trust store
+     * for the Server Certificate.
      */
     BASIC,
 
@@ -102,10 +104,13 @@ public enum VerificationPolicy {
     }
 
     /**
-     * Returns true if this policy requires an IDCA trust anchor on the server.
+     * Returns true if this policy uses the IDCA Chain as server-side trust material.
+     *
+     * <p>{@link #NONE} is the only policy that does not. {@link #BASIC} and above load
+     * the SDK-shipped production chain unless the operator replaces it.</p>
      */
     public boolean requiresIdcaTrust() {
-        return this == ENHANCED || this == ADVANCED;
+        return this != NONE;
     }
 
     /**

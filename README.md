@@ -437,17 +437,17 @@ ati:
         # policy: ADVANCED     # L3: require client cert + DANE client verification
         # policy: NONE         # L0: dev/test only (client-auth=none)
       idca:
-        # CNNIC Identity CA (IDCA) trust anchor PEM — validates client Identity Certificate chains
-        # Also enables TLS-layer CRL (CDP on cert chain) when policy is not NONE
-        # Required when policy is ENHANCED or ADVANCED; optional for BASIC
-        trust-certificate: /path/to/idca-trust.pem
+        # Optional override: replaces the SDK-shipped production IDCA Chain (Root + Intermediate).
+        # Omit to use the bundled CNNIC/UniTrust production chain. Required only for Test IDCA Chain
+        # or a rotated production pair. Never merged with the shipped chain.
+        # trust-certificate: /path/to/idca-chain.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn:8180
 ```
 
 ### Server-side dual-track revocation
 
-When `ati.sdk.server.idca.trust-certificate` is configured and server policy is not `NONE`, inbound client Identity Certificates are checked on two independent tracks:
+When server policy is not `NONE`, inbound client Identity Certificates are checked on two independent tracks. The SDK loads the shipped production **IDCA Chain** as trust material unless `ati.sdk.server.idca.trust-certificate` replaces it:
 
 | Track | Layer | Mechanism | Server policies |
 |-------|-------|-----------|-----------------|
@@ -457,6 +457,33 @@ When `ati.sdk.server.idca.trust-certificate` is configured and server policy is 
 Either failure rejects the connection. There is no operator-configured CRL URL — the SDK reads **CDP** from the presented chain (leaf, then issuing CA). No CDP → CRL skipped (debug log). CDP present but fetch/signature failure → handshake rejected (fail-closed).
 
 **Embedded Tomcat only** for TLS-layer CRL. Other embedded containers log a warning and skip CRL until supported. See [ADR-0004](docs/adr/0004-idca-crl-revocation.md).
+
+### Replacing the shipped IDCA Chain (no SDK upgrade)
+
+The default trust material is the production **IDCA Chain** bundled in the SDK (exactly one Root + one Intermediate). When CNNIC issues a new Intermediate, or a test environment needs the **Test IDCA Chain**, **do not wait for an SDK release**: concatenate the new pair into a PEM and set the override path. The override replaces the shipped chain entirely (never merged). `NONE` does not load the chain; an override has no effect under that policy.
+
+```yaml
+ati:
+  sdk:
+    server:
+      verification:
+        policy: ENHANCED   # BASIC / ENHANCED / ADVANCED load the chain
+      idca:
+        trust-certificate: /etc/ati/idca-chain.pem   # exactly two certs: Root + Intermediate
+```
+
+PEM shape (order does not matter; the SDK identifies the self-signed Root and the Intermediate it issued):
+
+```
+-----BEGIN CERTIFICATE-----
+# IDCA Root
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+# IDCA Intermediate
+-----END CERTIFICATE-----
+```
+
+This is a hard cutover: one process trusts one pair. Identity Certificates from the previous Intermediate are rejected after the switch. The bundled pair is updated in a later SDK release. See [ADR-0005](docs/adr/0005-sdk-ships-idca-chain.md).
 
 Set `ati.sdk.mode` to control which side to enable:
 
@@ -623,7 +650,7 @@ ati:
 | `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
 | `ati.sdk.verification.policy` | Client verification policy | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | Server verification policy (`NONE` is server-only) | `BASIC` |
-| `ati.sdk.server.idca.trust-certificate` | IDCA trust anchor PEM (+ TLS CRL when policy ≠ `NONE`) | — |
+| `ati.sdk.server.idca.trust-certificate` | Optional IDCA Chain PEM override (exactly 2 certs; replaces shipped chain) | shipped production IDCA Chain |
 | `ati.sdk.client.dns-timeout` | DNS lookup timeout | `5s` |
 | `ati.sdk.client.connect-timeout` | HTTP connect timeout | `10s` |
 
