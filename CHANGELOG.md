@@ -5,6 +5,16 @@ All notable changes to the ATI Java SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-08-17
+
+### Added
+
+- **Bundled production IDCA Chain** (`IdcaChain`): the SDK now ships the production Root + Intermediate certificate pair as the default server-side trust for client identity verification (ADR-0005). Server agents no longer need to provide a PEM path at `BASIC`+ policies; the `trust-certificate` property can still replace the bundled chain without an SDK upgrade.
+
+### Fixed
+
+- **IDCA Chain verification error handling**: preserve JCE/FIPS provider errors when verifying the bundled chain. Missing algorithms and other provider errors are rethrown with the original cause instead of being misreported as a Root/Intermediate pairing failure; signature mismatch remains a chain-structure failure.
+
 ## [2.0.0] - 2026-07-28
 
 First open-source release of the ATI Java SDK.
@@ -46,4 +56,5 @@ First open-source release of the ATI Java SDK.
 - Restrict `NONE` verification policy to server-side configuration only.
 - README accuracy for CRL, dual-hostname connect, and API examples.
 
+[2.1.0]: #
 [2.0.0]: #
