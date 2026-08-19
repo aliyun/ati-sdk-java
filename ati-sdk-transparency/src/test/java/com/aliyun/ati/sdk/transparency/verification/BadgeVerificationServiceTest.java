@@ -218,17 +218,19 @@ class BadgeVerificationServiceTest {
     // ==================== Edge Cases ====================
 
     @Test
-    @DisplayName("Should return LOOKUP_FAILED when badge URL has invalid path format")
-    void shouldReturnLookupFailedWhenBadgeUrlHasInvalidPath() {
-        // Badge with invalid URL path (fails URL validation before agent ID check)
+    @DisplayName("Should path-fetch when Badge u= is not a Transparency Log agents path")
+    void shouldPathFetchWhenBadgeUrlHasNonAgentPath() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
             "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/invalid-path");
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
+        when(transparencyClient.getTransparencyLogByPath("/invalid-path"))
+            .thenThrow(new RuntimeException("HTTP 404 Not Found"));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
 
         assertThat(result.getStatus()).isEqualTo(VerificationStatus.LOOKUP_FAILED);
-        assertThat(result.getWarningMessage()).contains("badge URL");
+        assertThat(result.getWarningMessage()).contains("404");
+        verify(transparencyClient).getTransparencyLogByPath("/invalid-path");
     }
 
     @Test

@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.mockStatic;
 
@@ -329,6 +330,34 @@ class ClientVerificationTest {
             // Then
             assertThat(result.getStatus()).isEqualTo(VerificationStatus.LOOKUP_FAILED);
             assertThat(result.getWarningMessage()).contains("ATI URI SAN");
+        }
+    }
+
+    @Test
+    @DisplayName("Should path-fetch when Badge TXT u= host is not a Trusted TL Domain")
+    void shouldPathFetchWhenBadgeTxtHostIsNotTrustedTlDomain() {
+        try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
+            certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
+                .thenReturn(Optional.of(TEST_ANS_NAME));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
+                .thenReturn(TEST_FINGERPRINT);
+            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
+                .thenReturn(true);
+
+            RaBadgeRecord badge = RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.0; u=https://evil.example/tl/agents/" + TEST_AGENT_ID);
+            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
+            TransparencyLog registration = createMockRegistration("ACTIVE", TEST_FINGERPRINT);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
+
+            ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
+
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            verify(transparencyClient).getTransparencyLogByPath(TEST_TL_PATH);
         }
     }
 

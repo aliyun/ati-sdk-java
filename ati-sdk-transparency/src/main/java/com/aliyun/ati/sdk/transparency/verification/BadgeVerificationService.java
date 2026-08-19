@@ -83,7 +83,6 @@ public final class BadgeVerificationService implements ServerVerifier {
 
     private final TransparencyClient transparencyClient;
     private final RaBadgeLookupService raBadgeLookupService;
-    private final BadgeUrlValidator badgeUrlValidator;
     private final Executor executor;
 
     private BadgeVerificationService(Builder builder) {
@@ -92,9 +91,6 @@ public final class BadgeVerificationService implements ServerVerifier {
         this.raBadgeLookupService = builder.raBadgeLookupService != null
             ? builder.raBadgeLookupService
             : new RaBadgeLookupService();
-        this.badgeUrlValidator = builder.badgeUrlValidator != null
-            ? builder.badgeUrlValidator
-            : BadgeUrlValidator.withAtiDefaults();
         this.executor = builder.executor != null
             ? builder.executor
             : AtiExecutors.sharedIoExecutor();
@@ -130,18 +126,9 @@ public final class BadgeVerificationService implements ServerVerifier {
 
             LOG.debug("Found {} badge records for {}", badges.size(), hostname);
 
-            // Step 2: Validate badge URLs for security and filter invalid ones
-            List<RaBadgeRecord> validBadges = filterValidBadgeUrls(badges);
-            if (validBadges.isEmpty()) {
-                LOG.warn("All badge URLs invalid for {}", hostname);
-                return ServerVerificationResult.builder()
-                    .status(VerificationStatus.LOOKUP_FAILED)
-                    .warningMessage("All badge URLs failed validation")
-                    .build();
-            }
-
-            // Step 3: Filter badges with valid paths (spec 7.1: use full path, not just agentId)
-            List<RaBadgeRecord> badgesWithPaths = validBadges.stream()
+            // Spec 7.1: extract the path from u= and fetch via TransparencyClient.baseUrl.
+            // Do not drop a record because the Badge TXT u= host is outside Trusted TL Domain.
+            List<RaBadgeRecord> badgesWithPaths = badges.stream()
                 .filter(badge -> badge.tlPath() != null && !badge.tlPath().isBlank())
                 .collect(Collectors.toList());
 
@@ -153,11 +140,10 @@ public final class BadgeVerificationService implements ServerVerifier {
                     .build();
             }
 
-            // Step 4: Fetch all registrations in parallel
+            // Fetch via TransparencyClient.baseUrl + path (Spec 7.1)
             LOG.debug("Fetching {} registrations in parallel for server verification", badgesWithPaths.size());
             List<FetchResult> fetchResults = fetchRegistrationsInParallel(badgesWithPaths);
 
-            // Step 5: Evaluate all registrations and collect valid fingerprints
             return evaluateServerRegistrations(fetchResults);
 
         } catch (Exception e) {
@@ -225,25 +211,14 @@ public final class BadgeVerificationService implements ServerVerifier {
                     .build();
             }
 
-            // Step 6: Validate badge URLs for security and filter invalid ones
-            List<RaBadgeRecord> validBadges = filterValidBadgeUrls(badges);
-            if (validBadges.isEmpty()) {
-                LOG.warn("All badge URLs invalid for {}", agentHost);
-                return ClientVerificationResult.builder()
-                    .status(VerificationStatus.LOOKUP_FAILED)
-                    .warningMessage("All badge URLs failed validation")
-                    .build();
-            }
-
-            // Step 7: Filter badges by version to reduce TL API calls during version rotation
-            List<RaBadgeRecord> filteredBadges = filterBadgesByVersion(validBadges, certVersion);
+            // Spec 7.1: path from u=, HTTP via TransparencyClient.baseUrl — not Badge TXT u= host allowlisting.
+            List<RaBadgeRecord> filteredBadges = filterBadgesByVersion(badges, certVersion);
             if (filteredBadges.isEmpty()) {
-                // Fall back to all valid badges if no version match (backwards compatibility)
-                LOG.debug("No badges match version {}, checking all {} valid badges", certVersion, validBadges.size());
-                filteredBadges = validBadges;
+                LOG.debug("No badges match version {}, checking all {} badges", certVersion, badges.size());
+                filteredBadges = badges;
             } else {
-                LOG.debug("Filtered {} valid badges to {} matching version {}",
-                    validBadges.size(), filteredBadges.size(), certVersion);
+                LOG.debug("Filtered {} badges to {} matching version {}",
+                    badges.size(), filteredBadges.size(), certVersion);
             }
 
             // Step 8: Check each registration for matching fingerprint, agentHost, and ANS name
@@ -694,31 +669,6 @@ public final class BadgeVerificationService implements ServerVerifier {
     }
 
     /**
-     * Filters badges to only those with valid URLs.
-     *
-     * <p>This security check ensures badge URLs point to trusted transparency log
-     * domains before making any network requests.</p>
-     *
-     * @param badges the list of badges to filter
-     * @return list of badges with valid URLs
-     */
-    private List<RaBadgeRecord> filterValidBadgeUrls(List<RaBadgeRecord> badges) {
-        if (badges == null) {
-            return List.of();
-        }
-        List<RaBadgeRecord> validBadges = new ArrayList<>();
-        for (RaBadgeRecord badge : badges) {
-            BadgeUrlValidator.ValidationResult result = badgeUrlValidator.validate(badge.url());
-            if (result.valid()) {
-                validBadges.add(badge);
-            } else {
-                LOG.debug("Skipping badge with invalid URL: {}", result.reason());
-            }
-        }
-        return validBadges;
-    }
-
-    /**
      * Filters badges to only those matching the specified version.
      *
      * <p>This optimization reduces transparency log API calls during version rotation
@@ -764,7 +714,6 @@ public final class BadgeVerificationService implements ServerVerifier {
     public static final class Builder {
         private TransparencyClient transparencyClient;
         private RaBadgeLookupService raBadgeLookupService;
-        private BadgeUrlValidator badgeUrlValidator;
         private Executor executor;
 
         private Builder() {
@@ -791,19 +740,6 @@ public final class BadgeVerificationService implements ServerVerifier {
          */
         public Builder raBadgeLookupService(RaBadgeLookupService raBadgeLookupService) {
             this.raBadgeLookupService = raBadgeLookupService;
-            return this;
-        }
-
-        /**
-         * Sets a custom badge URL validator.
-         *
-         * <p>This is primarily useful for testing.</p>
-         *
-         * @param badgeUrlValidator the URL validator
-         * @return this builder
-         */
-        public Builder badgeUrlValidator(BadgeUrlValidator badgeUrlValidator) {
-            this.badgeUrlValidator = badgeUrlValidator;
             return this;
         }
 
