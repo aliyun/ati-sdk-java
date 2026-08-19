@@ -5,13 +5,13 @@ Agent discovery module — resolves agent information via DNS `_ati` TXT records
 ## Key Classes
 
 - `AtiDiscoveryClient` — DNS TXT-based agent discovery client
-- `AgentDetail` — Discovery result (`agentHost`, `accessHost`, `agentVersion`, `endpoints`)
+- `AgentDetail` — Discovery result (Identity Hostname via `getAgentHost()`, Access Hostname via `getAccessHost()`, `agentVersion`, `endpoints`)
 - `AgentEndpoint` — Protocol-specific endpoint (`agentUrl`, `protocol`)
 - `AtiDiscoveryRecord` — Parsed `_ati` TXT record (`v`, `av`, `p`, `u`, `m`)
 
 ## Discovery TXT sample
 
-`_ati.{agentHost}` — semicolon-separated KV; this SDK parses **`ati1`** only. One record per Protocol:
+`_ati.{identityHost}` — semicolon-separated KV; this SDK parses **`ati1`** only. One record per Protocol:
 
 ```
 _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
@@ -26,11 +26,11 @@ _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://baili
 AtiDiscoveryClient client = new AtiDiscoveryClient();
 
 // Discover by Identity Hostname (optional SemVer constraint)
-// Shared platform: agentHost (identity) is a first-level subdomain of u= host (access)
+// Shared Domain Mode: identityHost is a first-level subdomain of u= host (accessHost)
 AgentDetail agent = client.discover("abc123.bailian.aliyun.com", "^1.0.0");
 String agentUrl = agent.getEndpoints().get(0).getAgentUrl();
 
-// Connect with dual-hostname verification
+// Connect — getAgentHost() returns identityHost
 AgentConnection conn = atiClient.connect(agentUrl,
     ConnectOptions.builder()
         .identityHost(agent.getAgentHost())

@@ -6,7 +6,7 @@
 
 ## 特性
 
-- **基于 DNS TXT 的 Agent 发现** — 通过 Identity Hostname 上的 `_ati` TXT 记录解析 Agent，支持 SemVer 版本约束
+- **基于 DNS TXT 的 Agent 发现** — 通过 `_ati.{identityHost}` TXT 记录解析 Agent，支持 SemVer 版本约束
 - **DANE TLSA 验证** — 通过 DNS TLSA 记录验证服务器证书
 - **Badge 验证** — 通过 CNNIC 透明日志（Transparency Log）加密验证 Agent 注册信息
 - **IDCA CRL 证书吊销（服务端）** — 配置 IDCA 信任时在 TLS 层通过 CDP/CRL 校验客户端 Identity Certificate（嵌入式 Tomcat）
@@ -27,7 +27,7 @@
 
 ## 验证时序图
 
-下方时序图使用 `{serverIdentityHost}`、`{serverAccessHost}` 与 `{clientIdentityHost}` 占位符。**单域名模式**下 `{serverIdentityHost}` 等于 `{serverAccessHost}` — Discovery、Badge 与传输层 DANE 均指向同一 FQDN。
+两种服务模式。`{serverIdentityHost}` 是服务端 Agent 的 **Identity Hostname**（`identityHost`）；`{clientIdentityHost}` 是客户端 Agent 的 Identity Hostname。仅当两个 FQDN 不同时才出现 `{serverAccessHost}`。
 
 **说明：**
 
@@ -37,15 +37,33 @@
 - **`NONE` 仅适用于服务端** — 客户端不能配置 `NONE`；客户端始终校验服务端证书（最低 `BASIC`）。
 - **服务端 `client-auth`** 由 `ati.sdk.server.verification.policy` 自动派生（勿单独配置）：`NONE` → none，`BASIC` → want，`ENHANCED`/`ADVANCED` → need。
 
-### 双 Hostname 模型（共享平台）
+### Independent Domain Mode（独立域名模式）
 
-多个 Agent 共享一个 **Access Hostname**；每个 Agent 的 **Identity Hostname** 为其一级子域名。RA 要求 `agentHost` 为 `u=` host 的一级子域名。
+单个 Agent 独占一个域名。**Identity Hostname = Access Hostname**（`identityHost` = `accessHost`）。RA 要求 Identity Hostname 等于 `u=` 的 host。时序图中 `{serverIdentityHost}` 等于 `{serverAccessHost}`。
 
-| Hostname | 定义 | 示例 |
-|----------|------|------|
-| **服务端 Identity Hostname** `{serverIdentityHost}` | **服务端 Agent** 身份的唯一标识 — 用于发现 Agent、验证服务端是谁 | `abc123.bailian.aliyun.com` |
-| **服务端 Access Hostname** `{serverAccessHost}` | 访问**服务端 Agent 服务**的通用域名 — TLS 与 `agentUrl` 均连接于此 | `bailian.aliyun.com` |
-| **客户端 Identity Hostname** `{clientIdentityHost}` | **客户端 Agent** 身份的唯一标识 — 与服务端 Identity Hostname 对称；服务端验证调用方时，从客户端 Identity Certificate URI SAN 提取 | `xyz789.caller.example.com` |
+| 名称 | 定义 | 示例 |
+|------|------|------|
+| **服务端 Identity Hostname** `{serverIdentityHost}` | **服务端 Agent** 身份的唯一标识 — Discovery、Badge、TLS 与 `agentUrl` 均使用该 FQDN | `agent.example.com` |
+| **客户端 Identity Hostname** `{clientIdentityHost}` | **客户端 Agent** 身份的唯一标识；服务端验证调用方时，从客户端 Identity Certificate URI SAN 提取 | `caller.example.com` |
+
+示例 endpoint：`u=https://agent.example.com/mcp` — host 等于 `identityHost`。
+
+时序图中的 DNS 查询对应关系（服务端记录在同一 FQDN）：
+
+| Hostname | 记录 |
+|----------|------|
+| `{serverIdentityHost}` | `_ati`（Discovery）、`_ati-badge`（Badge）、`_443._tcp`（传输层 DANE） |
+| `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
+
+### Shared Domain Mode（共享域名模式）
+
+多个 Agent 共享一个 **Access Hostname**；每个 Agent 的 **Identity Hostname** 是该 Access Hostname 的**一级子域名**（**直接父域**，不是 eTLD+1 /「主域名」）。RA 要求 Identity Hostname 为 `u=` host 的一级子域名。
+
+| 名称 | 定义 | 示例 |
+|------|------|------|
+| **服务端 Identity Hostname** `{serverIdentityHost}` | **服务端 Agent** 身份的唯一标识 — Discovery、Badge、身份 DNS | `abc123.bailian.aliyun.com` |
+| **服务端 Access Hostname** `{serverAccessHost}` | Identity Hostname 的直接父域 — TLS 与 `agentUrl` 连接于此 | `bailian.aliyun.com` |
+| **客户端 Identity Hostname** `{clientIdentityHost}` | **客户端 Agent** 身份的唯一标识；从客户端 Identity Certificate URI SAN 提取 | `xyz789.caller.example.com` |
 
 示例 endpoint：`u=https://bailian.aliyun.com/agents/abc123/mcp` — host 为 Access；Discovery 查询 `_ati.abc123.bailian.aliyun.com`。
 
@@ -55,25 +73,6 @@
 |----------|------|
 | `{serverIdentityHost}` | `_ati`（Discovery）、`_ati-badge`（Badge） |
 | `{serverAccessHost}` | `_443._tcp`（服务端传输层 DANE） |
-| `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
-
-### 单 Hostname 模型
-
-单个 Agent 独占一个域名；**Identity Hostname 等于 Access Hostname**。RA 要求 `agentHost` 等于 `u=` 的 host。
-
-| Hostname | 定义 | 示例 |
-|----------|------|------|
-| **服务端 Identity Hostname** `{serverIdentityHost}` | 与 Access Hostname 相同 — 注册、Discovery、Badge 与 TLS 均在同一 FQDN | `agent.example.com` |
-| **服务端 Access Hostname** `{serverAccessHost}` | 等于 `{serverIdentityHost}` | `agent.example.com` |
-| **客户端 Identity Hostname** `{clientIdentityHost}` | 客户端 Agent 身份（不变 — 客户端也可采用单域名部署） | `caller.example.com` |
-
-示例 endpoint：`u=https://agent.example.com/mcp` — host 等于 `agentHost`。
-
-时序图中的 DNS 查询对应关系（服务端记录合并到同一 FQDN）：
-
-| Hostname | 记录 |
-|----------|------|
-| `{serverIdentityHost}`（= `{serverAccessHost}`） | `_ati`（Discovery）、`_ati-badge`（Badge）、`_443._tcp`（传输层 DANE） |
 | `{clientIdentityHost}` | `_ati-badge`、`_ati-identity._tls`（服务端 Client Verification） |
 
 ### NONE（L0）：服务端无认证（仅开发/测试）
@@ -293,7 +292,7 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 
 1. **生成身份密钥对** — 线下为身份证书创建 RSA/EC 密钥对
 2. **生成身份 CSR** — 创建包含 `ati://` URI SAN（Identity Hostname）的证书签名请求
-3. **提交注册** — 在 ATI 控制台输入服务证书 + 身份 CSR，并注册 agentHost、version、endpoints（服务证书由用户提供）
+3. **提交注册** — 在 ATI 控制台输入服务证书 + 身份 CSR，并注册 Identity Hostname、version、endpoints（服务证书由用户提供）
 4. **ACME 验证** — 添加 DNS TXT 记录证明域名所有权
 5. **身份证书签发** — CNNIC 通过 IDCA 签发身份证书（服务证书由用户提供，非 CNNIC 或 RA 签发）
 6. **DNS 验证** — 添加 TLSA 和 badge DNS 记录
@@ -305,16 +304,16 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 
 发布在 **Identity Hostname** 上。分号分隔的 KV，键顺序无意义。本 SDK 仅解析 Discovery 的 **`ati1`** 与 Badge 的 **`ati-badge1`**。
 
-**Discovery TXT**（`_ati.{agentHost}`）— 每种 Protocol 一条（`p=` 为小写 `mcp`、`a2a` 或 `http-api`）：
+**Discovery TXT**（`_ati.{identityHost}`）— 每种 Protocol 一条（`p=` 为小写 `mcp`、`a2a` 或 `http-api`）：
 
 ```
 _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
 _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://bailian.aliyun.com/agents/abc123/a2a"
 ```
 
-可附加 `m=direct`；省略时 Discovery Mode 为 `direct`。`u=` 是 Access Hostname 上的 **agentUrl**（单 Hostname 模式下该 host 等于 `agentHost`）。
+可附加 `m=direct`；省略时 Discovery Mode 为 `direct`。`u=` 是 Access Hostname 上的 **agentUrl**（Independent Domain Mode 下该 host 等于 `identityHost`）。
 
-**Badge TXT**（`_ati-badge.{agentHost}`）：
+**Badge TXT**（`_ati-badge.{identityHost}`）：
 
 ```
 _ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
@@ -344,7 +343,7 @@ AgentDetail latest = client.discover("abc123.bailian.aliyun.com");
 
 ### Agent 间连接
 
-在**双 Hostname 模型**下，TLS 连接到 **Access Hostname**（`agentUrl` 的 host），而 Badge 与 identity DANE 查询使用 **Identity Hostname**。Discovery 之后，从 `detail.getEndpoints()` 中按 protocol 选择 endpoint（选中版本下每个 protocol 一条），再通过 `ConnectOptions` 传入两个 hostname：
+TLS 连接到 **Access Hostname**（`agentUrl` 的 host）。Badge 查询使用 **Identity Hostname** — 将其赋给 `ConnectOptions.identityHost`（`AgentDetail.getAgentHost()`）。**Shared Domain Mode** 下两个 FQDN 不同；**Independent Domain Mode** 下相同。Discovery 之后，从 `detail.getEndpoints()` 中按 protocol 选择 endpoint（选中版本下每个 protocol 一条）：
 
 ```java
 import com.aliyun.ati.sdk.agent.AtiClient;
@@ -379,13 +378,13 @@ String agentUrl = detail.getEndpoints().stream()
 
 AgentConnection conn = client.connect(agentUrl,
     ConnectOptions.builder()
-        // 双 hostname：agentUrl 的 host 即 accessHost；Badge 查询需指定 identityHost
+        // Shared Domain Mode：agentUrl 的 host 即 accessHost；Badge 查询需指定 identityHost
         .identityHost(detail.getAgentHost())
         .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(tl)
         .build());
 
-// 单域名 — identityHost 等于 accessHost；ADVANCED 额外做传输层 DANE
+// Independent Domain Mode — identityHost 等于 accessHost；ADVANCED 额外做传输层 DANE
 AgentConnection direct = client.connect(
     "https://agent.example.com/mcp",
     ConnectOptions.builder()
@@ -406,7 +405,7 @@ AgentConnection mtls = client.connect(agentUrl,
         .build());
 ```
 
-使用 PKCS12 密钥库时，可用 `AtiVerifiedClient`（适用于 **agentUrl 的 host 等于 Identity Hostname** 的单域名部署）。双 hostname 模式请使用上文 `AtiClient` + `ConnectOptions`：
+使用 PKCS12 密钥库时，可用 `AtiVerifiedClient`（适用于 **agentUrl 的 host 等于 Identity Hostname** 的 Independent Domain Mode）。Shared Domain Mode 请使用上文 `AtiClient` + `ConnectOptions`：
 
 ```java
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
@@ -415,7 +414,7 @@ AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .policy(VerificationPolicy.ENHANCED)
     .build();
 
-// 单域名：https://agent.example.com/mcp — host 同时作为 access 与 identity
+// Independent Domain Mode：https://agent.example.com/mcp — host 同时作为 accessHost 与 identityHost
 AtiConnection conn = verifiedClient.connect("https://agent.example.com/mcp");
 ```
 
@@ -547,7 +546,7 @@ ConnectOptions opts = ConnectOptions.builder()
     .verificationPolicy(VerificationPolicy.BASIC)
     .build();
 
-// ENHANCED — TLS + ATI Badge（双 hostname 需设置 identityHost）
+// ENHANCED — TLS + ATI Badge（Shared Domain Mode：设置 identityHost）
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
     .verificationPolicy(VerificationPolicy.ENHANCED)

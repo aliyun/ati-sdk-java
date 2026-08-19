@@ -19,7 +19,7 @@ Trusted CNNIC TL domains:
 
 ## Badge TXT sample
 
-`_ati-badge.{agentHost}` — semicolon-separated KV; this SDK parses **`ati-badge1`** only:
+`_ati-badge.{identityHost}` — semicolon-separated KV; this SDK parses **`ati-badge1`** only:
 
 ```
 _ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"

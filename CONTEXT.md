@@ -63,7 +63,7 @@ Model Context Protocol — an endpoint protocol for tool invocation, resource ac
 _Avoid_: model protocol, MCP server (MCP is the protocol; the agent is still an Agent)
 
 **agentUrl**:
-The connectable HTTPS URL of an Endpoint — e.g. `https://bailian.aliyun.com/agents/{agentId}/mcp` on a shared platform, or `https://agent.example.com/mcp` in single-hostname mode. Published in Discovery TXT records as `u=`. The URL's host is the **Access Hostname**; the agent's **Identity Hostname** (`agentHost`) is typically a first-level subdomain on shared platforms (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`). In **single-hostname mode**, RA requires the `u=` host to **equal** `agentHost`.
+The connectable HTTPS URL of an Endpoint — e.g. `https://bailian.aliyun.com/agents/{agentId}/mcp` in **Shared Domain Mode**, or `https://agent.example.com/mcp` in **Independent Domain Mode**. Published in Discovery TXT records as `u=`. The URL's host is the **Access Hostname**; the agent's **Identity Hostname** is a first-level subdomain of that host in Shared Domain Mode (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`). In Independent Domain Mode, RA requires the `u=` host to **equal** the Identity Hostname.
 _Avoid_: URL (alone), endpoint URL (prefer agentUrl — matches the RA field name)
 
 **metaDataUrl**:
@@ -87,7 +87,7 @@ The RA's web UI for registering agents, completing ACME/DNS verification, and ma
 _Avoid_: Portal, dashboard
 
 **ACME Verification**:
-The registration-phase domain ownership proof — adding a DNS TXT challenge record to demonstrate control of the agentHost. Part of the RA registration flow, not performed by the SDK.
+The registration-phase domain ownership proof — adding a DNS TXT challenge record to demonstrate control of the Identity Hostname. Part of the RA registration flow, not performed by the SDK.
 _Avoid_: domain validation (too vague), Let's Encrypt (ACME is the protocol; ATI uses it for ownership proof)
 
 **DNS Verification**:
@@ -95,20 +95,20 @@ The final registration-phase step — adding TLSA and Badge TXT DNS records so t
 _Avoid_: DNS check (too vague), record verification (ambiguous with Connection-time DANE)
 
 **Identity CSR**:
-The certificate signing request submitted during RA registration to obtain an Identity Certificate. Must include the agent's ATI Name as a URI SAN (`ati://v{version}.{agentHost}`). CNNIC — the national regulatory authority — issues the resulting Identity Certificate from this CSR, operating the private identity CA that underpins ATI agent identity. Distinct from the Server Certificate, which is user-provided or ACME-issued. Completed via ATI Console, not by the SDK.
+The certificate signing request submitted during RA registration to obtain an Identity Certificate. Must include the agent's ATI Name as a URI SAN (`ati://v{version}.{identityHost}`). CNNIC — the national regulatory authority — issues the resulting Identity Certificate from this CSR, operating the private identity CA that underpins ATI agent identity. Distinct from the Server Certificate, which is user-provided or ACME-issued. Completed via ATI Console, not by the SDK.
 _Avoid_: client CSR (ambiguous), server CSR (that is for the Server Certificate)
 
 **Discovery**:
-Resolving a registered agent's endpoints by querying DNS TXT records at `_ati.{agentHost}` on the agent's **Identity Hostname**. Input is the Identity Hostname (agentHost) and an optional **Version Constraint**; the client filters matching TXT records, selects the **latest** matching `av` (agent version), and returns one `AgentDetail` with all protocol endpoints at that version. Does not call the RA OpenAPI. Does not query `_ati-badge` TXT — Badge lookup remains in Connection pre-verification only. Failures throw typed exceptions (e.g. no matching TXT, DNS lookup error) — does not return null.
+Resolving a registered agent's endpoints by querying DNS TXT records at `_ati.{identityHost}` on the agent's **Identity Hostname**. Input is the Identity Hostname and an optional **Version Constraint**; the client filters matching TXT records, selects the **latest** matching `av` (agent version), and returns one `AgentDetail` with all protocol endpoints at that version. Does not call the RA OpenAPI. Does not query `_ati-badge` TXT — Badge lookup remains in Connection pre-verification only. Failures throw typed exceptions (e.g. no matching TXT, DNS lookup error) — does not return null. The SDK method is still `discover(agentHost)` — that parameter is the Identity Hostname.
 _Avoid_: OpenAPI discovery, registry lookup (prefer Discovery — DNS TXT on Identity Hostname), DNS lookup (alone — specify `_ati` TXT discovery), null return (prefer typed exceptions on failure)
 
 **Discovery TXT Record**:
-A DNS TXT record at `_ati.{agentHost}` on the **Identity Hostname**, one record per protocol endpoint. Format: `v={format}; av={agentVersion}; p={protocol}; u={agentUrl}` with optional `m={mode}`. KV order is not significant. Keys are case-sensitive (`v`, `av`, `p`, `u`, `m`). Unknown keys are ignored. Duplicate keys: last-wins.
+A DNS TXT record at `_ati.{identityHost}` on the **Identity Hostname**, one record per protocol endpoint. Format: `v={format}; av={agentVersion}; p={protocol}; u={agentUrl}` with optional `m={mode}`. KV order is not significant. Keys are case-sensitive (`v`, `av`, `p`, `u`, `m`). Unknown keys are ignored. Duplicate keys: last-wins.
 
 - `v` — Discovery TXT format version. Family pattern is `ati` + one or more digits (`ati1`, `ati2`, …), case-sensitive. This SDK parses **`ati1` only**; other family versions (e.g. `ati2`) are skipped so a breaking format bump does not get interpreted with ati1 semantics. Values outside the family (`ATI1`, `ati`, `ati1b`, `ati-badge1`) are invalid. Additive fields stay on `ati1` (unknown keys ignored).
 - `av` — **required** agent version. Accepts `v`/`V`-prefixed SemVer (e.g. `v1.0.0`) or a bare SemVer (e.g. `1.0.0`); the prefix is stripped before comparison. A missing or blank `av`, or a value that is not valid SemVer after stripping, makes the record invalid. Matched client-side against the **Version Constraint**. When multiple TXT records match, Discovery selects the **latest** matching `av` and returns all protocol (`p`) records at that version. When no Version Constraint is provided, Discovery selects the **latest** `av` among all records.
 - `p` — **required Protocol** in TXT. Only the lowercase literals `mcp`, `a2a`, and `http-api` are accepted; any other value (including `MCP`, unknown names, or blank) makes the record invalid and it is skipped. The SDK normalizes accepted values to uppercase (`MCP`, `A2A`, `HTTP-API`) in `AgentEndpoint.protocol`.
-- `u` — **required**, non-blank. Published as the full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp` on a shared platform). In **single-hostname mode**, host equals `agentHost` (e.g. `https://agent.example.com/mcp`). Discovery parsing does not validate scheme, host, path, or Dual Hostname constraints — a non-blank value is enough for the record to be well-formed.
+- `u` — **required**, non-blank. Published as the full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp` in Shared Domain Mode). In Independent Domain Mode, host equals the Identity Hostname (e.g. `https://agent.example.com/mcp`). Discovery parsing does not validate scheme, host, path, or Independent/Shared Domain Mode constraints — a non-blank value is enough for the record to be well-formed.
 - `m` — optional **Discovery Mode** (currently only `direct` is supported). When omitted, defaults to `direct` — connect directly to the URL in `u`.
 
 Multiple TXT records may coexist under the same Identity Hostname — one per protocol, and optionally multiple `av` values during **Version Rotation**.
@@ -119,7 +119,7 @@ How Discovery resolves an endpoint from a Discovery TXT record. Field `m=` exist
 _Avoid_: mode (alone — prefer Discovery Mode), card mode (not supported in current SDK)
 
 **AgentDetail**:
-The result returned by DNS Discovery — includes `agentHost` (Identity Hostname), `accessHost` (Access Hostname, derived from the `u=` URL host — shared across all endpoints), `agentVersion`, and `endpoints` built from matching Discovery TXT records. Each endpoint carries its own `agentUrl` (`u=`); `accessHost` is duplicated at the top level for convenience (e.g. Transport DANE lookup in **ConnectOptions**). On shared platforms, `accessHost` differs from `agentHost`; in single-hostname mode they are equal. Does **not** include `agentId`, `status`, or `trustLevel` — those are RA/TL concepts unavailable via DNS Discovery. Exposed as `com.aliyun.ati.sdk.discovery.AgentDetail`.
+The result returned by DNS Discovery — Identity Hostname (`getAgentHost()`), Access Hostname (`getAccessHost()`, derived from the `u=` URL host — shared across all endpoints), `agentVersion`, and `endpoints` built from matching Discovery TXT records. Each endpoint carries its own `agentUrl` (`u=`); `accessHost` is duplicated at the top level for convenience (e.g. Transport DANE lookup in **ConnectOptions**). In Shared Domain Mode, Access Hostname differs from Identity Hostname; in Independent Domain Mode they are equal. Does **not** include `agentId`, `status`, or `trustLevel` — those are RA/TL concepts unavailable via DNS Discovery. Exposed as `com.aliyun.ati.sdk.discovery.AgentDetail`.
 _Avoid_: agent record (too vague), discovery response (prefer AgentDetail), OpenAPI registration snapshot (DNS Discovery returns a slimmer shape)
 
 **trustLevel**:
@@ -127,11 +127,11 @@ A trust rating assigned by the RA to an agent (e.g. `HIGH`, `MEDIUM`). Informati
 _Avoid_: trust score, security level (prefer trustLevel — matches the RA field name)
 
 **Connection**:
-Establishing a verified TLS link to an agent's endpoint URL on the **Access Hostname** — running pre-verification (Badge/DANE on the **Identity Hostname**), TLS handshake, and post-verification (fingerprint comparison). Under the **Dual Hostname Model**, the `agentUrl` host differs from the Identity Hostname used for Badge/DANE lookups. Does not require prior Discovery; can connect directly to a known `agentUrl` if `identityHost` is supplied via **ConnectOptions**. Encompasses Server Verification when initiated by a client agent.
+Establishing a verified TLS link to an agent's endpoint URL on the **Access Hostname** — running pre-verification (Badge/DANE on the **Identity Hostname**), TLS handshake, and post-verification (fingerprint comparison). In **Shared Domain Mode**, the `agentUrl` host differs from the Identity Hostname used for Badge/DANE lookups. Does not require prior Discovery; can connect directly to a known `agentUrl` if `identityHost` is supplied via **ConnectOptions**. Encompasses Server Verification when initiated by a client agent.
 _Avoid_: Session (alone — ambiguous with HTTP session), link (too vague)
 
 **AtiClient**:
-SDK client class for the simplified integration path — `connect(agentUrl, ConnectOptions)` returns an `AgentConnection` for HTTP-API request/response. Typical flow: `AtiDiscoveryClient.discover(agentHost)` → pick an endpoint by `agentUrl` (`u=` from TXT) → `connect(agentUrl, ConnectOptions)` with `identityHost` populated from `AgentDetail.agentHost`. Encapsulates Badge/DANE pre/post-verification internally. Not an Agent — it is the client agent's SDK entry point.
+SDK client class for the simplified integration path — `connect(agentUrl, ConnectOptions)` returns an `AgentConnection` for HTTP-API request/response. Typical flow: `AtiDiscoveryClient.discover(identityHost)` → pick an endpoint by `agentUrl` (`u=` from TXT) → `connect(agentUrl, ConnectOptions)` with `identityHost` populated from `AgentDetail.getAgentHost()`. Encapsulates Badge/DANE pre/post-verification internally. Not an Agent — it is the client agent's SDK entry point.
 _Avoid_: ATI client (alone — ambiguous with any SDK module), client (alone)
 
 **AtiVerifiedClient**:
@@ -147,7 +147,7 @@ SDK connection handle returned by `AtiVerifiedClient.connect()` — represents a
 _Avoid_: ATI connection (alone), verified connection (too vague)
 
 **ConnectOptions**:
-SDK configuration object passed to `AtiClient.connect()` when a client agent initiates a **Connection**. Carries the runtime **Verification Policy**, optional **identityHost** (Identity Hostname for Badge/identity DANE lookups) and **accessHost** (Access Hostname for server-cert `_443._tcp` DANE lookups), optional mTLS Identity Certificate material, TLSA lookup port (default 443), custom `TransparencyClient`, and HTTP auth headers. After Discovery, the SDK should populate both `identityHost` and `accessHost` from `AgentDetail`. Direct connect without Discovery requires explicit `identityHost` (and ideally `accessHost`) under the Dual Hostname Model. Default policy: `BADGE_REQUIRED`.
+SDK configuration object passed to `AtiClient.connect()` when a client agent initiates a **Connection**. Carries the runtime **Verification Policy**, optional **identityHost** (Identity Hostname for Badge/identity DANE lookups) and **accessHost** (Access Hostname for server-cert `_443._tcp` DANE lookups), optional mTLS Identity Certificate material, TLSA lookup port (default 443), custom `TransparencyClient`, and HTTP auth headers. After Discovery, the SDK should populate both `identityHost` and `accessHost` from `AgentDetail`. Direct connect without Discovery requires explicit `identityHost` (and ideally `accessHost`) in Shared Domain Mode. Default policy: `BADGE_REQUIRED`.
 _Avoid_: connect config (too vague), connection options (prefer ConnectOptions — matches the SDK class name)
 
 **Server Verification**:
@@ -166,7 +166,7 @@ SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) imp
 - `REGISTRATION_INVALID` — REVOKED or EXPIRED registration.
 - `FINGERPRINT_MISMATCH` — presented certificate fingerprint ≠ TL Badge entry.
 - `ATI_NAME_MISMATCH` — Identity Certificate URI SAN ≠ Badge Entry `agentName`.
-- `HOSTNAME_MISMATCH` — certificate CN ≠ Badge Entry `agentHost` (client verification path).
+- `HOSTNAME_MISMATCH` — certificate CN ≠ Badge Entry Identity Hostname (JSON `agentHost`; client verification path).
 - `NOT_ATI_AGENT` — no `_ati-badge` TXT record found.
 - `LOOKUP_FAILED` — DNS or TL fetch error.
 - `SEAL_VERIFICATION_FAILED` — Seal signature or Merkle proof invalid.
@@ -185,19 +185,19 @@ The TLS certificate a server agent uses to serve HTTPS — proves the server's i
 _Avoid_: Service cert (prefer Server Certificate), TLS cert (alone — ambiguous with client-side TLS material)
 
 **Identity Certificate**:
-A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC issues one to every registered agent from the **IDCA Intermediate**, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation uses the **IDCA Chain** when Verification Policy is not None; when policy is None, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{agentHost}`).
+A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC issues one to every registered agent from the **IDCA Intermediate**, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation uses the **IDCA Chain** when Verification Policy is not None; when policy is None, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{identityHost}`).
 _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert, ATI-issued (identity certs are CNNIC-issued)
 
 ### Trust & Verification
 
 **Badge**:
-A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
+A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{identityHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
 
 The `_ati-badge` TXT record format: `v={format}; av={agentVersion}; u={badgeUrl}` — KV order is not significant; keys are case-sensitive (`v`, `av`, `u`); unknown keys are ignored; duplicate keys last-wins. `v` is the **Badge Format Version**. Family pattern is `ati-badge` + one or more digits (`ati-badge1`, `ati-badge2`, …), case-sensitive. This SDK parses **`ati-badge1` only**; other family versions are skipped. Legacy `ra-badge*` and values outside the family are rejected. `av` is **required**, same key and version grammar as Discovery TXT: `v`/`V`-prefixed SemVer (e.g. `v1.0.0`) or bare SemVer (e.g. `1.0.0`). A missing or blank `av`, or a value that is not valid SemVer after stripping `v`/`V`, makes the record invalid. Comparison strips the prefix (same as Discovery) so it can match ATI Name / Version Constraint values. Badge TXT has no `m=` field. `u` is **required**, non-blank **badgeUrl**. Parsing does not validate scheme or host. During verification the SDK extracts the path from `u=` and concatenates it with **`TransparencyClient.baseUrl`**; the `u=` host is not the HTTP target and is not checked against **Trusted TL Domain**. Keys `version` and `url` are obsolete and not recognized. During version rotation, multiple TXT records may coexist under the same host.
 _Avoid_: Token, credential (alone — too generic), version= / url= (obsolete Badge TXT keys — use av= / u=)
 
 **Badge Entry**:
-The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status (top-level `status`), ATI Name (`payload.agentName`), `payload.agentHost`, `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
+The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status (top-level `status`), ATI Name (`payload.agentName`), Identity Hostname (`payload.agentHost`), `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
 _Avoid_: TL record (too vague), badge payload (prefer Badge Entry)
 
 **Evidence Ref**:
@@ -301,7 +301,7 @@ Server-side verification of an incoming client agent, governed by **Verification
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **ClientRequestVerifier**:
-SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and `agentHost`, returns `ClientVerificationResult` with a `VerificationStatus`. Uses the **IDCA Chain** and **Verification Policy**. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
+SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and Identity Hostname, returns `ClientVerificationResult` with a `VerificationStatus`. Uses the **IDCA Chain** and **Verification Policy**. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
 _Avoid_: client verifier (alone), inbound verifier (too vague)
 
 **SCITT Header**:
@@ -319,37 +319,36 @@ _Avoid_: status header, badge token
 ### Identity
 
 **Identity Hostname**:
-The FQDN that anchors an agent's ATI registration, private Identity Certificate, and identity-related DNS records — e.g. `abc123.bailian.aliyun.com`. On shared platforms, must be a **first-level subdomain** of the agent's **Access Hostname** (e.g. `{label}.bailian.aliyun.com` under `bailian.aliyun.com`). In single-hostname deployment, may **equal** the Access Hostname (e.g. both `agent.example.com`). Pure DNS metadata namespace: no A/AAAA required, no TLS handshake. Discovery queries, `_ati` TXT, `_ati-badge` TXT, and `_ati-identity._tls` TLSA are published here. Synonymous with **agentHost** in RA/TL field names and ATI Name URIs.
-_Avoid_: identity host (lowercase — prefer Identity Hostname), agent domain (too vague)
+The FQDN that anchors an agent's ATI registration, private Identity Certificate, and identity-related DNS records. SDK field name: **`identityHost`**. In **Shared Domain Mode**, a first-level subdomain of the **Access Hostname** (e.g. `abc123.bailian.aliyun.com`). In **Independent Domain Mode**, equals the Access Hostname (e.g. both `agent.example.com`). Pure DNS metadata namespace: no A/AAAA required, no TLS handshake. Discovery queries, `_ati` TXT, `_ati-badge` TXT, and `_ati-identity._tls` TLSA are published here.
+_Avoid_: identity host (lowercase — prefer Identity Hostname), agent domain (too vague), agentHost (wire/SDK leftover name — not a third hostname)
 
 **Access Hostname**:
-The FQDN where an agent's traffic lands — TLS handshake, public Server Certificate validation, and A/AAAA resolution — e.g. `bailian.aliyun.com` on a shared platform. Multiple agents may share one Access Hostname; each agent's **Identity Hostname** is a first-level subdomain (e.g. `abc123.bailian.aliyun.com`). Endpoint `agentUrl` values (`u=` in Discovery TXT) use this host; `_443._tcp` TLSA for Server Certificate DANE is published here. In **single-hostname mode**, equals `agentHost`.
-_Avoid_: access host (lowercase — prefer Access Hostname), platform domain (too vague), agentHost (agentHost is the Identity Hostname)
+The FQDN where an agent's traffic lands — TLS handshake, public Server Certificate, and A/AAAA resolution. SDK field name: **`accessHost`**. `agentUrl` (`u=`) uses this host; `_443._tcp` TLSA for Server Certificate DANE is published here. In **Shared Domain Mode**, the **immediate parent** of the Identity Hostname (e.g. `bailian.aliyun.com` for `abc123.bailian.aliyun.com`). In **Independent Domain Mode**, equals the Identity Hostname.
+_Avoid_: access host (lowercase — prefer Access Hostname), platform domain (too vague), 主域名 (ambiguous with eTLD+1 — Access is the immediate parent, not `aliyun.com`)
 
-**Dual Hostname Model**:
-Conceptual separation of **Identity Hostname** (who the agent is — Discovery, Badge, identity DNS) from **Access Hostname** (where TLS lands — transport DANE). Exposed in **ConnectOptions** as `identityHost` and `accessHost`.
+**Independent Domain Mode**:
+One agent owns a dedicated domain. Identity Hostname = Access Hostname (`identityHost` = `accessHost`). RA requires the Identity Hostname to equal the `u=` host. Documents present one FQDN, not two hostname types.
+_Avoid_: single-hostname mode, single-hostname deployment
 
-- **Shared platform (primary case)** — multiple agents share one Access Hostname; RA requires each agent's Identity Hostname to be a **first-level subdomain** of the Access Hostname (e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`); `u=` points to the Access Hostname.
-- **Single-hostname deployment** — one agent独占 a domain; Identity Hostname **equals** Access Hostname (e.g. both `agent.example.com`); RA requires `agentHost` to equal the `u=` host.
+**Shared Domain Mode**:
+Multiple agents share one Access Hostname; each agent's Identity Hostname is a **first-level subdomain** of that Access Hostname. `u=` points at the Access Hostname. Exposed in **ConnectOptions** as `identityHost` and `accessHost`.
+_Avoid_: shared platform, Dual Hostname Model, two-domain model, split domain
 
-When both hostnames are equal, Badge and transport DANE lookups target the same FQDN. The SDK does not require distinct hostnames.
-_Avoid_: two-domain model (prefer Dual Hostname Model), split domain (too vague)
-
-**RA Registration Constraints (`agentHost` vs `u=`)**:
-- **Single-hostname deployment** — RA requires **`agentHost` to equal the host component of each endpoint `u=` URL** (e.g. both `agent.example.com`).
-- **Shared platform** — RA requires **`agentHost` to be a first-level subdomain of the `u=` host** (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`, with `u=` on `bailian.aliyun.com`.
+**RA Registration Constraints (Identity Hostname vs `u=`)**:
+- **Independent Domain Mode** — RA requires the **Identity Hostname to equal the host component of each endpoint `u=` URL** (e.g. both `agent.example.com`).
+- **Shared Domain Mode** — RA requires the **Identity Hostname to be a first-level subdomain of the `u=` host** (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`, with `u=` on `bailian.aliyun.com`.
 _Avoid_: URL host mismatch (prefer stating the mode-specific constraint explicitly)
 
 **agentHost**:
-The RA/TL field name and SDK identifier for an agent's **Identity Hostname** — e.g. `abc123.bailian.aliyun.com`. Used as the primary key for Discovery queries and embedded in ATI Name (`ati://v{version}.{agentHost}`). When Identity Hostname equals Access Hostname (single-hostname deployment), both roles collapse to the same FQDN — the degenerate case of the dual-hostname model.
-_Avoid_: hostname (alone — ambiguous with Access Hostname or machine hostname), domain (too vague)
+RA/TL JSON field and leftover SDK identifier (`getAgentHost()`, `discover(agentHost)`) for the **Identity Hostname**. Same value as `identityHost`. Not a third hostname type — do not teach it in README tables or diagrams. Cite this name only when quoting TL JSON (`payload.agentHost`) or existing Java APIs.
+_Avoid_: agentHost as a domain concept (prefer Identity Hostname / `identityHost`)
 
 **agentId**:
-The unique registration ID assigned by the RA to an agent (UUID), stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Obtained during Connection Badge pre-verification (from `_ati-badge` URL), not from DNS Discovery. Distinct from agentHost (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).
+The unique registration ID assigned by the RA to an agent (UUID), stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Obtained during Connection Badge pre-verification (from `_ati-badge` URL), not from DNS Discovery. Distinct from Identity Hostname (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).
 _Avoid_: agent UUID (prefer agentId — matches the RA field name), ATI Name (different identifier)
 
 **ATI Name**:
-The canonical URI identifier for an agent, including version: `ati://v{version}.{agentHost}` (e.g. `ati://v1.0.0.agent.example.com`). Embedded in the Identity Certificate's URI SAN. In TL Badge Entry payload, the same value appears under the field name `agentName` — use **ATI Name** in discussion, `agentName` when referencing TL JSON.
+The canonical URI identifier for an agent, including version: `ati://v{version}.{identityHost}` (e.g. `ati://v1.0.0.agent.example.com`). Embedded in the Identity Certificate's URI SAN. In TL Badge Entry payload, the same value appears under the field name `agentName` — use **ATI Name** in discussion, `agentName` when referencing TL JSON.
 _Avoid_: agent URI (prefer ATI Name), ANS name (out of scope — ANS uses `ans://`), agentName (alone — prefer ATI Name unless citing TL schema field names)
 
 **agentVersion**:
@@ -361,7 +360,7 @@ A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0
 _Avoid_: version filter, semver query
 
 **Version Rotation**:
-The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Discovery TXT records (each with a distinct `av`) and multiple Badge TXT records (each tagged with `av=`). Discovery filters by Version Constraint and selects the latest matching `av`; Badge pre-verification accepts any matching fingerprint.
+The coexistence of multiple agentVersion values under the same Identity Hostname during upgrades. DNS may hold multiple Discovery TXT records (each with a distinct `av`) and multiple Badge TXT records (each tagged with `av=`). Discovery filters by Version Constraint and selects the latest matching `av`; Badge pre-verification accepts any matching fingerprint.
 _Avoid_: version upgrade (too vague), rolling update
 
 **DANE**:
@@ -377,7 +376,7 @@ A DNS record binding a domain to an expected certificate or public key fingerpri
 
 ATI publishes TLSA at two distinct prefixes on two hostnames — must not be mixed:
 - **Server Certificate** — `_443._tcp.{accessHost}` on the **Access Hostname**; used in client-side DANE verification during Server Verification.
-- **Identity Certificate** — `_ati-identity._tls.{agentHost}` on the **Identity Hostname**; used in server-side Client Verification.
+- **Identity Certificate** — `_ati-identity._tls.{identityHost}` on the **Identity Hostname**; used in server-side Client Verification.
 
 ATI's default TLSA convention is **`3 1 1`** (RFC 6698): Usage 3 (Domain-issued certificate, coexists with PKI), Selector 1 (SPKI/public key), Matching Type 1 (SHA-256 hash). The SDK's `TlsaUtils` can handle other selector/matching-type combinations if published, but registration docs and examples assume `3 1 1`.
 _Avoid_: DNS record (alone), TLS record

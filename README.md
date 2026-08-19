@@ -27,7 +27,7 @@ Client agents must use `BASIC`, `ENHANCED`, or `ADVANCED` — they always valida
 
 ## Verification Sequence Diagrams
 
-The diagrams below use `{serverIdentityHost}`, `{serverAccessHost}`, and `{clientIdentityHost}`. In **single-hostname mode**, `{serverIdentityHost}` equals `{serverAccessHost}` — Discovery, Badge, and transport DANE all target the same FQDN.
+Two service modes. `{serverIdentityHost}` is the server agent's **Identity Hostname** (`identityHost`); `{clientIdentityHost}` is the client agent's Identity Hostname. `{serverAccessHost}` appears only when the two FQDNs differ.
 
 **Notes:**
 
@@ -37,15 +37,33 @@ The diagrams below use `{serverIdentityHost}`, `{serverAccessHost}`, and `{clien
 - **`NONE` is server-only** — clients cannot set `NONE`; they always validate the server certificate (minimum `BASIC`).
 - **`client-auth`** on the server is derived from `ati.sdk.server.verification.policy` (not set separately): `NONE` → none, `BASIC` → want, `ENHANCED`/`ADVANCED` → need.
 
-### Dual Hostname Model (Shared Platform)
+### Independent Domain Mode
 
-Multiple agents share one **Access Hostname**; each agent's **Identity Hostname** is a first-level subdomain. RA requires `agentHost` to be a first-level subdomain of the `u=` host.
+One agent owns a dedicated domain. **Identity Hostname = Access Hostname** (`identityHost` = `accessHost`). RA requires the Identity Hostname to equal the `u=` host. In the diagrams, `{serverIdentityHost}` equals `{serverAccessHost}`.
 
-| Hostname | Definition | Example |
-|----------|------------|---------|
-| **Server Identity Hostname** `{serverIdentityHost}` | Unique identity of the **server agent** — used to discover the agent and verify who the server is | `abc123.bailian.aliyun.com` |
-| **Server Access Hostname** `{serverAccessHost}` | Shared domain for **reaching the server agent's services** — TLS and `agentUrl` connect here | `bailian.aliyun.com` |
-| **Client Identity Hostname** `{clientIdentityHost}` | Unique identity of the **client agent** — same role as Server Identity Hostname, but for the caller; extracted from the client Identity Certificate URI SAN when the server verifies the client | `xyz789.caller.example.com` |
+| Name | Definition | Example |
+|------|------------|---------|
+| **Server Identity Hostname** `{serverIdentityHost}` | Unique identity of the **server agent** — Discovery, Badge, TLS, and `agentUrl` all use this FQDN | `agent.example.com` |
+| **Client Identity Hostname** `{clientIdentityHost}` | Unique identity of the **client agent**; extracted from the client Identity Certificate URI SAN when the server verifies the caller | `caller.example.com` |
+
+Example endpoint: `u=https://agent.example.com/mcp` — host equals `identityHost`.
+
+DNS lookups in the diagrams (server-side records on one FQDN):
+
+| Hostname | Records |
+|----------|---------|
+| `{serverIdentityHost}` | `_ati` (Discovery), `_ati-badge` (Badge), `_443._tcp` (transport DANE) |
+| `{clientIdentityHost}` | `_ati-badge`, `_ati-identity._tls` (server-side Client Verification) |
+
+### Shared Domain Mode
+
+Multiple agents share one **Access Hostname**; each agent's **Identity Hostname** is a **first-level subdomain** of that Access Hostname (the **immediate parent**, not the eTLD+1). RA requires the Identity Hostname to be a first-level subdomain of the `u=` host.
+
+| Name | Definition | Example |
+|------|------------|---------|
+| **Server Identity Hostname** `{serverIdentityHost}` | Unique identity of the **server agent** — Discovery, Badge, identity DNS | `abc123.bailian.aliyun.com` |
+| **Server Access Hostname** `{serverAccessHost}` | Immediate parent of the Identity Hostname — TLS and `agentUrl` connect here | `bailian.aliyun.com` |
+| **Client Identity Hostname** `{clientIdentityHost}` | Unique identity of the **client agent**; extracted from the client Identity Certificate URI SAN | `xyz789.caller.example.com` |
 
 Example endpoint: `u=https://bailian.aliyun.com/agents/abc123/mcp` — host is Access; Discovery queries `_ati.abc123.bailian.aliyun.com`.
 
@@ -55,25 +73,6 @@ DNS lookups in the diagrams:
 |----------|---------|
 | `{serverIdentityHost}` | `_ati` (Discovery), `_ati-badge` (Badge) |
 | `{serverAccessHost}` | `_443._tcp` (server transport DANE) |
-| `{clientIdentityHost}` | `_ati-badge`, `_ati-identity._tls` (server-side Client Verification) |
-
-### Single Hostname Model
-
-One agent owns a dedicated domain; **Identity Hostname equals Access Hostname**. RA requires `agentHost` to equal the `u=` host.
-
-| Hostname | Definition | Example |
-|----------|------------|---------|
-| **Server Identity Hostname** `{serverIdentityHost}` | Same as Access Hostname — registration, Discovery, Badge, and TLS all on one FQDN | `agent.example.com` |
-| **Server Access Hostname** `{serverAccessHost}` | Equals `{serverIdentityHost}` | `agent.example.com` |
-| **Client Identity Hostname** `{clientIdentityHost}` | Client agent identity (unchanged — may also use single-hostname deployment) | `caller.example.com` |
-
-Example endpoint: `u=https://agent.example.com/mcp` — host equals `agentHost`.
-
-DNS lookups in the diagrams (server-side records collapse onto one FQDN):
-
-| Hostname | Records |
-|----------|---------|
-| `{serverIdentityHost}` (= `{serverAccessHost}`) | `_ati` (Discovery), `_ati-badge` (Badge), `_443._tcp` (transport DANE) |
 | `{clientIdentityHost}` | `_ati-badge`, `_ati-identity._tls` (server-side Client Verification) |
 
 ### NONE (L0): Server-side No Authentication (dev/test only)
@@ -293,7 +292,7 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 
 1. **Generate identity key pair** — Create RSA/EC key pair for identity certificate (offline)
 2. **Generate identity CSR** — Create Certificate Signing Request with an `ati://` URI SAN (Identity Hostname)
-3. **Submit registration** — Input service certificate + identity CSR in ATI Console with agentHost, version, endpoints (service certificate is user-provided)
+3. **Submit registration** — Input service certificate + identity CSR in ATI Console with Identity Hostname, version, endpoints (service certificate is user-provided)
 4. **ACME verification** — Add DNS TXT record for domain ownership proof
 5. **Identity certificate issuance** — CNNIC issues the identity certificate via IDCA (service certificate is user-provided, not issued by CNNIC or the RA)
 6. **DNS verification** — Add TLSA and badge DNS records
@@ -305,16 +304,16 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 
 Published on the **Identity Hostname**. Semicolon-separated KV; key order is not significant. This SDK parses **`ati1`** (Discovery) and **`ati-badge1`** (Badge) only.
 
-**Discovery TXT** (`_ati.{agentHost}`) — one record per Protocol (`p=` is lowercase `mcp`, `a2a`, or `http-api`):
+**Discovery TXT** (`_ati.{identityHost}`) — one record per Protocol (`p=` is lowercase `mcp`, `a2a`, or `http-api`):
 
 ```
 _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
 _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://bailian.aliyun.com/agents/abc123/a2a"
 ```
 
-Optional `m=direct` may be appended; when omitted, Discovery Mode is `direct`. `u=` is the **agentUrl** on the Access Hostname (in single-hostname mode, that host equals `agentHost`).
+Optional `m=direct` may be appended; when omitted, Discovery Mode is `direct`. `u=` is the **agentUrl** on the Access Hostname (in Independent Domain Mode, that host equals `identityHost`).
 
-**Badge TXT** (`_ati-badge.{agentHost}`):
+**Badge TXT** (`_ati-badge.{identityHost}`):
 
 ```
 _ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
@@ -344,7 +343,7 @@ AgentDetail latest = client.discover("abc123.bailian.aliyun.com");
 
 ### Agent-to-Agent Connections
 
-Under the **Dual Hostname Model**, TLS connects to the **Access Hostname** (`agentUrl` host) while Badge and identity DANE lookups use the **Identity Hostname**. After Discovery, select the endpoint for your protocol from `detail.getEndpoints()` (one entry per protocol at the selected version), then pass both hostnames via `ConnectOptions`:
+TLS connects to the **Access Hostname** (`agentUrl` host). Badge lookups use the **Identity Hostname** — set `ConnectOptions.identityHost` (`AgentDetail.getAgentHost()`). In **Shared Domain Mode** the two FQDNs differ; in **Independent Domain Mode** they are the same. After Discovery, select the endpoint for your protocol from `detail.getEndpoints()` (one entry per protocol at the selected version):
 
 ```java
 import com.aliyun.ati.sdk.agent.AtiClient;
@@ -379,13 +378,13 @@ String agentUrl = detail.getEndpoints().stream()
 
 AgentConnection conn = client.connect(agentUrl,
     ConnectOptions.builder()
-        // Dual-hostname: agentUrl host is accessHost; Badge lookups need identityHost
+        // Shared Domain Mode: agentUrl host is accessHost; Badge lookups need identityHost
         .identityHost(detail.getAgentHost())
         .verificationPolicy(VerificationPolicy.ENHANCED)
         .transparencyClient(tl)
         .build());
 
-// Single-hostname — identityHost equals accessHost; ADVANCED adds transport DANE
+// Independent Domain Mode — identityHost equals accessHost; ADVANCED adds transport DANE
 AgentConnection direct = client.connect(
     "https://agent.example.com/mcp",
     ConnectOptions.builder()
@@ -406,7 +405,7 @@ AgentConnection mtls = client.connect(agentUrl,
         .build());
 ```
 
-For PKCS12 keystore-based setup, use `AtiVerifiedClient` when the **agentUrl host equals the Identity Hostname** (single-hostname deployments). Dual-hostname mode requires `AtiClient` + `ConnectOptions` as shown above:
+For PKCS12 keystore-based setup, use `AtiVerifiedClient` when the **agentUrl host equals the Identity Hostname** (Independent Domain Mode). Shared Domain Mode requires `AtiClient` + `ConnectOptions` as shown above:
 
 ```java
 AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
@@ -415,7 +414,7 @@ AtiVerifiedClient verifiedClient = AtiVerifiedClient.builder()
     .policy(VerificationPolicy.ENHANCED)
     .build();
 
-// Single-hostname: https://agent.example.com/mcp — host is both access and identity
+// Independent Domain Mode: https://agent.example.com/mcp — host is both accessHost and identityHost
 AtiConnection conn = verifiedClient.connect("https://agent.example.com/mcp");
 ```
 
@@ -547,7 +546,7 @@ ConnectOptions opts = ConnectOptions.builder()
     .verificationPolicy(VerificationPolicy.BASIC)
     .build();
 
-// ENHANCED — TLS + ATI Badge (dual-hostname: set identityHost)
+// ENHANCED — TLS + ATI Badge (Shared Domain Mode: set identityHost)
 ConnectOptions opts = ConnectOptions.builder()
     .identityHost("abc123.bailian.aliyun.com")
     .verificationPolicy(VerificationPolicy.ENHANCED)

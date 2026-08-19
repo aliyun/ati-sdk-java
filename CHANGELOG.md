@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Bundled production IDCA Chain** (`IdcaChain`): the SDK now ships the production Root + Intermediate certificate pair as the default server-side trust for client identity verification (ADR-0005). Server agents no longer need to provide a PEM path at `BASIC`+ policies; the `trust-certificate` property can still replace the bundled chain without an SDK upgrade.
 
+### Changed
+
+- **Hostname narrative**: README and glossary use **Independent Domain Mode** and **Shared Domain Mode**. The two host concepts are **Identity Hostname** (`identityHost`) and **Access Hostname** (`accessHost`). RA/TL JSON `agentHost` and `getAgentHost()` mean identityHost — not a third hostname type. Dual Hostname Model is avoided.
+
 ### Fixed
 
 - **IDCA Chain verification error handling**: preserve JCE/FIPS provider errors when verifying the bundled chain. Missing algorithms and other provider errors are rethrown with the original cause instead of being misreported as a Root/Intermediate pairing failure; signature mismatch remains a chain-structure failure.
