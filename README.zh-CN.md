@@ -301,6 +301,27 @@ Agent 注册在[阿里云 ATI 控制台](https://dnsnext.console.aliyun.com/ati/
 
 > **注意：** 所有步骤均在 ATI 控制台完成，注册过程不需要 SDK 代码。
 
+### DNS TXT 记录
+
+发布在 **Identity Hostname** 上。分号分隔的 KV，键顺序无意义。本 SDK 仅解析 Discovery 的 **`ati1`** 与 Badge 的 **`ati-badge1`**。
+
+**Discovery TXT**（`_ati.{agentHost}`）— 每种 Protocol 一条（`p=` 为小写 `mcp`、`a2a` 或 `http-api`）：
+
+```
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://bailian.aliyun.com/agents/abc123/a2a"
+```
+
+可附加 `m=direct`；省略时 Discovery Mode 为 `direct`。`u=` 是 Access Hostname 上的 **agentUrl**（单 Hostname 模式下该 host 等于 `agentHost`）。
+
+**Badge TXT**（`_ati-badge.{agentHost}`）：
+
+```
+_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
+```
+
+`av=` 与 Discovery 使用同一套 agentVersion 语法。校验时从 `u=` 取出 path，请求 `TransparencyClient.baseUrl` + 该 path — Badge TXT 的 `u=` host 不是 HTTP 目标。
+
 ### Agent 发现
 
 通过 Identity Hostname 上的 DNS TXT 记录解析 Agent 信息：

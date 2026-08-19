@@ -15,7 +15,7 @@ Shared platforms (e.g. 百炼, Coze) use a **Dual Hostname Model**:
 
 **Shared platform**: RA registration requires `agentHost` to be a **first-level subdomain** of the `u=` host (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`.
 
-Discovery TXT format: `v=ati1; av={version}; p={protocol}; u={url}` with optional `m=direct` (default `direct`). One TXT per protocol; `av` matched client-side via SemVer (semver4j); latest matching version wins.
+Discovery TXT format: `v=ati1; av={version}; p={protocol}; u={url}` with optional `m=direct` (default `direct`). One TXT per protocol; `av` matched client-side via SemVer (semver4j); latest matching version wins. KV parse rules (order, keys, `p` enum, `av` prefix) are in ADR-0006 and `CONTEXT.md`.
 
 `AgentDetail` from Discovery includes `agentHost`, `accessHost`, `agentVersion`, and `endpoints` only — not `agentId`, `status`, or `trustLevel` (RA/TL concepts).
 

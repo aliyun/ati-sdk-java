@@ -9,6 +9,17 @@ Agent discovery module — resolves agent information via DNS `_ati` TXT records
 - `AgentEndpoint` — Protocol-specific endpoint (`agentUrl`, `protocol`)
 - `AtiDiscoveryRecord` — Parsed `_ati` TXT record (`v`, `av`, `p`, `u`, `m`)
 
+## Discovery TXT sample
+
+`_ati.{agentHost}` — semicolon-separated KV; this SDK parses **`ati1`** only. One record per Protocol:
+
+```
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://bailian.aliyun.com/agents/abc123/a2a"
+```
+
+`p=` is lowercase `mcp`, `a2a`, or `http-api`. Optional `m=direct` (default when omitted).
+
 ## Usage
 
 ```java

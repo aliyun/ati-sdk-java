@@ -103,19 +103,19 @@ Resolving a registered agent's endpoints by querying DNS TXT records at `_ati.{a
 _Avoid_: OpenAPI discovery, registry lookup (prefer Discovery — DNS TXT on Identity Hostname), DNS lookup (alone — specify `_ati` TXT discovery), null return (prefer typed exceptions on failure)
 
 **Discovery TXT Record**:
-A DNS TXT record at `_ati.{agentHost}` on the **Identity Hostname**, one record per protocol endpoint. Format: `v={format}; av={agentVersion}; p={protocol}; u={agentUrl}` with optional `m={mode}`.
+A DNS TXT record at `_ati.{agentHost}` on the **Identity Hostname**, one record per protocol endpoint. Format: `v={format}; av={agentVersion}; p={protocol}; u={agentUrl}` with optional `m={mode}`. KV order is not significant. Keys are case-sensitive (`v`, `av`, `p`, `u`, `m`). Unknown keys are ignored. Duplicate keys: last-wins.
 
-- `v` — ATI discovery format version (currently `ati1` only).
-- `av` — agent version (SemVer, e.g. `v1.0.0`); matched client-side against the **Version Constraint**. When multiple TXT records match, Discovery selects the **latest** matching `av` and returns all protocol (`p`) records at that version. When no Version Constraint is provided, Discovery selects the **latest** `av` among all records.
-- `p` — **Protocol** in lowercase in TXT (e.g. `mcp`, `a2a`, `http-api`); the SDK normalizes to uppercase (`MCP`, `A2A`, `HTTP-API`) in `AgentEndpoint.protocol` to match existing conventions.
-- `u` — full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp` on a shared platform). In **single-hostname mode**, host equals `agentHost` (e.g. `https://agent.example.com/mcp`).
+- `v` — Discovery TXT format version. Family pattern is `ati` + one or more digits (`ati1`, `ati2`, …), case-sensitive. This SDK parses **`ati1` only**; other family versions (e.g. `ati2`) are skipped so a breaking format bump does not get interpreted with ati1 semantics. Values outside the family (`ATI1`, `ati`, `ati1b`, `ati-badge1`) are invalid. Additive fields stay on `ati1` (unknown keys ignored).
+- `av` — **required** agent version. Accepts `v`/`V`-prefixed SemVer (e.g. `v1.0.0`) or a bare SemVer (e.g. `1.0.0`); the prefix is stripped before comparison. A missing or blank `av`, or a value that is not valid SemVer after stripping, makes the record invalid. Matched client-side against the **Version Constraint**. When multiple TXT records match, Discovery selects the **latest** matching `av` and returns all protocol (`p`) records at that version. When no Version Constraint is provided, Discovery selects the **latest** `av` among all records.
+- `p` — **required Protocol** in TXT. Only the lowercase literals `mcp`, `a2a`, and `http-api` are accepted; any other value (including `MCP`, unknown names, or blank) makes the record invalid and it is skipped. The SDK normalizes accepted values to uppercase (`MCP`, `A2A`, `HTTP-API`) in `AgentEndpoint.protocol`.
+- `u` — **required**, non-blank. Published as the full HTTPS service URL on the **Access Hostname** (e.g. `https://bailian.aliyun.com/agents/abc123/mcp` on a shared platform). In **single-hostname mode**, host equals `agentHost` (e.g. `https://agent.example.com/mcp`). Discovery parsing does not validate scheme, host, path, or Dual Hostname constraints — a non-blank value is enough for the record to be well-formed.
 - `m` — optional **Discovery Mode** (currently only `direct` is supported). When omitted, defaults to `direct` — connect directly to the URL in `u`.
 
 Multiple TXT records may coexist under the same Identity Hostname — one per protocol, and optionally multiple `av` values during **Version Rotation**.
 _Avoid_: _ati-badge (that is Badge TXT, not Discovery TXT), trust card URL (Discovery embeds `u` directly — no separate card fetch)
 
 **Discovery Mode**:
-How Discovery resolves an endpoint from a Discovery TXT record. Currently only **`direct`** (`m=direct`) is supported — the client connects directly to the `u` URL. When `m` is omitted from the TXT record, `direct` is assumed. TXT records with an unsupported `m` value are skipped during Discovery; if no valid records remain, Discovery throws **AtiNotFoundException**. Future modes may be added without changing the `v=ati1` format version.
+How Discovery resolves an endpoint from a Discovery TXT record. Field `m=` exists only on **Discovery TXT** (`_ati`), never on **Badge TXT** (`_ati-badge`). Currently only **`direct`** (`m=direct`) is supported — the client connects directly to the `u` URL. When `m` is omitted from the Discovery TXT record, `direct` is assumed. TXT records with an unsupported `m` value are skipped during Discovery; if no valid records remain, Discovery throws **AtiNotFoundException**. Future modes may be added without changing the `v=ati1` format version.
 _Avoid_: mode (alone — prefer Discovery Mode), card mode (not supported in current SDK)
 
 **AgentDetail**:
@@ -193,8 +193,8 @@ _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTL
 **Badge**:
 A registration credential issued by the RA for an agent, stored in the Transparency Log and discoverable via the DNS TXT record `_ati-badge.{agentHost}`. Badge verification confirms an agent is legitimately registered and binds certificate fingerprints to the registry record. Badge TXT lookup does not require DNSSEC.
 
-The `_ati-badge` TXT record format: `v={format}; version={agentVersion}; url={tlUrl}` — where `v` is the **Badge Format Version** (currently `ati-badge1` only; legacy `ra-badge*` formats are rejected by the SDK), `version` is optional (the agent's SemVer, used during version rotation), and `url` points to the agent's entry in the TL. During version rotation, multiple TXT records may coexist under the same host.
-_Avoid_: Token, credential (alone — too generic)
+The `_ati-badge` TXT record format: `v={format}; av={agentVersion}; u={badgeUrl}` — KV order is not significant; keys are case-sensitive (`v`, `av`, `u`); unknown keys are ignored; duplicate keys last-wins. `v` is the **Badge Format Version**. Family pattern is `ati-badge` + one or more digits (`ati-badge1`, `ati-badge2`, …), case-sensitive. This SDK parses **`ati-badge1` only**; other family versions are skipped. Legacy `ra-badge*` and values outside the family are rejected. `av` is **required**, same key and version grammar as Discovery TXT: `v`/`V`-prefixed SemVer (e.g. `v1.0.0`) or bare SemVer (e.g. `1.0.0`). A missing or blank `av`, or a value that is not valid SemVer after stripping `v`/`V`, makes the record invalid. Comparison strips the prefix (same as Discovery) so it can match ATI Name / Version Constraint values. Badge TXT has no `m=` field. `u` is **required**, non-blank **badgeUrl**. Parsing does not validate scheme or host. During verification the SDK extracts the path from `u=` and concatenates it with **`TransparencyClient.baseUrl`**; the `u=` host is not the HTTP target and is not checked against **Trusted TL Domain**. Keys `version` and `url` are obsolete and not recognized. During version rotation, multiple TXT records may coexist under the same host.
+_Avoid_: Token, credential (alone — too generic), version= / url= (obsolete Badge TXT keys — use av= / u=)
 
 **Badge Entry**:
 The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status (top-level `status`), ATI Name (`payload.agentName`), `payload.agentHost`, `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
@@ -221,11 +221,11 @@ A periodically published Merkle tree state snapshot from the Transparency Log (R
 _Avoid_: snapshot (alone), log state (too vague)
 
 **Transparency Log (TL)**:
-The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. Badge URLs and `TransparencyClient.baseUrl` must resolve to a **Trusted TL Domain**. SDK access: `TransparencyClient` (`ati-sdk-transparency`), defaulting to `TransparencyClient.CNNIC_BASE_URL`; injectable via `ConnectOptions.transparencyClient()` for custom TL endpoints in tests. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
+The append-only public log where Badges are stored, operated exclusively by CNNIC (default: `ati-tl.cnnic.cn:8180`; legacy: `tl.atiagent.cn`). CNNIC also operates the identity CA (IDCA) that issues Identity Certificates — together, TL and IDCA form ATI's trust infrastructure. Verification fetches the Badge entry, validates the Seal signature and Merkle proof, and compares certificate fingerprints. **`TransparencyClient.baseUrl`** must resolve to a **Trusted TL Domain**; the Badge TXT `u=` host is not used as the HTTP target and is not checked against that list. SDK access: `TransparencyClient` (`ati-sdk-transparency`), defaulting to `TransparencyClient.CNNIC_BASE_URL`; injectable via `ConnectOptions.transparencyClient()` for custom TL endpoints in tests. Distinct from the RA (Alibaba Cloud ATI), which manages registration and Discovery.
 _Avoid_: TL (alone — spell out on first use), audit log, Alibaba Cloud TL (TL is CNNIC-operated, not Alibaba Cloud)
 
 **Trusted TL Domain**:
-A CNNIC transparency log hostname allowed in Badge URL pointers and `TransparencyClient.baseUrl`. Prevents a tampered `_ati-badge` TXT record from redirecting verification to a malicious log. Default trusted domains: `ati-tl.cnnic.cn` (production) and `tl.atiagent.cn` (legacy). Enforced by `BadgeUrlValidator` (Badge TXT `url` field) and `TrustedDomainRegistry` (`TransparencyClient` construction). Legacy Alibaba Cloud TL hostnames (e.g. `transparency.ati.aliyun.com`) are not trusted. Custom domains may be added via `BadgeUrlValidator` builder or the `ati.transparency.trusted.domains` system property for testing.
+A CNNIC transparency log hostname allowed as **`TransparencyClient.baseUrl`**. Prevents the SDK from being constructed against a malicious log (root-key substitution). Default trusted domains: `ati-tl.cnnic.cn` (production) and `tl.atiagent.cn` (legacy). Enforced by `TrustedDomainRegistry` when building `TransparencyClient`. Not applied to the Badge TXT `u=` host — verification extracts the path from `u=` and concatenates it with the configured `baseUrl` (Spec 7.1). Legacy Alibaba Cloud TL hostnames (e.g. `transparency.ati.aliyun.com`) are not trusted. Custom domains may be added via the `ati.transparency.trusted.domains` system property for testing.
 _Avoid_: trusted domain (alone — specify Trusted TL Domain), TL URL (too vague)
 
 **Verification Policy**:
@@ -353,15 +353,15 @@ The canonical URI identifier for an agent, including version: `ati://v{version}.
 _Avoid_: agent URI (prefer ATI Name), ANS name (out of scope — ANS uses `ans://`), agentName (alone — prefer ATI Name unless citing TL schema field names)
 
 **agentVersion**:
-The SemVer version of an agent as recorded in the RA registration — e.g. `1.0.0`. Also embedded in the ATI Name and optionally in Badge DNS TXT records during version rotation.
+The SemVer version of an agent as recorded in the RA registration — e.g. `1.0.0`. Embedded in the ATI Name as `v{version}` and published in Discovery TXT and Badge TXT as required `av=` — either `av=v1.0.0` or `av=1.0.0`. Parsers strip a leading `v`/`V` before SemVer comparison.
 _Avoid_: version (alone — ambiguous with version constraint or ATI Name prefix)
 
 **Version Constraint**:
-A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate). Resolved client-side against the `av` field in `_ati` Discovery TXT records on the Identity Hostname. When multiple records satisfy the constraint, Discovery picks the **latest** matching `av`. When omitted, Discovery defaults to the **latest** `av` among all TXT records. The `av` prefix `v` (e.g. `v1.0.0`) is normalized before comparison.
+A SemVer matching expression passed to Discovery — e.g. `1.0.0` (exact), `^1.0.0` (compatible), `~1.2.0` (approximate). Resolved client-side against the `av` field in `_ati` Discovery TXT records on the Identity Hostname. When multiple records satisfy the constraint, Discovery picks the **latest** matching `av`. When omitted, Discovery defaults to the **latest** `av` among all TXT records. TXT `av` may include a `v`/`V` prefix (e.g. `v1.0.0`) or be a bare SemVer (`1.0.0`); the prefix is stripped before SemVer comparison. Both Discovery and Badge use this grammar.
 _Avoid_: version filter, semver query
 
 **Version Rotation**:
-The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Discovery TXT records (each with a distinct `av`) and multiple Badge TXT records (each tagged with `version=`). Discovery filters by Version Constraint and selects the latest matching `av`; Badge pre-verification accepts any matching fingerprint.
+The coexistence of multiple agentVersion values under the same agentHost during upgrades. DNS may hold multiple Discovery TXT records (each with a distinct `av`) and multiple Badge TXT records (each tagged with `av=`). Discovery filters by Version Constraint and selects the latest matching `av`; Badge pre-verification accepts any matching fingerprint.
 _Avoid_: version upgrade (too vague), rolling update
 
 **DANE**:

@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **IDCA Chain verification error handling**: preserve JCE/FIPS provider errors when verifying the bundled chain. Missing algorithms and other provider errors are rethrown with the original cause instead of being misreported as a Root/Intermediate pairing failure; signature mismatch remains a chain-structure failure.
+- **Discovery TXT parse**: parse `_ati` records as unordered `ati1` KV (`v`, `av`, `p`, `u`, optional `m`). Skip unimplemented `ati{N}` family versions, non-SemVer `av`, and `p=` outside `mcp` / `a2a` / `http-api`; `discover` still succeeds if any valid records remain.
+- **Badge TXT parse**: parse `_ati-badge` as `ati-badge1` with required `av=` / `u=` (obsolete `version=` / `url=` are ignored). Skip other `ati-badge{N}` and out-of-family values.
+- **Badge verification path fetch**: do not drop a Badge because the TXT `u=` host is outside Trusted TL Domain. Extract the path from `u=` and request `TransparencyClient.baseUrl` + that path; path traversal is rejected on that fetch. Constructing `TransparencyClient` with an untrusted `baseUrl` host still fails.
 
 ## [2.0.0] - 2026-07-28
 

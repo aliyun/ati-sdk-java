@@ -16,5 +16,5 @@ Early SDK versions referenced Alibaba Cloud domains (`transparency.ati.aliyun.co
 ## Consequences
 
 - `TransparencyClient.CNNIC_BASE_URL` is the sole built-in production default; configure another base URL explicitly for non-production testing.
-- `TrustedDomainRegistry` and `BadgeUrlValidator` trust only CNNIC TL hostnames by default.
+- `TrustedDomainRegistry` trusts only CNNIC TL hostnames for `TransparencyClient.baseUrl`. Badge TXT `u=` host is not checked against this list (ADR-0006).
 - Badge DNS TXT records use the `_ati-badge` prefix only (legacy `_ra-badge` lookup removed).

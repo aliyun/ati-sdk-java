@@ -301,6 +301,27 @@ Agent registration is completed in the [Alibaba Cloud ATI Console](https://dnsne
 
 > **Note:** All steps are performed in the ATI Console. No SDK code is needed for registration.
 
+### DNS TXT records
+
+Published on the **Identity Hostname**. Semicolon-separated KV; key order is not significant. This SDK parses **`ati1`** (Discovery) and **`ati-badge1`** (Badge) only.
+
+**Discovery TXT** (`_ati.{agentHost}`) — one record per Protocol (`p=` is lowercase `mcp`, `a2a`, or `http-api`):
+
+```
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=mcp; u=https://bailian.aliyun.com/agents/abc123/mcp"
+_ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://bailian.aliyun.com/agents/abc123/a2a"
+```
+
+Optional `m=direct` may be appended; when omitted, Discovery Mode is `direct`. `u=` is the **agentUrl** on the Access Hostname (in single-hostname mode, that host equals `agentHost`).
+
+**Badge TXT** (`_ati-badge.{agentHost}`):
+
+```
+_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
+```
+
+`av=` uses the same agentVersion grammar as Discovery. Verification extracts the path from `u=` and requests `TransparencyClient.baseUrl` + that path — the Badge TXT `u=` host is not the HTTP target.
+
 ### Agent Discovery
 
 Resolve agent information via DNS TXT on the Identity Hostname:
