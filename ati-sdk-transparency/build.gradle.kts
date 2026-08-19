@@ -10,6 +10,7 @@ dependencies {
     implementation("io.github.erdtman:java-json-canonicalization:1.1")
     implementation("com.upokecenter:cbor:4.5.4")
     implementation("dnsjava:dnsjava:${project.property("dnsjavaVersion")}")
+    implementation("org.semver4j:semver4j:5.3.0")
     implementation("org.slf4j:slf4j-api:${project.property("slf4jVersion")}")
 
     testImplementation("org.junit.jupiter:junit-jupiter:${project.property("junitVersion")}")

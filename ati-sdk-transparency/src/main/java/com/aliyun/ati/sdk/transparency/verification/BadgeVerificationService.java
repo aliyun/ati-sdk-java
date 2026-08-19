@@ -733,7 +733,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             return List.of();
         }
         return badges.stream()
-            .filter(badge -> version.equals(badge.agentVersion()))
+            .filter(badge -> badge.matchesAgentVersion(version))
             .collect(Collectors.toList());
     }
 

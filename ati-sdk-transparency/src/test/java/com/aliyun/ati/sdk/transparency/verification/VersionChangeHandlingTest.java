@@ -18,9 +18,10 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.mockStatic;
 
 /**
  * Unit tests for version change handling scenarios.
@@ -80,9 +81,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1 both ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both registrations are ACTIVE
@@ -101,6 +102,38 @@ class VersionChangeHandlingTest {
 
             // Should only fetch the v1.0.0 registration (version filtering optimization)
             verify(transparencyClient).getTransparencyLogByPath(TEST_TL_PATH_V1);
+        }
+    }
+
+    @Test
+    @DisplayName("Should match Badge av after stripping v/V prefix against ATI Name")
+    void shouldMatchPrefixedAvAgainstAtiName() {
+        try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
+            certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
+                .thenReturn(Optional.of(TEST_ANS_NAME_V1));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME_V1))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.getCommonName(mockCertificate))
+                .thenReturn(TEST_HOSTNAME);
+            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
+                .thenReturn(TEST_FINGERPRINT_V1);
+            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT_V1, TEST_FINGERPRINT_V1))
+                .thenReturn(true);
+
+            RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
+                "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+            RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
+                "v=ati-badge1; av=V1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+            when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
+
+            TransparencyLog registrationV1 = createMockRegistration("ACTIVE", TEST_FINGERPRINT_V1, TEST_ANS_NAME_V1);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH_V1)).thenReturn(registrationV1);
+
+            ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
+
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            verify(transparencyClient).getTransparencyLogByPath(TEST_TL_PATH_V1);
+            verify(transparencyClient, never()).getTransparencyLogByPath(TEST_TL_PATH_V2);
         }
     }
 
@@ -124,10 +157,10 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 DEPRECATED, v1.0.1 ACTIVE
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/"
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/"
                         + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
@@ -166,7 +199,7 @@ class VersionChangeHandlingTest {
 
             // Only v1.0.1 badge exists in DNS
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2));
 
             // v1.0.1 registration doesn't match the cert
@@ -220,9 +253,9 @@ class VersionChangeHandlingTest {
 
             // Two badges - v1.0.0 and v1.0.1
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV2, badgeV1));
 
             // v1.0.1 fetch fails (5xx), but v1.0.0 succeeds
@@ -256,9 +289,9 @@ class VersionChangeHandlingTest {
 
             // Two badges exist
             RaBadgeRecord badgeV1 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V1);
             RaBadgeRecord badgeV2 = RaBadgeRecord.parse(
-                "v=ati-badge1; version=1.0.1; url=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID_V2);
             when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badgeV1, badgeV2));
 
             // Both fetch attempts fail

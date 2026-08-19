@@ -28,7 +28,7 @@ class RaBadgeLookupServiceTest {
     void shouldReturnAtiBadgeWhenRecordExists() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=ati-badge1; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -55,7 +55,7 @@ class RaBadgeLookupServiceTest {
     void lookupBadgeShouldReturnFirstAtiBadgeRecord() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=ati-badge1; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -70,7 +70,7 @@ class RaBadgeLookupServiceTest {
     void hasBadgeRecordShouldReturnTrueWhenAtiBadgeExists() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=ati-badge1; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -114,7 +114,7 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldNormalizeHostnameWithTrailingDot() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=ati-badge1; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
@@ -129,9 +129,9 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldReturnMultipleRecordsForVersionRotation() {
         TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=ati-badge1; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
         service.addRecord("_ati-badge." + TEST_HOSTNAME,
-            "v=ati-badge1; version=2.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_V2);
+            "v=ati-badge1; av=2.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_V2);
 
         List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
 
@@ -143,11 +143,27 @@ class RaBadgeLookupServiceTest {
     void lookupBadgesShouldFilterOutInvalidBadgeFormats() {
         Map<String, String> dnsRecords = new HashMap<>();
         dnsRecords.put("_ati-badge." + TEST_HOSTNAME,
-            "v=unsupported-format; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
+            "v=unsupported-format; av=1.0.0; u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID);
 
         TestableRaBadgeLookupService service = new TestableRaBadgeLookupService(dnsRecords);
 
         assertThat(service.lookupBadges(TEST_HOSTNAME)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("lookupBadges should parse reordered av=/u= and skip obsolete version=/url=")
+    void lookupBadgesShouldConsumeAvUParseAndSkipObsoleteKeys() {
+        TestableRaBadgeLookupServiceMultiple service = new TestableRaBadgeLookupServiceMultiple();
+        service.addRecord("_ati-badge." + TEST_HOSTNAME,
+            "u=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID + "; av=1.0.0; v=ati-badge1");
+        service.addRecord("_ati-badge." + TEST_HOSTNAME,
+            "v=ati-badge1; version=1.0.0; url=https://tl.atiagent.cn/v1/agents/" + TEST_AGENT_ID_V2);
+
+        List<RaBadgeRecord> badges = service.lookupBadges(TEST_HOSTNAME);
+
+        assertThat(badges).hasSize(1);
+        assertThat(badges.get(0).agentId()).isEqualTo(TEST_AGENT_ID);
+        assertThat(badges.get(0).agentVersion()).isEqualTo("1.0.0");
     }
 
     @Test

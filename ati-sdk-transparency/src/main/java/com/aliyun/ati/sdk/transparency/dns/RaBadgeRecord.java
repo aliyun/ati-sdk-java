@@ -1,23 +1,17 @@
 package com.aliyun.ati.sdk.transparency.dns;
 
+import org.semver4j.Semver;
+
 import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Represents a parsed _ati-badge TXT record.
+ * Parsed {@code _ati-badge} DNS TXT record.
  *
- * <p>The _ati-badge TXT record format is:</p>
- * <pre>
- * v=ati-badge1; version=1.0.0; url=https://ati-tl.cnnic.cn:8180/tl/agents/{uuid}
- * </pre>
- *
- * <p>Where:</p>
- * <ul>
- *   <li>{@code v=ati-badge1} - the badge format version</li>
- *   <li>{@code version=1.0.0} - the agent's semantic version (optional for backwards compatibility)</li>
- *   <li>{@code url=...} - the transparency log URL for this agent</li>
- * </ul>
+ * <p>Format: {@code v=ati-badge1; av=v1.0.0; u=https://...}</p>
  *
  * <p><b>Security note (Spec 7.1):</b> The SDK extracts the full path from the TXT URL
  * and concatenates it with the configured TL base-url, rather than reconstructing a path
@@ -25,10 +19,10 @@ import java.util.regex.Pattern;
  * the configured transparency log.</p>
  *
  * @param badgeVersion the badge format version (e.g., "ati-badge1")
- * @param agentVersion the agent's semantic version (e.g., "1.0.0"), may be null
- * @param url the full transparency log URL
+ * @param agentVersion the agent's semantic version (e.g., "v1.0.0")
+ * @param url the full transparency log URL from {@code u=}
  * @param agentId the extracted agent ID from the URL (kept for backwards compatibility)
- * @param tlPath the full path extracted from the URL (e.g., "/v1/agents/{uuid}" or "/tl/agents/{uuid}/logs/latest")
+ * @param tlPath the full path extracted from the URL (e.g., "/tl/agents/{uuid}/logs/latest")
  */
 public record RaBadgeRecord(
     String badgeVersion,
@@ -37,14 +31,8 @@ public record RaBadgeRecord(
     String agentId,
     String tlPath
 ) {
-    // Pattern to parse _ati-badge TXT record
-    // Matches: v=ati-badge1; version=1.0.0; url=https://... (version is optional)
-    private static final Pattern BADGE_PATTERN = Pattern.compile(
-        "v=([^;\\s]+)\\s*;\\s*(?:version=([^;\\s]+)\\s*;\\s*)?url=([^\\s]+)",
-        Pattern.CASE_INSENSITIVE
-    );
+    public static final String FORMAT_ATI_BADGE1 = "ati-badge1";
 
-    // Pattern to extract agent ID from URL path (supports both /v1/agents/ and /tl/agents/ prefixes)
     private static final Pattern AGENT_ID_PATTERN = Pattern.compile(
         "/(?:v1|tl)/agents/([a-f0-9-]+)",
         Pattern.CASE_INSENSITIVE
@@ -61,22 +49,36 @@ public record RaBadgeRecord(
             return null;
         }
 
-        Matcher matcher = BADGE_PATTERN.matcher(txtValue.trim());
-        if (!matcher.find()) {
+        Map<String, String> fields = parseFields(txtValue);
+
+        String v = fields.get("v");
+        if (!FORMAT_ATI_BADGE1.equals(v)) {
             return null;
         }
 
-        String badgeVersion = matcher.group(1);
-        String agentVersion = matcher.group(2); // May be null if not present
-        String url = matcher.group(3);
+        String av = fields.get("av");
+        if (av == null || av.isBlank() || parseAgentVersion(av) == null) {
+            return null;
+        }
 
-        // Extract agent ID from URL (backwards compat)
-        String agentId = extractAgentId(url);
+        String u = fields.get("u");
+        if (u == null || u.isBlank()) {
+            return null;
+        }
 
-        // Extract full path from URL (spec 7.1: use full path, not reconstructed)
-        String tlPath = extractPath(url);
+        return new RaBadgeRecord(v, av, u, extractAgentId(u), extractPath(u));
+    }
 
-        return new RaBadgeRecord(badgeVersion, agentVersion, url, agentId, tlPath);
+    private static Map<String, String> parseFields(String txt) {
+        Map<String, String> map = new HashMap<>();
+        for (String part : txt.split(";")) {
+            String trimmed = part.trim();
+            int eq = trimmed.indexOf('=');
+            if (eq > 0) {
+                map.put(trimmed.substring(0, eq).trim(), trimmed.substring(eq + 1).trim());
+            }
+        }
+        return map;
     }
 
     /**
@@ -119,13 +121,31 @@ public record RaBadgeRecord(
     /**
      * Checks if this badge format version is supported.
      *
-     * @return true if the badge format is supported (e.g., "ati-badge1")
+     * @return true if the badge format is {@code ati-badge1}
      */
     public boolean isSupportedBadgeFormat() {
-        if (badgeVersion == null) {
+        return FORMAT_ATI_BADGE1.equals(badgeVersion);
+    }
+
+    /**
+     * Returns true if this record's {@code av} matches {@code version} after stripping
+     * a leading {@code v} or {@code V} from both sides.
+     *
+     * @param version version from an Identity Certificate ATI Name (may be prefixed)
+     * @return true if the versions are the same SemVer
+     */
+    public boolean matchesAgentVersion(String version) {
+        if (version == null || agentVersion == null) {
             return false;
         }
-        return badgeVersion.toLowerCase().startsWith("ati-badge");
+        Semver badgeSemver = parseAgentVersion(agentVersion);
+        Semver otherSemver = parseAgentVersion(version);
+        return badgeSemver != null && otherSemver != null && badgeSemver.isEquivalentTo(otherSemver);
+    }
+
+    private static Semver parseAgentVersion(String av) {
+        String normalized = av.startsWith("v") || av.startsWith("V") ? av.substring(1) : av;
+        return Semver.parse(normalized);
     }
 
     @Override
