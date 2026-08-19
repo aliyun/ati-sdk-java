@@ -37,7 +37,7 @@ public final class AtiDiscoveryRecord {
      *
      * @param txt raw TXT value
      * @return parsed record
-     * @throws IllegalArgumentException if malformed or unsupported format/mode
+     * @throws IllegalArgumentException if malformed or unsupported format, Protocol, agentVersion, or mode
      */
     public static AtiDiscoveryRecord parse(String txt) {
         Objects.requireNonNull(txt, "TXT record must not be null");
@@ -52,10 +52,14 @@ public final class AtiDiscoveryRecord {
         if (av == null || av.isBlank()) {
             throw new IllegalArgumentException("Missing required field: av");
         }
+        DiscoveryVersionSelector.parseVersion(av);
 
         String p = fields.get("p");
         if (p == null || p.isBlank()) {
             throw new IllegalArgumentException("Missing required field: p");
+        }
+        if (!DiscoveryProtocols.isSupported(p)) {
+            throw new IllegalArgumentException("Unsupported protocol: " + p);
         }
 
         String u = fields.get("u");

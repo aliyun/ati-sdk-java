@@ -136,6 +136,68 @@ class AtiDiscoveryClientTest {
             .containsExactlyInAnyOrder("MCP", "A2A");
     }
 
+    @Test
+    @DisplayName("discover should skip invalid Discovery TXT Records and succeed when any valid remain")
+    void discoverShouldSkipInvalidAndSucceedWhenAnyValidRemain() {
+        AtiDiscoveryClient client = new AtiDiscoveryClient(dnsName -> List.of(
+            "v=ati2; av=1.0.0; p=mcp; u=" + MCP_URL,
+            "v=ati1; av=foo; p=mcp; u=" + MCP_URL,
+            "v=ati1; av=1.0.0; p=MCP; u=" + MCP_URL,
+            "v=ati1; av=1.0.0; p=mcp; u=",
+            "v=ati1; av=1.0.0; p=mcp; u=" + MCP_URL + "; m=card",
+            txt("1.0.0", "mcp", MCP_URL)
+        ));
+
+        AgentDetail detail = client.discover(IDENTITY_HOST);
+
+        assertThat(detail.getAgentVersion()).isEqualTo("1.0.0");
+        assertThat(detail.getEndpoints()).hasSize(1);
+        assertThat(detail.getEndpoints().get(0).getProtocol()).isEqualTo("MCP");
+        assertThat(detail.getEndpoints().get(0).getAgentUrl()).isEqualTo(MCP_URL);
+    }
+
+    @Test
+    @DisplayName("discover should throw AtiNotFoundException when every well-formed-looking TXT is invalid")
+    void discoverShouldThrowWhenEveryRecordIsInvalidUnderContract() {
+        AtiDiscoveryClient client = new AtiDiscoveryClient(dnsName -> List.of(
+            "v=ati2; av=1.0.0; p=mcp; u=" + MCP_URL,
+            "v=ati1; av=foo; p=mcp; u=" + MCP_URL,
+            "v=ati1; av=1.0.0; p=websocket; u=" + MCP_URL
+        ));
+
+        assertThatThrownBy(() -> client.discover(IDENTITY_HOST))
+            .isInstanceOf(AtiNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("discover should expose http-api as HTTP-API on the Endpoint")
+    void discoverShouldNormalizeHttpApiProtocolOnEndpoint() {
+        String httpApiUrl = "https://bailian.aliyun.com/agents/abc123/http-api";
+        AtiDiscoveryClient client = new AtiDiscoveryClient(
+            dnsName -> List.of(txt("1.0.0", "http-api", httpApiUrl)));
+
+        AgentDetail detail = client.discover(IDENTITY_HOST);
+
+        assertThat(detail.getEndpoints()).hasSize(1);
+        assertThat(detail.getEndpoints().get(0).getProtocol()).isEqualTo("HTTP-API");
+        assertThat(detail.getEndpoints().get(0).getAgentUrl()).isEqualTo(httpApiUrl);
+    }
+
+    @Test
+    @DisplayName("discover should select latest matching av after stripping v/V prefix")
+    void discoverShouldSelectLatestMatchingAvAfterPrefixStrip() {
+        AtiDiscoveryClient client = new AtiDiscoveryClient(dnsName -> List.of(
+            txt("v1.0.0", "mcp", MCP_URL),
+            txt("V1.1.0", "a2a", A2A_URL)
+        ));
+
+        AgentDetail detail = client.discover(IDENTITY_HOST, "^1.0.0");
+
+        assertThat(detail.getAgentVersion()).isEqualTo("1.1.0");
+        assertThat(detail.getEndpoints()).hasSize(1);
+        assertThat(detail.getEndpoints().get(0).getProtocol()).isEqualTo("A2A");
+    }
+
     private static String txt(String version, String protocol, String url) {
         return "v=ati1; av=" + version + "; p=" + protocol + "; u=" + url + "; m=direct";
     }

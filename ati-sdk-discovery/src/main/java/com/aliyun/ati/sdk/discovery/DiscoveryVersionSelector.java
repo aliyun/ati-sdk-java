@@ -57,6 +57,10 @@ final class DiscoveryVersionSelector {
 
     static Semver parseVersion(String av) {
         String normalized = av.startsWith("v") || av.startsWith("V") ? av.substring(1) : av;
-        return Semver.parse(normalized);
+        Semver parsed = Semver.parse(normalized);
+        if (parsed == null) {
+            throw new IllegalArgumentException("Invalid agent version: " + av);
+        }
+        return parsed;
     }
 }
