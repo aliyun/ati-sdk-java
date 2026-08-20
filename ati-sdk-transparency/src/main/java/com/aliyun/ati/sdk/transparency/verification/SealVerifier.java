@@ -1,6 +1,5 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
-import com.aliyun.ati.sdk.transparency.model.EvidenceRef;
 import com.aliyun.ati.sdk.transparency.model.MerkleProof;
 import com.aliyun.ati.sdk.transparency.model.Seal;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
@@ -179,9 +178,9 @@ public final class SealVerifier {
         content.put("schemaVersion", log.getSchemaVersion());
         content.put("payload", log.getPayload());
 
-        // evidenceRef: use raw map from the original response for correct canonicalization
-        if (log.getEvidenceRef() != null) {
-            content.put("evidenceRef", MAPPER.convertValue(log.getEvidenceRef(), Map.class));
+        // evidenceRef: use the original JSON map so unknown keys survive JCS
+        if (log.getRawEvidenceRef() != null) {
+            content.put("evidenceRef", log.getRawEvidenceRef());
         }
 
         // JCS canonicalize (RFC 8785)

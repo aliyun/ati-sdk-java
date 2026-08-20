@@ -201,7 +201,7 @@ The full registration record stored in the TL for an agent, retrieved via the UR
 _Avoid_: TL record (too vague), badge payload (prefer Badge Entry)
 
 **Evidence Ref**:
-Metadata in a Badge Entry referencing the RA's original registration submission evidence (schema `ATI-EVIDENCE-V1`). Contains `evidenceId`, `submitterId` (RA, e.g. `aliyun`), `evidenceType`, `evidenceUri`, and `evidenceHash`. Used for audit traceability — Connection verification does not separately fetch or validate the evidence bytes, but `evidenceRef` is included in the Seal's JCS-signed content alongside `status`, `schemaVersion`, and `payload`.
+Metadata in a Badge Entry referencing the RA's original registration submission evidence (schema `ATI-EVIDENCE-V1`). Contains `evidenceId`, `submitterId` (RA, e.g. `aliyun`), `evidenceType`, `evidenceUri`, and `evidenceHash`. TL JSON may carry additional keys (e.g. evidence-object signature fields); **Seal** JCS uses the raw `evidenceRef` object, not the typed subset. Used for audit traceability — Connection verification does not separately fetch or validate the evidence bytes, but `evidenceRef` is included in the Seal's JCS-signed content alongside `status`, `schemaVersion`, and `payload`.
 _Avoid_: evidence (alone — too generic), submission record (prefer Evidence Ref when referring to TL metadata)
 
 **Seal**:

@@ -3,6 +3,8 @@ package com.aliyun.ati.sdk.transparency.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
 
@@ -15,6 +17,9 @@ import java.util.Map;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransparencyLog {
+
+    private static final ObjectMapper EVIDENCE_REF_MAPPER = new ObjectMapper()
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     @JsonProperty("merkleProof")
     private MerkleProof merkleProof;
@@ -34,8 +39,7 @@ public class TransparencyLog {
     @JsonProperty("seal")
     private Seal seal;
 
-    @JsonProperty("evidenceRef")
-    private EvidenceRef evidenceRef;
+    private Map<String, Object> evidenceRef;
 
     @JsonIgnore
     private TransparencyLogAtiV1 parsedPayload;
@@ -83,11 +87,41 @@ public class TransparencyLog {
         this.seal = seal;
     }
 
+    /**
+     * Typed view of known Evidence Ref fields. Extra TLog keys are kept on
+     * {@link #getRawEvidenceRef()} for Seal JCS, not on this object.
+     *
+     * @return parsed Evidence Ref, or null
+     */
+    @JsonIgnore
     public EvidenceRef getEvidenceRef() {
+        if (evidenceRef == null) {
+            return null;
+        }
+        return EVIDENCE_REF_MAPPER.convertValue(evidenceRef, EvidenceRef.class);
+    }
+
+    /**
+     * Original {@code evidenceRef} object as returned by the TL. Used for Seal
+     * JCS so unknown keys are not dropped.
+     *
+     * @return raw evidenceRef map, or null
+     */
+    @JsonProperty("evidenceRef")
+    public Map<String, Object> getRawEvidenceRef() {
         return evidenceRef;
     }
 
+    @JsonIgnore
+    @SuppressWarnings("unchecked")
     public void setEvidenceRef(EvidenceRef evidenceRef) {
+        this.evidenceRef = evidenceRef == null
+            ? null
+            : EVIDENCE_REF_MAPPER.convertValue(evidenceRef, Map.class);
+    }
+
+    @JsonProperty("evidenceRef")
+    public void setRawEvidenceRef(Map<String, Object> evidenceRef) {
         this.evidenceRef = evidenceRef;
     }
 

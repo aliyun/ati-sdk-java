@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Seal JCS evidenceRef**: keep the raw TL `evidenceRef` map for signature canonicalization. Typed `EvidenceRef` dropped unknown keys (e.g. evidence-object signature fields), so production Seal verification failed.
 - **IDCA Chain verification error handling**: preserve JCE/FIPS provider errors when verifying the bundled chain. Missing algorithms and other provider errors are rethrown with the original cause instead of being misreported as a Root/Intermediate pairing failure; signature mismatch remains a chain-structure failure.
 - **Discovery TXT parse**: parse `_ati` records as unordered `ati1` KV (`v`, `av`, `p`, `u`, optional `m`). Skip unimplemented `ati{N}` family versions, non-SemVer `av`, and `p=` outside `mcp` / `a2a` / `http-api`; `discover` still succeeds if any valid records remain.
 - **Badge TXT parse**: parse `_ati-badge` as `ati-badge1` with required `av=` / `u=` (obsolete `version=` / `url=` are ignored). Skip other `ati-badge{N}` and out-of-family values.
