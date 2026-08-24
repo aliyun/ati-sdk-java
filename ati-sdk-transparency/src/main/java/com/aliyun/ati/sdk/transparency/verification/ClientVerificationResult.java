@@ -71,10 +71,10 @@ public final class ClientVerificationResult {
     }
 
     /**
-     * Returns the expected agent host from the registration.
+     * Returns the expected Identity Hostname from the registration.
      *
-     * <p>Use this to verify the client's certificate CN matches what's in the
-     * transparency log.</p>
+     * <p>Derived from {@code payload.agentSubHost} when non-blank, otherwise
+     * {@code payload.agentHost}. Not Access Hostname.</p>
      *
      * @return the expected agent host, or null if not available
      */

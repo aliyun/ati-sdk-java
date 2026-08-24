@@ -27,6 +27,9 @@ public class TransparencyLogAtiV1 {
     @JsonProperty("agentHost")
     private String agentHost;
 
+    @JsonProperty("agentSubHost")
+    private String agentSubHost;
+
     @JsonProperty("version")
     private String version;
 
@@ -53,6 +56,9 @@ public class TransparencyLogAtiV1 {
 
     public String getAgentHost() { return agentHost; }
     public void setAgentHost(String agentHost) { this.agentHost = agentHost; }
+
+    public String getAgentSubHost() { return agentSubHost; }
+    public void setAgentSubHost(String agentSubHost) { this.agentSubHost = agentSubHost; }
 
     public String getVersion() { return version; }
     public void setVersion(String version) { this.version = version; }
@@ -95,6 +101,7 @@ public class TransparencyLogAtiV1 {
         return "TransparencyLogAtiV1{"
             + "agentName='" + agentName + '\''
             + ", agentHost='" + agentHost + '\''
+            + ", agentSubHost='" + agentSubHost + '\''
             + ", version='" + version + '\''
             + ", agentStatus='" + agentStatus + '\''
             + ", certificates=" + certificates

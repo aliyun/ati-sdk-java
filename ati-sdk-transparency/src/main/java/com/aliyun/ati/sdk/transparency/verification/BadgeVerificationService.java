@@ -144,7 +144,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             LOG.debug("Fetching {} registrations in parallel for server verification", badgesWithPaths.size());
             List<FetchResult> fetchResults = fetchRegistrationsInParallel(badgesWithPaths);
 
-            return evaluateServerRegistrations(fetchResults);
+            return evaluateServerRegistrations(fetchResults, hostname);
 
         } catch (Exception e) {
             LOG.error("Failed to verify server {}: {}", hostname, e.getMessage());
@@ -239,12 +239,14 @@ public final class BadgeVerificationService implements ServerVerifier {
      * <p>This method processes all fetch results and returns a combined result with
      * all valid fingerprints from ACTIVE or DEPRECATED registrations.</p>
      */
-    private ServerVerificationResult evaluateServerRegistrations(List<FetchResult> fetchResults) {
+    private ServerVerificationResult evaluateServerRegistrations(
+            List<FetchResult> fetchResults, String lookupIdentityHost) {
         List<String> activeFingerprints = new ArrayList<>();
         List<String> deprecatedFingerprints = new ArrayList<>();
         TransparencyLog firstActiveRegistration = null;
         TransparencyLog firstDeprecatedRegistration = null;
         TransparencyLog firstInvalidRegistration = null;
+        TransparencyLog hostnameMismatchRegistration = null;
         String agentHost = null;
         boolean hasWarning = false;
         String lastInvalidStatus = null;
@@ -268,6 +270,16 @@ public final class BadgeVerificationService implements ServerVerifier {
             TransparencyLog registration = fetchResult.registration();
             String status = registration.getStatus();
             String fingerprint = registration.getServerCertFingerprint();
+            String derivedIdentityHost = registration.getIdentityHost();
+
+            if (isIdentityHostMismatch(lookupIdentityHost, derivedIdentityHost)) {
+                LOG.debug("Skipping registration with Identity Hostname mismatch: expected={}, actual={}",
+                    lookupIdentityHost, derivedIdentityHost);
+                if (hostnameMismatchRegistration == null) {
+                    hostnameMismatchRegistration = registration;
+                }
+                continue;
+            }
 
             // Sub-step 3: Extract serverCertFingerprint
             if (fingerprint == null || fingerprint.isBlank()) {
@@ -283,7 +295,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 activeFingerprints.add(fingerprint);
                 if (firstActiveRegistration == null) {
                     firstActiveRegistration = registration;
-                    agentHost = registration.getAgentHost();
+                    agentHost = registration.getIdentityHost();
                 }
                 if ("WARNING".equals(status)) {
                     hasWarning = true;
@@ -295,7 +307,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 if (firstDeprecatedRegistration == null) {
                     firstDeprecatedRegistration = registration;
                     if (agentHost == null) {
-                        agentHost = registration.getAgentHost();
+                        agentHost = registration.getIdentityHost();
                     }
                 }
                 LOG.debug("Found DEPRECATED registration with fingerprint: {}...",
@@ -364,6 +376,20 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .merkleVerified(anyMerkleVerified)
                 .fingerprintExtracted(anyFingerprintExtracted)
                 .failureStep(anyFingerprintExtracted ? null : "fingerprint")
+                .build();
+        }
+
+        // Identity Hostname mismatch on every successfully fetched entry
+        if (hostnameMismatchRegistration != null) {
+            LOG.warn("All server registrations have Identity Hostname mismatch vs {}", lookupIdentityHost);
+            return ServerVerificationResult.builder()
+                .status(VerificationStatus.HOSTNAME_MISMATCH)
+                .registration(hostnameMismatchRegistration)
+                .expectedAgentHost(hostnameMismatchRegistration.getIdentityHost())
+                .warningMessage("Identity Hostname does not match Badge Entry")
+                .sealVerified(anySealVerified)
+                .merkleVerified(anyMerkleVerified)
+                .fingerprintExtracted(anyFingerprintExtracted)
                 .build();
         }
 
@@ -533,7 +559,7 @@ public final class BadgeVerificationService implements ServerVerifier {
 
             String expectedFingerprint = registration.getIdentityCertFingerprint();
             String expectedAtiName = registration.getAtiName();
-            String expectedAgentHost = registration.getAgentHost();
+            String expectedIdentityHost = registration.getIdentityHost();
             String status = registration.getStatus();
             String agentId = fetchResult.badge().agentId();
 
@@ -548,11 +574,10 @@ public final class BadgeVerificationService implements ServerVerifier {
                 continue;
             }
 
-            // Check agentHost from URI SAN matches TL agentHost (required per Section 4.4)
-            if (agentHost != null && expectedAgentHost != null
-                    && !agentHost.equalsIgnoreCase(expectedAgentHost)) {
-                LOG.debug("Hostname mismatch for agent {}: expected={}, actual={}",
-                    agentId, expectedAgentHost, agentHost);
+            // URI SAN Identity Hostname vs Badge Entry derived identity (not payload.agentHost)
+            if (isIdentityHostMismatch(agentHost, expectedIdentityHost)) {
+                LOG.debug("Identity Hostname mismatch for agent {}: expected={}, actual={}",
+                    agentId, expectedIdentityHost, agentHost);
                 lastMismatchReason = "hostname";
                 continue;
             }
@@ -589,7 +614,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .registration(activeMatch)
                 .expectedIdentityCertFingerprint(activeMatch.getIdentityCertFingerprint())
                 .expectedAtiName(activeMatch.getAtiName())
-                .expectedAgentHost(activeMatch.getAgentHost())
+                .expectedAgentHost(activeMatch.getIdentityHost())
                 .build();
         }
 
@@ -600,7 +625,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .registration(deprecatedMatch)
                 .expectedIdentityCertFingerprint(deprecatedMatch.getIdentityCertFingerprint())
                 .expectedAtiName(deprecatedMatch.getAtiName())
-                .expectedAgentHost(deprecatedMatch.getAgentHost())
+                .expectedAgentHost(deprecatedMatch.getIdentityHost())
                 .warningMessage("Registration is deprecated")
                 .build();
         }
@@ -613,7 +638,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .registration(invalidMatch)
                 .expectedIdentityCertFingerprint(invalidMatch.getIdentityCertFingerprint())
                 .expectedAtiName(invalidMatch.getAtiName())
-                .expectedAgentHost(invalidMatch.getAgentHost())
+                .expectedAgentHost(invalidMatch.getIdentityHost())
                 .warningMessage("Registration status: " + invalidStatus)
                 .build();
         }
@@ -625,7 +650,7 @@ public final class BadgeVerificationService implements ServerVerifier {
 
             if ("hostname".equals(lastMismatchReason)) {
                 mismatchStatus = VerificationStatus.HOSTNAME_MISMATCH;
-                message = "Certificate CN does not match agent.host";
+                message = "Identity Hostname does not match Badge Entry";
             } else if ("ansname".equals(lastMismatchReason)) {
                 mismatchStatus = VerificationStatus.ATI_NAME_MISMATCH;
                 message = "Certificate URI SAN does not match atiName";
@@ -640,7 +665,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 .registration(lastRegistration)
                 .expectedIdentityCertFingerprint(lastRegistration.getIdentityCertFingerprint())
                 .expectedAtiName(lastRegistration.getAtiName())
-                .expectedAgentHost(lastRegistration.getAgentHost())
+                .expectedAgentHost(lastRegistration.getIdentityHost())
                 .warningMessage(message)
                 .build();
         }
@@ -649,6 +674,16 @@ public final class BadgeVerificationService implements ServerVerifier {
             .status(VerificationStatus.LOOKUP_FAILED)
             .warningMessage("Failed to fetch any registrations")
             .build();
+    }
+
+    /**
+     * True when both hosts are present and differ (case-insensitive).
+     * A null on either side skips the check — same as the previous agentHost compare.
+     */
+    static boolean isIdentityHostMismatch(String presentedIdentityHost, String expectedIdentityHost) {
+        return presentedIdentityHost != null
+            && expectedIdentityHost != null
+            && !presentedIdentityHost.equalsIgnoreCase(expectedIdentityHost);
     }
 
     /**

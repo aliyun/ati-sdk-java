@@ -151,7 +151,7 @@ SDK configuration object passed to `AtiClient.connect()` when a client agent ini
 _Avoid_: connect config (too vague), connection options (prefer ConnectOptions — matches the SDK class name)
 
 **Server Verification**:
-Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge on Identity Hostname, DANE TLSA on Identity Hostname for identity cert and on Access Hostname for server cert) and Post-verification (compare captured Server Certificate fingerprint). Symmetric counterpart to Client Verification.
+Client-side verification of a target server agent during Connection, governed by Verification Policy. Runs Pre-verification (Badge on Identity Hostname, DANE TLSA on Identity Hostname for identity cert and on Access Hostname for server cert) and Post-verification (compare captured Server Certificate fingerprint). Badge hostname matching compares the lookup Identity Hostname to the Badge Entry Identity Hostname (`payload.agentSubHost` when non-blank, otherwise `payload.agentHost`) — not to Access Hostname. Symmetric counterpart to Client Verification.
 _Avoid_: server-side verification (ambiguous — that is Client Verification), outbound verification (too vague)
 
 **Verification Result**:
@@ -166,7 +166,7 @@ SDK enum (`com.aliyun.ati.sdk.transparency.verification.VerificationStatus`) imp
 - `REGISTRATION_INVALID` — REVOKED or EXPIRED registration.
 - `FINGERPRINT_MISMATCH` — presented certificate fingerprint ≠ TL Badge entry.
 - `ATI_NAME_MISMATCH` — Identity Certificate URI SAN ≠ Badge Entry `agentName`.
-- `HOSTNAME_MISMATCH` — certificate CN ≠ Badge Entry Identity Hostname (JSON `agentHost`; client verification path).
+- `HOSTNAME_MISMATCH` — presented Identity Hostname ≠ Badge Entry Identity Hostname (from `payload.agentSubHost` when non-blank, otherwise `payload.agentHost`).
 - `NOT_ATI_AGENT` — no `_ati-badge` TXT record found.
 - `LOOKUP_FAILED` — DNS or TL fetch error.
 - `SEAL_VERIFICATION_FAILED` — Seal signature or Merkle proof invalid.
@@ -197,7 +197,7 @@ The `_ati-badge` TXT record format: `v={format}; av={agentVersion}; u={badgeUrl}
 _Avoid_: Token, credential (alone — too generic), version= / url= (obsolete Badge TXT keys — use av= / u=)
 
 **Badge Entry**:
-The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1`, containing Registration Status (top-level `status`), ATI Name (`payload.agentName`), Identity Hostname (`payload.agentHost`), `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry.
+The full registration record stored in the TL for an agent, retrieved via the URL from a Badge TXT record. Uses schema version `ATI-TL-V1` (`payload.agentSubHost` is optional; missing or blank does not fail parse). Contains Registration Status (top-level `status`), ATI Name (`payload.agentName`), Access Hostname (`payload.agentHost`), Identity Hostname derived as `payload.agentSubHost` when that field is non-blank otherwise `payload.agentHost`, `payload.agentId`, `payload.version` (maps to `agentVersion` in RA/Discovery), certificate fingerprints (`serverCertFingerprint`, `identityCertFingerprint`), and an optional `evidenceRef`. Distinct from the DNS Badge TXT record, which only holds a pointer URL to this entry. CNNIC locked this payload mapping; SDK consumes the wire names and maps them to Identity Hostname / Access Hostname. Mode is not inferred from DNS labels — a blank `agentSubHost` means Independent Domain Mode on that entry.
 _Avoid_: TL record (too vague), badge payload (prefer Badge Entry)
 
 **Evidence Ref**:
@@ -297,7 +297,7 @@ Application-layer revocation of an agent's registration — TL Badge **Registrat
 _Avoid_: revocation (alone — ambiguous), CRL revocation (CRL is Certificate Revocation, not Registration Revocation)
 
 **Client Verification**:
-Server-side verification of an incoming client agent, governed by **Verification Policy**. When policy is not None, the production **IDCA Chain** is the default trust material (overridable by a **Test IDCA Chain**). Comprises two complementary layers: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). When policy is None, client identity certificate verification is not performed. Does not rely on SCITT headers.
+Server-side verification of an incoming client agent, governed by **Verification Policy**. When policy is not None, the production **IDCA Chain** is the default trust material (overridable by a **Test IDCA Chain**). Comprises two complementary layers: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). Badge hostname matching compares the URI SAN Identity Hostname to the Badge Entry Identity Hostname (`payload.agentSubHost` when non-blank, otherwise `payload.agentHost`) — not to Access Hostname. When policy is None, client identity certificate verification is not performed. Does not rely on SCITT headers.
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **ClientRequestVerifier**:
@@ -337,11 +337,22 @@ _Avoid_: shared platform, Dual Hostname Model, two-domain model, split domain
 **RA Registration Constraints (Identity Hostname vs `u=`)**:
 - **Independent Domain Mode** — RA requires the **Identity Hostname to equal the host component of each endpoint `u=` URL** (e.g. both `agent.example.com`).
 - **Shared Domain Mode** — RA requires the **Identity Hostname to be a first-level subdomain of the `u=` host** (Access Hostname) — e.g. `abc123.bailian.aliyun.com` under `bailian.aliyun.com`, with `u=` on `bailian.aliyun.com`.
+
+Enforced by the RA at registration. SDK Discovery and Badge verification do not re-check the parent/child DNS rule; Badge compares Identity Hostname equality only.
 _Avoid_: URL host mismatch (prefer stating the mode-specific constraint explicitly)
 
 **agentHost**:
-RA/TL JSON field and leftover SDK identifier (`getAgentHost()`, `discover(agentHost)`) for the **Identity Hostname**. Same value as `identityHost`. Not a third hostname type — do not teach it in README tables or diagrams. Cite this name only when quoting TL JSON (`payload.agentHost`) or existing Java APIs.
-_Avoid_: agentHost as a domain concept (prefer Identity Hostname / `identityHost`)
+Wire/SDK leftover name — **not** a third hostname type. Meaning depends on which surface:
+
+- **TL Badge Entry `payload.agentHost`** (CNNIC-locked) — the **Access Hostname**.
+- **Discovery / `AgentDetail.getAgentHost()` / `discover(agentHost)` / `TransparencyLog.getAgentHost()`** — the **Identity Hostname** (`identityHost`). On a Badge Entry, `getAgentHost()` is an alias of the derived identity (`payload.agentSubHost` when non-blank, otherwise `payload.agentHost`), not a copy of the JSON field.
+
+Do not teach `agentHost` in README tables or diagrams. Cite it only when quoting TL JSON or existing Java APIs.
+_Avoid_: agentHost as a domain concept (prefer Identity Hostname / Access Hostname by surface)
+
+**agentSubHost**:
+TL Badge Entry wire field (`payload.agentSubHost`), CNNIC-locked. The **Identity Hostname** in **Shared Domain Mode**. Empty, missing, or blank in **Independent Domain Mode** (Identity Hostname then equals `payload.agentHost`). Not a third hostname type — do not teach it in README tables or diagrams.
+_Avoid_: sub host, agent subdomain (prefer Identity Hostname / `identityHost`)
 
 **agentId**:
 The unique registration ID assigned by the RA to an agent (UUID), stored in TL Badge entries. Identifies a specific registration record within RA/TL systems. Obtained during Connection Badge pre-verification (from `_ati-badge` URL), not from DNS Discovery. Distinct from Identity Hostname (a host may have multiple agentIds during version rotation) and from ATI Name (the URI embedded in the Identity Certificate).

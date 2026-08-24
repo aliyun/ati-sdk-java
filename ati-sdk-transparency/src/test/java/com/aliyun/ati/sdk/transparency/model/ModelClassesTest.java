@@ -308,6 +308,7 @@ class ModelClassesTest {
         payload.setTimestamp("2026-01-15T10:00:00+08:00");
         payload.setAgentName("ati://v1.0.0.agent.example.com");
         payload.setAgentHost("agent.example.com");
+        payload.setAgentSubHost(null);
         payload.setVersion("1.0.0");
         payload.setAgentId("some-uuid");
         payload.setAgentStatus("ACTIVE");
@@ -317,6 +318,7 @@ class ModelClassesTest {
         assertThat(payload.getTimestamp()).isEqualTo("2026-01-15T10:00:00+08:00");
         assertThat(payload.getAgentName()).isEqualTo("ati://v1.0.0.agent.example.com");
         assertThat(payload.getAgentHost()).isEqualTo("agent.example.com");
+        assertThat(payload.getAgentSubHost()).isNull();
         assertThat(payload.getVersion()).isEqualTo("1.0.0");
         assertThat(payload.getAgentId()).isEqualTo("some-uuid");
         assertThat(payload.getAgentStatus()).isEqualTo("ACTIVE");
@@ -386,7 +388,40 @@ class ModelClassesTest {
         assertThat(log.getServerCertFingerprint()).isEqualTo("SHA-256:server");
         assertThat(log.getIdentityCertFingerprint()).isEqualTo("SHA-256:identity");
         assertThat(log.getAgentHost()).isEqualTo("agent.example.com");
+        assertThat(log.getIdentityHost()).isEqualTo("agent.example.com");
+        assertThat(log.getAccessHost()).isEqualTo("agent.example.com");
         assertThat(log.getAtiName()).isEqualTo("ati://v1.0.0.agent.example.com");
+    }
+
+    @Test
+    @DisplayName("TransparencyLog derives Identity Hostname from agentSubHost in Shared Domain Mode")
+    void transparencyLogDerivesIdentityFromAgentSubHost() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentHost("bailian.aliyun.com");
+        payload.setAgentSubHost("abc123.bailian.aliyun.com");
+
+        TransparencyLog log = new TransparencyLog();
+        log.setParsedPayload(payload);
+
+        assertThat(payload.getAgentHost()).isEqualTo("bailian.aliyun.com");
+        assertThat(log.getAccessHost()).isEqualTo("bailian.aliyun.com");
+        assertThat(log.getIdentityHost()).isEqualTo("abc123.bailian.aliyun.com");
+        assertThat(log.getAgentHost()).isEqualTo("abc123.bailian.aliyun.com");
+    }
+
+    @Test
+    @DisplayName("TransparencyLog treats blank agentSubHost as Independent Domain Mode")
+    void transparencyLogTreatsBlankAgentSubHostAsIndependent() {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentHost("agent.example.com");
+        payload.setAgentSubHost("  ");
+
+        TransparencyLog log = new TransparencyLog();
+        log.setParsedPayload(payload);
+
+        assertThat(log.getIdentityHost()).isEqualTo("agent.example.com");
+        assertThat(log.getAccessHost()).isEqualTo("agent.example.com");
+        assertThat(log.getAgentHost()).isEqualTo("agent.example.com");
     }
 
     @Test
@@ -397,6 +432,8 @@ class ModelClassesTest {
         assertThat(log.getServerCertFingerprint()).isNull();
         assertThat(log.getIdentityCertFingerprint()).isNull();
         assertThat(log.getAgentHost()).isNull();
+        assertThat(log.getIdentityHost()).isNull();
+        assertThat(log.getAccessHost()).isNull();
         assertThat(log.getAtiName()).isNull();
     }
 

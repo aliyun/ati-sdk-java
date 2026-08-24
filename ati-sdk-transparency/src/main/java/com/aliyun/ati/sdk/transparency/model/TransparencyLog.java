@@ -175,12 +175,41 @@ public class TransparencyLog {
     }
 
     /**
-     * Convenience method to get the agent host (FQDN).
+     * Derived Identity Hostname from the Badge Entry.
      *
-     * @return the agent host, or null if not available
+     * <p>{@code payload.agentSubHost} when non-blank (Shared Domain Mode);
+     * otherwise {@code payload.agentHost} (Independent Domain Mode or legacy
+     * entries without {@code agentSubHost}).</p>
+     *
+     * @return the Identity Hostname, or null if not available
+     */
+    public String getIdentityHost() {
+        if (parsedPayload == null) {
+            return null;
+        }
+        String subHost = parsedPayload.getAgentSubHost();
+        if (subHost != null && !subHost.isBlank()) {
+            return subHost;
+        }
+        return parsedPayload.getAgentHost();
+    }
+
+    /**
+     * Access Hostname from {@code payload.agentHost} (CNNIC-locked wire field).
+     *
+     * @return the Access Hostname, or null if not available
+     */
+    public String getAccessHost() {
+        return parsedPayload != null ? parsedPayload.getAgentHost() : null;
+    }
+
+    /**
+     * Leftover alias of {@link #getIdentityHost()} — not {@code payload.agentHost}.
+     *
+     * @return the Identity Hostname, or null if not available
      */
     public String getAgentHost() {
-        return parsedPayload != null ? parsedPayload.getAgentHost() : null;
+        return getIdentityHost();
     }
 
     @Override

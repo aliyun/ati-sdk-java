@@ -145,6 +145,76 @@ class ClientVerificationTest {
         }
     }
 
+    @Test
+    @DisplayName("Should pass Shared Domain Mode when URI SAN matches agentSubHost not agentHost")
+    void shouldPassSharedDomainWhenUriSanMatchesAgentSubHost() {
+        String identityHost = "abc123.bailian.aliyun.com";
+        String accessHost = "bailian.aliyun.com";
+        String atiName = "ati://v1.0.0." + identityHost;
+        try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
+            certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
+                .thenReturn(Optional.of(atiName));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(atiName))
+                .thenReturn(identityHost);
+            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
+                .thenReturn(TEST_FINGERPRINT);
+            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
+                .thenReturn(true);
+
+            RaBadgeRecord badge = RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+            when(raBadgeLookupService.lookupBadges(identityHost)).thenReturn(List.of(badge));
+
+            TransparencyLog registration = createSharedDomainRegistration(
+                "ACTIVE", TEST_FINGERPRINT, atiName, accessHost, identityHost);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
+
+            ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
+
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            assertThat(result.getExpectedAgentHost()).isEqualTo(identityHost);
+        }
+    }
+
+    @Test
+    @DisplayName("Should skip hostname-mismatched Badge and match a later Shared Domain entry")
+    void shouldSkipHostnameMismatchAndMatchLaterSharedDomainEntry() {
+        String identityHost = "abc123.bailian.aliyun.com";
+        String accessHost = "bailian.aliyun.com";
+        String atiName = "ati://v1.0.0." + identityHost;
+        String otherAgentId = "aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa";
+        try (MockedStatic<CertificateUtils> certUtils = mockStatic(CertificateUtils.class)) {
+            certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
+                .thenReturn(Optional.of(atiName));
+            certUtils.when(() -> CertificateUtils.extractHostFromAtiName(atiName))
+                .thenReturn(identityHost);
+            certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
+                .thenReturn(TEST_FINGERPRINT);
+            certUtils.when(() -> CertificateUtils.fingerprintMatches(TEST_FINGERPRINT, TEST_FINGERPRINT))
+                .thenReturn(true);
+
+            RaBadgeRecord wrongBadge = RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + otherAgentId);
+            RaBadgeRecord matchingBadge = RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+            when(raBadgeLookupService.lookupBadges(identityHost))
+                .thenReturn(List.of(wrongBadge, matchingBadge));
+
+            TransparencyLog wrongIdentity = createSharedDomainRegistration(
+                "ACTIVE", TEST_FINGERPRINT, atiName, accessHost, "other.bailian.aliyun.com");
+            TransparencyLog matching = createSharedDomainRegistration(
+                "ACTIVE", TEST_FINGERPRINT, atiName, accessHost, identityHost);
+            when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + otherAgentId))
+                .thenReturn(wrongIdentity);
+            when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(matching);
+
+            ClientVerificationResult result = verificationService.verifyClient(mockCertificate);
+
+            assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+            assertThat(result.getExpectedAgentHost()).isEqualTo(identityHost);
+        }
+    }
+
     // ==================== URI SAN Mismatch ====================
 
     @Test
@@ -392,6 +462,29 @@ class ClientVerificationTest {
         TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
         payload.setAgentName(null); // No ATI name
         payload.setAgentHost(TEST_HOSTNAME);
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus(status);
+
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint(fingerprint);
+        certs.setIdentityCertFingerprint(fingerprint);
+        payload.setCertificates(certs);
+
+        TransparencyLog log = new TransparencyLog();
+        log.setStatus(status);
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
+
+        return log;
+    }
+
+    private TransparencyLog createSharedDomainRegistration(
+            String status, String fingerprint, String atiName, String accessHost, String identityHost) {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName(atiName);
+        payload.setAgentHost(accessHost);
+        payload.setAgentSubHost(identityHost);
         payload.setVersion("1.0.0");
         payload.setAgentId("some-uuid");
         payload.setAgentStatus(status);

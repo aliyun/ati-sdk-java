@@ -72,6 +72,72 @@ class BadgeVerificationServiceTest {
     }
 
     @Test
+    @DisplayName("Should verify server using agentSubHost as Identity Hostname in Shared Domain Mode")
+    void shouldVerifyServerUsingAgentSubHostAsIdentity() {
+        String identityHost = "abc123.bailian.aliyun.com";
+        String accessHost = "bailian.aliyun.com";
+        RaBadgeRecord badge = RaBadgeRecord.parse(
+            "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+        when(raBadgeLookupService.lookupBadges(identityHost)).thenReturn(List.of(badge));
+
+        TransparencyLog registration = createSharedDomainRegistration(
+            "ACTIVE", TEST_FINGERPRINT, accessHost, identityHost);
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH)).thenReturn(registration);
+
+        ServerVerificationResult result = verificationService.verifyServer(identityHost);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.getExpectedServerCertFingerprint()).isEqualTo(TEST_FINGERPRINT);
+        assertThat(result.getExpectedAgentHost()).isEqualTo(identityHost);
+    }
+
+    @Test
+    @DisplayName("Should skip server Badge with Identity Hostname mismatch and use a later match")
+    void shouldSkipServerIdentityMismatchAndUseLaterMatch() {
+        String identityHost = "abc123.bailian.aliyun.com";
+        String accessHost = "bailian.aliyun.com";
+        String otherAgentId = "aaaaaaaa-1111-1111-1111-aaaaaaaaaaaa";
+        String matchingFingerprint = "SHA256:matchingfingerprint0001";
+        RaBadgeRecord wrongBadge = RaBadgeRecord.parse(
+            "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + otherAgentId);
+        RaBadgeRecord matchingBadge = RaBadgeRecord.parse(
+            "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+        when(raBadgeLookupService.lookupBadges(identityHost))
+            .thenReturn(List.of(wrongBadge, matchingBadge));
+
+        when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + otherAgentId))
+            .thenReturn(createSharedDomainRegistration(
+                "ACTIVE", TEST_FINGERPRINT, accessHost, "other.bailian.aliyun.com"));
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
+            .thenReturn(createSharedDomainRegistration(
+                "ACTIVE", matchingFingerprint, accessHost, identityHost));
+
+        ServerVerificationResult result = verificationService.verifyServer(identityHost);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.getExpectedAgentHost()).isEqualTo(identityHost);
+        assertThat(result.getExpectedServerCertFingerprints()).containsExactly(matchingFingerprint);
+    }
+
+    @Test
+    @DisplayName("Should return HOSTNAME_MISMATCH when every server Badge identity differs")
+    void shouldReturnHostnameMismatchWhenEveryServerBadgeIdentityDiffers() {
+        String identityHost = "abc123.bailian.aliyun.com";
+        RaBadgeRecord badge = RaBadgeRecord.parse(
+            "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID);
+        when(raBadgeLookupService.lookupBadges(identityHost)).thenReturn(List.of(badge));
+
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
+            .thenReturn(createSharedDomainRegistration(
+                "ACTIVE", TEST_FINGERPRINT, "bailian.aliyun.com", "other.bailian.aliyun.com"));
+
+        ServerVerificationResult result = verificationService.verifyServer(identityHost);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.HOSTNAME_MISMATCH);
+        assertThat(result.getExpectedAgentHost()).isEqualTo("other.bailian.aliyun.com");
+    }
+
+    @Test
     @DisplayName("Should return DEPRECATED_OK status for deprecated registration")
     void shouldReturnDeprecatedOkForDeprecatedRegistration() {
         RaBadgeRecord badge = RaBadgeRecord.parse(
@@ -611,6 +677,28 @@ class BadgeVerificationServiceTest {
     }
 
     // ==================== Helper Methods ====================
+
+    private TransparencyLog createSharedDomainRegistration(
+            String status, String fingerprint, String accessHost, String identityHost) {
+        TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setAgentName("ati://v1.0.0." + identityHost);
+        payload.setAgentHost(accessHost);
+        payload.setAgentSubHost(identityHost);
+        payload.setVersion("1.0.0");
+        payload.setAgentId("some-uuid");
+        payload.setAgentStatus(status);
+
+        TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
+        certs.setServerCertFingerprint(fingerprint);
+        certs.setIdentityCertFingerprint(fingerprint);
+        payload.setCertificates(certs);
+
+        TransparencyLog log = new TransparencyLog();
+        log.setStatus(status);
+        log.setSchemaVersion("ATI-TL-V1");
+        log.setParsedPayload(payload);
+        return log;
+    }
 
     private TransparencyLog createMockRegistration(String status) {
         TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
