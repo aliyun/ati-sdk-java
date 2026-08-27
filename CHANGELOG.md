@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 
 - **Server `BASIC` requires an Identity Certificate** (ADR-0008): `ati.sdk.server.verification.policy=BASIC` now derives TLS `client-auth=need`, same as `ENHANCED`/`ADVANCED`. A Client Agent that does not present an Identity Certificate fails the handshake. Anonymous TLS is `NONE` only; `client-auth` cannot be overridden back to `want`. Application-layer Client Verification is still invoked by the application. Client-side `BASIC` still allows omitting an outbound Identity Certificate.
+- **Seal signature algorithm** (ADR-0009): CNNIC production Seal is SHA-256withRSA only. `signatureAlgorithm` must be SHA-256withRSA (normalized); missing or any other value — including SHA-256withECDSA — fails Badge pre-verification.
 
 ## [2.1.0] - 2026-08-17
 

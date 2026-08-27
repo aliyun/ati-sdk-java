@@ -8,16 +8,16 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *
  * <p>The seal contains a digital signature over the canonicalized content
  * (status, schemaVersion, payload, evidenceRef) using RFC 8785 JCS
- * canonicalization and SHA-256withECDSA signature algorithm.</p>
+ * canonicalization and SHA-256withRSA signature algorithm.</p>
  *
  * <p>Example:</p>
  * <pre>{@code
  * {
  *     "canonicalization": "RFC8785-JCS",
  *     "digestAlgorithm": "SHA-256",
- *     "signatureAlgorithm": "SHA-256withECDSA",
+ *     "signatureAlgorithm": "SHA-256withRSA",
  *     "signatureEncoding": "DER_BASE64",
- *     "keyId": "ati-tl-ecdsa-v1",
+ *     "keyId": "ati-tl-rsa-v1",
  *     "signature": "MEQCI...",
  *     "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
  * }

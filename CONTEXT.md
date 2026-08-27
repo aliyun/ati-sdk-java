@@ -205,8 +205,8 @@ Metadata in a Badge Entry referencing the RA's original registration submission 
 _Avoid_: evidence (alone — too generic), submission record (prefer Evidence Ref when referring to TL metadata)
 
 **Seal**:
-The cryptographic signature on a Badge Entry in the Transparency Log. Verified during Badge pre-verification using the `publicKey` embedded in the Seal object (SHA-256withECDSA over RFC 8785 JCS-canonicalized content: `status`, `schemaVersion`, `payload`, `evidenceRef`). Related to but distinct from TL Root Key — the current SDK verifies Seal signatures with the per-response embedded key, not by fetching `/root-keys`.
-_Avoid_: Signature (alone — too generic)
+The cryptographic signature on a Badge Entry in the Transparency Log. Verified during Badge pre-verification using the `publicKey` embedded in the Seal object (SHA-256withRSA over RFC 8785 JCS-canonicalized content: `status`, `schemaVersion`, `payload`, `evidenceRef`). The Seal object's `signatureAlgorithm` must be SHA-256withRSA (normalized); missing or any other value — including SHA-256withECDSA — fails verification. Related to but distinct from TL Root Key — the current SDK verifies Seal signatures with the per-response embedded key, not by fetching `/root-keys`.
+_Avoid_: Signature (alone — too generic), SHA-256withECDSA (obsolete Seal algorithm — SCITT Receipt/Status Token still use ES256, which is not Seal)
 
 **TL Root Key**:
 A root public key published by CNNIC at the TL `/root-keys` endpoint (C2SP format, keyed by hex key ID). Trust anchor for verifying SCITT Receipt and Status Token signatures when SCITT Header support is added. Cached by `RootKeyManager` in the SDK. Not the same as IDCA — TL Root Key attests log artifacts; IDCA issues Identity Certificates. The current Badge Seal verification path uses the `publicKey` embedded in each Seal response rather than `/root-keys`.

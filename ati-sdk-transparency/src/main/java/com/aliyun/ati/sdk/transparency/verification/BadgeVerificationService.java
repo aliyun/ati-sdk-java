@@ -481,7 +481,7 @@ public final class BadgeVerificationService implements ServerVerifier {
      * configured TL base-url, rather than reconstructing from agentId. This ensures
      * that even if DNS is compromised, the SDK only talks to the configured TL.</p>
      *
-     * <p>Per spec 8.2, after fetching, verifies the seal signature (SHA-256withECDSA + RFC 8785 JCS)
+     * <p>Per spec 8.2, after fetching, verifies the seal signature (SHA-256withRSA + RFC 8785 JCS)
      * and Merkle inclusion proof (RFC 9162) if present in the response.</p>
      */
     private List<FetchResult> fetchRegistrationsInParallel(List<RaBadgeRecord> badges) {

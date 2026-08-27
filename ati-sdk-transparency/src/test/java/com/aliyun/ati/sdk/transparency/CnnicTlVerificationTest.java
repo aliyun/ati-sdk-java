@@ -1,27 +1,22 @@
 package com.aliyun.ati.sdk.transparency;
 
-import java.security.KeyFactory;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
 import com.aliyun.ati.sdk.transparency.scitt.MerkleProofVerifier;
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.aliyun.ati.sdk.transparency.verification.SealVerifier;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.erdtman.jcs.JsonCanonicalizer;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Verifies ATI SDK can correctly validate a real CNNIC TL response
- * including seal signature (SHA256withECDSA + RFC 8785 JCS) and
- * Merkle inclusion proof (RFC 9162).
+ * Verifies ATI SDK can correctly validate a captured CNNIC TL response
+ * including Merkle inclusion proof (RFC 9162). Historical Seal signatures
+ * on this fixture use SHA-256withECDSA, which production verification rejects
+ * (ADR-0009: SHA-256withRSA only).
  */
 class CnnicTlVerificationTest {
 
@@ -83,43 +78,15 @@ class CnnicTlVerificationTest {
         """;
 
     @Test
-    @SuppressWarnings("unchecked")
-    void shouldVerifySealSignatureFromCnnicTl() throws Exception {
+    void shouldRejectEcdsaSealSignatureFromCnnicTl() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
-        Map<String, Object> response = mapper.readValue(CNNIC_TL_RESPONSE, Map.class);
+        TransparencyLog log = mapper.readValue(CNNIC_TL_RESPONSE, TransparencyLog.class);
+        SealVerifier.VerificationResult result = SealVerifier.verify(log);
 
-        // Parse public key from seal
-        Map<String, Object> seal = (Map<String, Object>) response.get("seal");
-        String pem = ((String) seal.get("publicKey")).replace("\\n", "\n");
-        String base64Key = pem.replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "").replaceAll("\\s+", "");
-        PublicKey publicKey = KeyFactory.getInstance("EC")
-            .generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(base64Key)));
-
-        // Build content: {status, schemaVersion, payload, evidenceRef}
-        Map<String, Object> content = new LinkedHashMap<>();
-        content.put("status", response.get("status"));
-        content.put("schemaVersion", response.get("schemaVersion"));
-        content.put("payload", response.get("payload"));
-        content.put("evidenceRef", response.get("evidenceRef"));
-
-        // JCS canonicalize
-        String contentJson = mapper.writeValueAsString(content);
-        JsonCanonicalizer canonicalizer = new JsonCanonicalizer(contentJson);
-        byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
-
-        // Verify ECDSA signature
-        byte[] signatureBytes = Base64.getDecoder().decode((String) seal.get("signature"));
-        Signature sig = Signature.getInstance("SHA256withECDSA");
-        sig.initVerify(publicKey);
-        sig.update(canonicalBytes);
-
-        assertThat(sig.verify(signatureBytes))
-            .as("CNNIC TL seal signature (SHA256withECDSA + RFC 8785 JCS)")
-            .isTrue();
+        assertThat(result.isValid()).isFalse();
+        assertThat(result.failureReason()).contains("SHA-256withRSA");
     }
 
     @Test
@@ -164,45 +131,6 @@ class CnnicTlVerificationTest {
             .startsWith("SHA-256:");
         assertThat(certs.get("identityCertFingerprint")).asString()
             .startsWith("SHA-256:");
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void shouldRejectTamperedSealSignature() throws Exception {
-        // Tamper with the status field
-        String tampered = CNNIC_TL_RESPONSE.replace("\"ACTIVE\"", "\"REVOKED\"");
-
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-
-        Map<String, Object> response = mapper.readValue(tampered, Map.class);
-
-        Map<String, Object> seal = (Map<String, Object>) response.get("seal");
-        String pem = ((String) seal.get("publicKey")).replace("\\n", "\n");
-        String base64Key = pem.replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "").replaceAll("\\s+", "");
-        PublicKey publicKey = KeyFactory.getInstance("EC")
-            .generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(base64Key)));
-
-        Map<String, Object> content = new LinkedHashMap<>();
-        content.put("status", response.get("status"));
-        content.put("schemaVersion", response.get("schemaVersion"));
-        content.put("payload", response.get("payload"));
-        content.put("evidenceRef", response.get("evidenceRef"));
-
-        String contentJson = mapper.writeValueAsString(content);
-        JsonCanonicalizer canonicalizer = new JsonCanonicalizer(contentJson);
-        byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
-
-        byte[] signatureBytes = Base64.getDecoder().decode((String) seal.get("signature"));
-        Signature sig = Signature.getInstance("SHA256withECDSA");
-        sig.initVerify(publicKey);
-        sig.update(canonicalBytes);
-
-        assertThat(sig.verify(signatureBytes))
-            .as("Tampered response should fail seal verification")
-            .isFalse();
     }
 
     private static byte[] hexToBytes(String hex) {

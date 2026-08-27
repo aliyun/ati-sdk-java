@@ -1,26 +1,21 @@
 package com.aliyun.ati.sdk.transparency;
 
-import java.security.KeyFactory;
-import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
-import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
 import com.aliyun.ati.sdk.transparency.scitt.MerkleProofVerifier;
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.aliyun.ati.sdk.transparency.verification.SealVerifier;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.erdtman.jcs.JsonCanonicalizer;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Verifies badge for ats-server.asia (agentId: d4bdc2a2-17cf-4010-b7fb-58d3216572e7)
- * using real CNNIC TL response.
+ * using a captured CNNIC TL response. Historical Seal on this fixture is
+ * SHA-256withECDSA, which production verification rejects (ADR-0009).
  */
 class AtsServerBadgeTest {
 
@@ -29,42 +24,15 @@ class AtsServerBadgeTest {
         """;
 
     @Test
-    @SuppressWarnings("unchecked")
-    void shouldVerifySealSignature() throws Exception {
+    void shouldRejectEcdsaSealSignature() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
-        Map<String, Object> response = mapper.readValue(TL_RESPONSE, Map.class);
-        Map<String, Object> seal = (Map<String, Object>) response.get("seal");
+        TransparencyLog log = mapper.readValue(TL_RESPONSE, TransparencyLog.class);
+        SealVerifier.VerificationResult result = SealVerifier.verify(log);
 
-        // Parse public key
-        String pem = ((String) seal.get("publicKey")).replace("\\n", "\n");
-        String base64Key = pem.replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "").replaceAll("\\s+", "");
-        PublicKey publicKey = KeyFactory.getInstance("EC")
-            .generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(base64Key)));
-
-        // Build canonical content
-        Map<String, Object> content = new LinkedHashMap<>();
-        content.put("status", response.get("status"));
-        content.put("schemaVersion", response.get("schemaVersion"));
-        content.put("payload", response.get("payload"));
-        content.put("evidenceRef", response.get("evidenceRef"));
-
-        String contentJson = mapper.writeValueAsString(content);
-        JsonCanonicalizer canonicalizer = new JsonCanonicalizer(contentJson);
-        byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
-
-        // Verify signature
-        byte[] signatureBytes = Base64.getDecoder().decode((String) seal.get("signature"));
-        Signature sig = Signature.getInstance("SHA256withECDSA");
-        sig.initVerify(publicKey);
-        sig.update(canonicalBytes);
-
-        assertThat(sig.verify(signatureBytes))
-            .as("ats-server.asia seal signature verification")
-            .isTrue();
+        assertThat(result.isValid()).isFalse();
+        assertThat(result.failureReason()).contains("SHA-256withRSA");
     }
 
     @Test

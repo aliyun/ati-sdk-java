@@ -24,14 +24,15 @@ import java.util.Map;
  *
  * <p>Per spec 8.2, badge verification should include:</p>
  * <ul>
- *   <li><b>Seal signature verification:</b> SHA-256withECDSA over RFC 8785 JCS-canonicalized
- *       content (status, schemaVersion, payload, evidenceRef)</li>
+ *   <li><b>Seal signature verification:</b> SHA-256withRSA over RFC 8785 JCS-canonicalized
+ *       content (status, schemaVersion, payload, evidenceRef). {@code signatureAlgorithm}
+ *       must be SHA-256withRSA (normalized); any other value fails.</li>
  *   <li><b>Merkle proof verification:</b> RFC 9162 inclusion proof that the log entry
  *       is committed to the transparency log's Merkle tree</li>
  * </ul>
  *
  * <p>This class extracts and formalizes the verification algorithms that were previously
- * proven in {@code CnnicTlVerificationTest}.</p>
+ * proven in {@code SealVerifierTest}.</p>
  */
 public final class SealVerifier {
 
@@ -157,7 +158,7 @@ public final class SealVerifier {
      * Verifies the seal signature over the canonicalized content.
      *
      * <p>The signed content is: {status, schemaVersion, payload, evidenceRef}
-     * canonicalized using RFC 8785 JCS, then verified with SHA-256withECDSA.</p>
+     * canonicalized using RFC 8785 JCS, then verified with SHA-256withRSA.</p>
      *
      * @param log the transparency log entry
      * @return true if the seal signature is valid
@@ -169,7 +170,17 @@ public final class SealVerifier {
             throw new IllegalArgumentException("Seal is missing required fields (signature, publicKey)");
         }
 
-        // Parse public key from PEM
+        String algorithm = seal.getSignatureAlgorithm();
+        if (algorithm == null || algorithm.isBlank()) {
+            throw new IllegalArgumentException("Seal signatureAlgorithm is required");
+        }
+        // Normalize: "SHA-256withRSA" -> "SHA256withRSA" (Java JCA convention)
+        String jcaAlgorithm = algorithm.replace("-", "");
+        if (!"SHA256withRSA".equals(jcaAlgorithm)) {
+            throw new IllegalArgumentException(
+                "Seal signatureAlgorithm must be SHA-256withRSA, got: " + algorithm);
+        }
+
         PublicKey publicKey = parsePublicKey(seal.getPublicKey());
 
         // Build the content that was signed: {status, schemaVersion, payload, evidenceRef}
@@ -188,16 +199,8 @@ public final class SealVerifier {
         JsonCanonicalizer canonicalizer = new JsonCanonicalizer(contentJson);
         byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
 
-        // Verify ECDSA signature
-        String algorithm = seal.getSignatureAlgorithm();
-        if (algorithm == null || algorithm.isBlank()) {
-            algorithm = "SHA256withECDSA"; // default per spec
-        }
-        // Normalize: "SHA-256withECDSA" -> "SHA256withECDSA" (Java JCA convention)
-        String jcaAlgorithm = algorithm.replace("-", "");
-
         byte[] signatureBytes = Base64.getDecoder().decode(seal.getSignature());
-        Signature sig = Signature.getInstance(jcaAlgorithm);
+        Signature sig = Signature.getInstance("SHA256withRSA");
         sig.initVerify(publicKey);
         sig.update(canonicalBytes);
 
@@ -246,7 +249,7 @@ public final class SealVerifier {
             .replace("-----END PUBLIC KEY-----", "")
             .replaceAll("\\s+", "");
         byte[] keyBytes = Base64.getDecoder().decode(base64Key);
-        return KeyFactory.getInstance("EC")
+        return KeyFactory.getInstance("RSA")
             .generatePublic(new X509EncodedKeySpec(keyBytes));
     }
 }
