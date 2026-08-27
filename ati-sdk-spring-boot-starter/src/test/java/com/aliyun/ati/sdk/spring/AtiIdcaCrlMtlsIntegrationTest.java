@@ -150,9 +150,9 @@ class AtiIdcaCrlMtlsIntegrationTest {
     }
 
     @Test
-    @DisplayName("BASIC policy (client-auth=want): allows mTLS when client serial is not on CRL")
+    @DisplayName("BASIC policy (client-auth=need): allows mTLS when client serial is not on CRL")
     void allowsNonRevokedClientUnderBasicPolicy() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.WANT)) {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
             HttpClient client = createMtlsClient(validClient, issuingCa);
 
             HttpResponse<Void> response = sendRequest(client, harness.port());
@@ -162,14 +162,14 @@ class AtiIdcaCrlMtlsIntegrationTest {
     }
 
     @Test
-    @DisplayName("BASIC policy (client-auth=want): allows TLS without client certificate (CRL skipped)")
-    void allowsTlsWithoutClientCertUnderBasicPolicy() throws Exception {
-        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.WANT)) {
+    @DisplayName("BASIC policy (client-auth=need): rejects TLS without client certificate")
+    void rejectsTlsWithoutClientCertUnderBasicPolicy() throws Exception {
+        try (TomcatHarness harness = startTomcatServer(materialDir.resolve("idca-trust.pem"), Ssl.ClientAuth.NEED)) {
             HttpClient client = createTlsClientWithoutClientCert();
 
-            HttpResponse<Void> response = sendRequest(client, harness.port());
-
-            assertThat(response.statusCode()).isBetween(200, 499);
+            assertThatThrownBy(() -> sendRequest(client, harness.port()))
+                .rootCause()
+                .isInstanceOf(SSLHandshakeException.class);
         }
     }
 

@@ -35,7 +35,7 @@
 - **客户端与服务端 policy 独立配置** — 例如客户端 `ENHANCED` 不意味着服务端会执行步骤 16–21，除非服务端 policy 也为 `ENHANCED`/`ADVANCED` 且已配置 IDCA。
 - **服务端双轨吊销** — 配置 IDCA 后，**Certificate Revocation**（TLS 层 CRL）与 **Registration Revocation**（Client Verification 层 Badge）相互独立，任一失败即拒绝。见 [服务端双轨吊销](#服务端双轨吊销)。
 - **`NONE` 仅适用于服务端** — 客户端不能配置 `NONE`；客户端始终校验服务端证书（最低 `BASIC`）。
-- **服务端 `client-auth`** 由 `ati.sdk.server.verification.policy` 自动派生（勿单独配置）：`NONE` → none，`BASIC` → want，`ENHANCED`/`ADVANCED` → need。
+- **服务端 `client-auth`** 由 `ati.sdk.server.verification.policy` 自动派生（勿单独配置）：`NONE` → none，`BASIC`/`ENHANCED`/`ADVANCED` → need。详见 [ADR-0008](docs/adr/0008-server-basic-requires-identity-certificate.md)。
 
 ### Independent Domain Mode（独立域名模式）
 
@@ -124,13 +124,11 @@ sequenceDiagram
     S->>C: 4. ServerHello + 服务器证书链
     C->>CA: 5. 验证服务器证书链（系统信任库）
     CA->>C: 6. 链有效 ✓
-    S->>C: 7. CertificateRequest（client-auth=want，服务端 policy BASIC）
-    C->>S: 8. 客户端身份证书（可选）
+    S->>C: 7. CertificateRequest（client-auth=need，服务端 policy BASIC）
+    C->>S: 8. 客户端身份证书
 
-    opt 传输层 mTLS（服务端配置了 IDCA 时）
-        S->>IDCA: 9. 验证客户端证书链
-        IDCA->>S: 10. 客户端证书有效 ✓
-    end
+    S->>IDCA: 9. 验证客户端证书链
+    IDCA->>S: 10. 客户端证书有效 ✓
 
     Note over S: 11. 应用层（服务端 policy BASIC）：仅从 URI SAN 提取 {clientIdentityHost} — 无 Badge/DANE
     Note over C,S: 12. 连接建立
@@ -452,7 +450,7 @@ ati:
       verification:
         # NONE | BASIC | ENHANCED | ADVANCED（与 ATI 控制台 L0–L3 对应）
         # 自动派生 TLS client-auth，请勿单独配置 server.ssl.client-auth
-        policy: BASIC          # L1 基础认证：可选客户端证书（client-auth=want）
+        policy: BASIC          # L1 基础认证：必须客户端证书（client-auth=need）
         # policy: ENHANCED     # L2 增强认证：必须客户端证书（client-auth=need）
         # policy: ADVANCED     # L3 高级认证：必须客户端证书 + DANE 客户端验证
         # policy: NONE         # L0 无认证：仅开发/测试（client-auth=none）

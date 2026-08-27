@@ -47,8 +47,9 @@ public class AtiServerAutoConfiguration {
      * (not configured separately):</p>
      * <ul>
      *   <li>{@code NONE} → {@code client-auth=none} (IDCA Chain unused)</li>
-     *   <li>{@code BASIC} → {@code client-auth=want} (shipped IDCA Chain, optional override)</li>
-     *   <li>{@code ENHANCED}/{@code ADVANCED} → {@code client-auth=need} (shipped IDCA Chain, optional override)</li>
+     *   <li>{@code BASIC}/{@code ENHANCED}/{@code ADVANCED} → {@code client-auth=need}
+     *       (shipped IDCA Chain, optional override). A missing Identity Certificate
+     *       fails the TLS handshake. This is what distinguishes None from Basic.</li>
      * </ul>
      *
      * @param properties the ATI SDK properties
@@ -92,13 +93,7 @@ public class AtiServerAutoConfiguration {
                     ssl.setClientAuth(Ssl.ClientAuth.NONE);
                     LOG.info("Server policy {}: client-auth=NONE", policy);
                 }
-                case BASIC -> {
-                    ssl.setClientAuth(Ssl.ClientAuth.WANT);
-                    ssl.setTrustCertificate(trustCert);
-                    LOG.info("Server policy {}: client-auth=WANT, idca={}",
-                        policy, trustOverride == null || trustOverride.isBlank() ? "shipped" : "override");
-                }
-                case ENHANCED, ADVANCED -> {
+                case BASIC, ENHANCED, ADVANCED -> {
                     ssl.setClientAuth(Ssl.ClientAuth.NEED);
                     ssl.setTrustCertificate(trustCert);
                     LOG.info("Server policy {}: client-auth=NEED, idca={}",

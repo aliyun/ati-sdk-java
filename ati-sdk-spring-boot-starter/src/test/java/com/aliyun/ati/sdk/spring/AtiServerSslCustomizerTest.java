@@ -52,11 +52,11 @@ class AtiServerSslCustomizerTest {
     }
 
     @Test
-    @DisplayName("BASIC without trust-certificate uses shipped IDCA Chain")
+    @DisplayName("BASIC without trust-certificate uses shipped IDCA Chain and client-auth=NEED")
     void basicWithoutPathUsesShippedChain() {
         assertThat(customizeServer("ati.sdk.mode=server", "ati.sdk.server.verification.policy=BASIC"))
             .satisfies(ssl -> {
-                assertThat(ssl.getClientAuth()).isEqualTo(Ssl.ClientAuth.WANT);
+                assertThat(ssl.getClientAuth()).isEqualTo(Ssl.ClientAuth.NEED);
                 assertThat(ssl.getTrustCertificate()).isEqualTo(IdcaChain.SHIPPED_CLASSPATH_LOCATION);
             });
     }

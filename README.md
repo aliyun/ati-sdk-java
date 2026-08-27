@@ -35,7 +35,7 @@ Two service modes. `{serverIdentityHost}` is the server agent's **Identity Hostn
 - **Client and server policies are configured independently** — e.g. client `ENHANCED` does not imply the server runs steps 16–21 unless the server policy is also `ENHANCED` or `ADVANCED` and IDCA is configured.
 - **Server-side dual-track revocation** — when IDCA is configured, **Certificate Revocation** (CRL at TLS) and **Registration Revocation** (Badge at Client Verification) are independent; either failure rejects. See [Server-side dual-track revocation](#server-side-dual-track-revocation).
 - **`NONE` is server-only** — clients cannot set `NONE`; they always validate the server certificate (minimum `BASIC`).
-- **`client-auth`** on the server is derived from `ati.sdk.server.verification.policy` (not set separately): `NONE` → none, `BASIC` → want, `ENHANCED`/`ADVANCED` → need.
+- **`client-auth`** on the server is derived from `ati.sdk.server.verification.policy` (not set separately): `NONE` → none, `BASIC`/`ENHANCED`/`ADVANCED` → need. See [ADR-0008](docs/adr/0008-server-basic-requires-identity-certificate.md).
 
 ### Independent Domain Mode
 
@@ -124,13 +124,11 @@ sequenceDiagram
     S->>C: 4. ServerHello + Server Certificate Chain
     C->>CA: 5. Validate server cert chain (system trust store)
     CA->>C: 6. Chain valid ✓
-    S->>C: 7. CertificateRequest (client-auth=want, server policy BASIC)
-    C->>S: 8. Client identity certificate (optional)
+    S->>C: 7. CertificateRequest (client-auth=need, server policy BASIC)
+    C->>S: 8. Client identity certificate
 
-    opt Transport mTLS (if IDCA configured on server)
-        S->>IDCA: 9. Validate client cert chain
-        IDCA->>S: 10. Client cert valid ✓
-    end
+    S->>IDCA: 9. Validate client cert chain
+    IDCA->>S: 10. Client cert valid ✓
 
     Note over S: 11. Application layer (server policy BASIC): extract {clientIdentityHost} from URI SAN only — no Badge/DANE
     Note over C,S: 12. Connection Established
@@ -452,7 +450,7 @@ ati:
       verification:
         # NONE | BASIC | ENHANCED | ADVANCED (aligned with ATI Console L0–L3)
         # Drives TLS client-auth automatically — do not set server.ssl.client-auth separately
-        policy: BASIC          # L1: optional client cert (client-auth=want)
+        policy: BASIC          # L1: require client cert (client-auth=need)
         # policy: ENHANCED     # L2: require client cert (client-auth=need)
         # policy: ADVANCED     # L3: require client cert + DANE client verification
         # policy: NONE         # L0: dev/test only (client-auth=none)

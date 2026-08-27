@@ -32,8 +32,9 @@ public enum VerificationPolicy {
 
     /**
      * Basic authentication — standard PKI via the production IDCA Chain on servers
-     * (optional client certificate). Client agents use the JVM default trust store
-     * for the Server Certificate.
+     * (Identity Certificate required). Client agents use the JVM default trust store
+     * for the Server Certificate and may omit an outbound Identity Certificate;
+     * the peer Server Agent's policy decides whether presentation is required.
      */
     BASIC,
 

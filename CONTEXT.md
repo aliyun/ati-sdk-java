@@ -185,7 +185,7 @@ The TLS certificate a server agent uses to serve HTTPS — proves the server's i
 _Avoid_: Service cert (prefer Server Certificate), TLS cert (alone — ambiguous with client-side TLS material)
 
 **Identity Certificate**:
-A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC issues one to every registered agent from the **IDCA Intermediate**, regardless of role. Used when an agent acts as client agent (presented on outbound connections). Server-side validation uses the **IDCA Chain** when Verification Policy is not None; when policy is None, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{identityHost}`).
+A CNNIC-issued, privately signed certificate that proves an agent's identity in mTLS. CNNIC issues one to every registered agent from the **IDCA Intermediate**, regardless of role. A Client Agent may present it on outbound connections; whether presentation is required is decided by the Server Agent's **Verification Policy**, not by the Client Agent's own policy. Server-side validation uses the **IDCA Chain** when Verification Policy is not None; when policy is None, client identity certificate verification is not performed. Carries the agent's ATI Name in the URI SAN (`ati://v{version}.{identityHost}`).
 _Avoid_: Client cert (alone — ambiguous with any mTLS client certificate), mTLS cert, ATI-issued (identity certs are CNNIC-issued)
 
 ### Trust & Verification
@@ -232,15 +232,14 @@ _Avoid_: trusted domain (alone — specify Trusted TL Domain), TL URL (too vague
 The trust verification level applied when establishing an agent-to-agent connection. Aligned with ATI Console levels L0–L3. Policies are progressive — each level includes all checks from the previous level (except None).
 
 - **None** (`NONE`) — L0 无认证: server-only; skip inbound client verification (no client certificate requested); development and testing only. Client agents must always validate the server certificate and cannot use this policy.
-- **Basic** (`BASIC`) — L1 基础认证: standard TLS PKI (system CA or IDCA on servers).
+- **Basic** (`BASIC`) — L1 基础认证: standard TLS PKI (system CA or IDCA on servers). On a Server Agent, the caller must present an Identity Certificate. On a Client Agent, outbound Identity Certificate remains optional — whether it must be presented is decided by the **peer** Server Agent's policy, not by the client's own Basic.
 - **Enhanced** (`ENHANCED`) — L2 增强认证: Basic + Badge verification via the Transparency Log. Recommended production default.
 - **Advanced** (`ADVANCED`) — L3 高级认证: Enhanced + DANE TLSA verification. Requires DNSSEC infrastructure.
 
-On server agents, Verification Policy drives both TLS `client-auth` and whether Client Verification runs against the **IDCA Chain**:
+On server agents, Verification Policy drives both TLS `client-auth` and whether Client Verification runs against the **IDCA Chain**. `client-auth` is derived from policy only — it is not independently configurable:
 
 - **None** — no client certificate requested; IDCA Chain unused.
-- **Basic** — client certificate optional (`want`); production IDCA Chain is the default trust material.
-- **Enhanced** / **Advanced** — client certificate required (`need`); production IDCA Chain is the default trust material.
+- **Basic** / **Enhanced** / **Advanced** — Identity Certificate required (`need`); production IDCA Chain is the default trust material. A missing Identity Certificate fails the TLS handshake. This is what distinguishes None from Basic.
 
 A Server Agent may override the production IDCA Chain with a **Test IDCA Chain** or other non-production chain. The SDK ships the production IDCA Chain; supplying a chain path is optional.
 _Avoid_: Security level (alone), trust mode (prefer Verification Policy)
@@ -297,11 +296,11 @@ Application-layer revocation of an agent's registration — TL Badge **Registrat
 _Avoid_: revocation (alone — ambiguous), CRL revocation (CRL is Certificate Revocation, not Registration Revocation)
 
 **Client Verification**:
-Server-side verification of an incoming client agent, governed by **Verification Policy**. When policy is not None, the production **IDCA Chain** is the default trust material (overridable by a **Test IDCA Chain**). Comprises two complementary layers: (1) TLS — Identity Certificate chain validation and **Certificate Revocation** via CDP/CRL; (2) application — Badge/DANE checks per Verification Policy, including **Registration Revocation** via TL **Registration Status**. Extracts the caller's ATI Name from the certificate URI SAN, then verifies via `_ati-badge` TXT + TL (Badge) and optionally `_ati-identity._tls` TLSA (DANE). Badge hostname matching compares the URI SAN Identity Hostname to the Badge Entry Identity Hostname (`payload.agentSubHost` when non-blank, otherwise `payload.agentHost`) — not to Access Hostname. When policy is None, client identity certificate verification is not performed. Does not rely on SCITT headers.
+Server-side verification of an incoming client agent, governed by **Verification Policy**. When policy is not None, the production **IDCA Chain** is the default trust material (overridable by a **Test IDCA Chain**). Comprises two complementary layers: (1) TLS — Identity Certificate is required (`need`); chain validation and **Certificate Revocation** via CDP/CRL; (2) application — extract the caller's ATI Name from the certificate URI SAN, then apply checks per Verification Policy. **Basic** requires the ATI Name and stops there (no Badge/DANE). **Enhanced** / **Advanced** continue with `_ati-badge` TXT + TL (Badge), including **Registration Revocation** via TL **Registration Status**; **Advanced** also checks `_ati-identity._tls` TLSA (DANE). Badge hostname matching compares the URI SAN Identity Hostname to the Badge Entry Identity Hostname (`payload.agentSubHost` when non-blank, otherwise `payload.agentHost`) — not to Access Hostname. When policy is None, client identity certificate verification is not performed. The Server Agent application is responsible for invoking application-layer Client Verification; TLS success does not imply it has run. Does not rely on SCITT headers.
 _Avoid_: client auth (too vague), inbound verification (prefer Client Verification)
 
 **ClientRequestVerifier**:
-SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and Identity Hostname, returns `ClientVerificationResult` with a `VerificationStatus`. Uses the **IDCA Chain** and **Verification Policy**. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
+SDK interface (`DefaultClientRequestVerifier`) implementing **Client Verification** on the server agent side. Takes the caller's Identity Certificate and Identity Hostname, returns `ClientVerificationResult` with a `VerificationStatus`. Uses the **IDCA Chain** and **Verification Policy**. The Server Agent application calls it; the Spring starter exposes the bean but does not invoke it automatically. Symmetric counterpart to `AtiClient` / `AtiVerifiedClient` on the client agent side. Use **Client Verification** for the domain concept; `ClientRequestVerifier` when referencing server-side SDK code.
 _Avoid_: client verifier (alone), inbound verifier (too vague)
 
 **SCITT Header**:
