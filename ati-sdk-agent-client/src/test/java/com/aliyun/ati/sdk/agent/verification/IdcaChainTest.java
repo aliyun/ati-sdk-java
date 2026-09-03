@@ -32,7 +32,7 @@ class IdcaChainTest {
         assertThat(chain.intermediate().getIssuerX500Principal())
             .isEqualTo(chain.root().getSubjectX500Principal());
         assertThat(chain.root().getSubjectX500Principal().getName())
-            .contains("UniTrust");
+            .contains("CNNIC");
         assertThat(chain.intermediate().getSubjectX500Principal().getName())
             .contains("CNNIC");
     }

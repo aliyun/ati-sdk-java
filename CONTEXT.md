@@ -79,7 +79,7 @@ The authoritative system that manages agent registration and lifecycle. In this 
 _Avoid_: Registry (alone — too generic), Console (RA is the service; Console is just one interface to it)
 
 **CNNIC**:
-China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. CNNIC commissions **UniTrust** to operate the **IDCA Root** and issues Identity Certificates from the **IDCA Intermediate**. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration via Console.
+China Internet Network Information Center — the national authority that operates ATI's trust infrastructure. Responsibilities include the Transparency Log (Badge storage, Seal, and Merkle Proof) and Identity Certificate issuance via IDCA. CNNIC owns the CNNIC-named **IDCA Root** (`CN=CNNIC ATI RSA Root CA R1`) and issues Identity Certificates from the **IDCA Intermediate**; it commissions **UniTrust (SHECA)** to operate the chain's CRL/OCSP infrastructure. Provides regulatory credibility for privately signed agent identity. Distinct from the RA (Alibaba Cloud ATI), which manages registration via Console.
 _Avoid_: TL operator (alone — CNNIC also owns IDCA), CA provider (prefer CNNIC when referring to the institutional role)
 
 **ATI Console**:
@@ -260,20 +260,20 @@ The SHA-256 hash of a certificate, formatted as `SHA256:{64-char hex}` when comp
 _Avoid_: cert hash (prefer Certificate Fingerprint), thumbprint (ambiguous with X.509 thumbprint format)
 
 **IDCA (Identity CA)**:
-The private two-tier certificate authority owned by CNNIC that issues Identity Certificates: an **IDCA Root** (operated by **UniTrust** under CNNIC commission) plus an **IDCA Intermediate** (CNNIC). Distinct from public CAs used for Server Certificates. The production **IDCA Chain** is the default trust material for **Client Verification** when Verification Policy is not None. A Server Agent may override it with a **Test IDCA Chain**. CNNIC embeds **CRL Distribution Points** on the Identity Certificate chain so relying parties can perform **Certificate Revocation** checks. When Verification Policy is None, Identity Certificate verification is skipped.
+The private two-tier certificate authority owned by CNNIC that issues Identity Certificates: an **IDCA Root** (`CN=CNNIC ATI RSA Root CA R1`, CNNIC-owned) plus an **IDCA Intermediate** (`CN=CNNIC ATI RSA CA 2026`, CNNIC). Distinct from public CAs used for Server Certificates. The production **IDCA Chain** is the default trust material for **Client Verification** when Verification Policy is not None. A Server Agent may override it with a **Test IDCA Chain**. CNNIC embeds **CRL Distribution Points** on the Identity Certificate chain so relying parties can perform **Certificate Revocation** checks. When Verification Policy is None, Identity Certificate verification is skipped.
 _Avoid_: CA (alone — ambiguous with public CA or Server Certificate issuer), ATI CA (prefer IDCA)
 
 **IDCA Root**:
-The production private root CA certificate that anchors the **IDCA Chain**. CNNIC commissions **UniTrust** to operate this root; it is not a CNNIC-named root certificate.
-_Avoid_: 私签根证书, private root (alone), root CA (alone), CNNIC root (the Root is UniTrust-operated)
+The production private root CA certificate that anchors the **IDCA Chain**. It is CNNIC-named and CNNIC-owned (`CN=CNNIC ATI RSA Root CA R1`, `O=CNNIC`); **UniTrust (SHECA)** operates its CRL/OCSP/CA-Issuers infrastructure (`*.global.sheca.com`), not its identity.
+_Avoid_: 私签根证书, private root (alone), root CA (alone), UniTrust root (the Root subject is CNNIC; UniTrust/SHECA operates only revocation infrastructure)
 
 **IDCA Intermediate**:
 The production private issuing CA certificate that signs Identity Certificates, itself signed by the **IDCA Root**. Operated by CNNIC.
 _Avoid_: 私签二级证书, issuing CA (alone), intermediate CA (alone — prefer IDCA Intermediate)
 
 **UniTrust**:
-The organization CNNIC commissioned to operate the **IDCA Root**. Distinct from CNNIC, which issues Identity Certificates from the **IDCA Intermediate**.
-_Avoid_: SHECA (CRL/OCSP host, not the Root operator), CNNIC (principal that owns IDCA, not the Root operator)
+The organization (SHECA) CNNIC commissions to operate the **IDCA Chain**'s revocation and distribution infrastructure — the CRL / OCSP / CA-Issuers endpoints on `*.global.sheca.com`. Not the subject or owner of the CNNIC-named **IDCA Root**, and not an issuer of Identity Certificates (CNNIC issues from the **IDCA Intermediate**).
+_Avoid_: IDCA Root operator (UniTrust/SHECA runs CRL/OCSP infra, not the Root identity), identity issuer (CNNIC issues from the IDCA Intermediate)
 
 **IDCA Chain**:
 Exactly two certificates: one production **IDCA Root** and one production **IDCA Intermediate**. A Server Agent loads **both** as trust material for **Client Verification** — not the Root alone — so a Client Agent may present only the leaf Identity Certificate. The SDK ships this pair as the default **server-side** trust material only; it is not attached to a Client Agent's outbound Identity Certificate. A Server Agent may replace it entirely with another two-certificate chain (a **Test IDCA Chain** or a rotated production pair) — override never merges with the shipped chain. Production **IDCA Intermediate** rotation is a hard cutover via that override; the shipped pair is updated in a later SDK release. Same process never trusts two production pairs at once. Distinct from the leaf Identity Certificate presented during mTLS.

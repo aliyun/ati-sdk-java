@@ -4,7 +4,7 @@ status: accepted
 
 # SDK ships the production IDCA Chain as default server trust material
 
-Server-side **Client Verification** needs a private trust store: public CAs must not validate Identity Certificates. The production **IDCA Chain** is exactly two certificates — **IDCA Root** (UniTrust-operated, CNNIC-commissioned) plus **IDCA Intermediate** (CNNIC). The SDK ships that pair and loads both as the Server Agent's default trust material when **Verification Policy** is not None. Operators no longer have to supply a PEM path to enable verification.
+Server-side **Client Verification** needs a private trust store: public CAs must not validate Identity Certificates. The production **IDCA Chain** is exactly two certificates — **IDCA Root** (`CN=CNNIC ATI RSA Root CA R1`, CNNIC-owned; UniTrust/SHECA operates its CRL/OCSP infrastructure) plus **IDCA Intermediate** (`CN=CNNIC ATI RSA CA 2026`, CNNIC). The SDK ships that pair and loads both as the Server Agent's default trust material when **Verification Policy** is not None. Operators no longer have to supply a PEM path to enable verification.
 
 A Server Agent may point `trust-certificate` at another two-certificate chain (a **Test IDCA Chain**, or a rotated production pair). That override **replaces** the shipped chain entirely — it never merges. Rotation of the Intermediate is a hard cutover via override; the shipped pair updates in a later SDK release. The shipped chain is server-trust only: it is not attached to a Client Agent's outbound Identity Certificate.
 

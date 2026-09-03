@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Server `BASIC` requires an Identity Certificate** (ADR-0008): `ati.sdk.server.verification.policy=BASIC` now derives TLS `client-auth=need`, same as `ENHANCED`/`ADVANCED`. A Client Agent that does not present an Identity Certificate fails the handshake. Anonymous TLS is `NONE` only; `client-auth` cannot be overridden back to `want`. Application-layer Client Verification is still invoked by the application. Client-side `BASIC` still allows omitting an outbound Identity Certificate.
 - **Seal signature algorithm** (ADR-0009): CNNIC production Seal is SHA-256withRSA only. `signatureAlgorithm` must be SHA-256withRSA (normalized); missing or any other value — including SHA-256withECDSA — fails Badge pre-verification.
 
+### Fixed
+
+- **Bundled IDCA Chain was staging, now production**: the SDK-shipped default server trust pair (`IdcaChain`) was the pre-release/staging chain (Root `UniTrust ATI RSA Root CA R1 TEST` + Intermediate `CNNIC ATI RSA CA 2026 TEST`, `*-staging.sheca.com` endpoints). It is replaced with the production pair — Root `CN=CNNIC ATI RSA Root CA R1` + Intermediate `CN=CNNIC ATI RSA CA 2026`, `*.global.sheca.com` endpoints. The production Root is CNNIC-named and CNNIC-owned; UniTrust/SHECA operates its CRL/OCSP/CA-Issuers infrastructure. ADR-0002 and ADR-0005 and the glossary are corrected accordingly. Server agents relying on the bundled default now trust production identity; agents that need the test pair must set `ati.sdk.server.idca.trust-certificate`.
+
 ## [2.1.0] - 2026-08-17
 
 ### Added

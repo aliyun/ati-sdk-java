@@ -456,7 +456,7 @@ ati:
         # policy: NONE         # L0: dev/test only (client-auth=none)
       idca:
         # Optional override: replaces the SDK-shipped production IDCA Chain (Root + Intermediate).
-        # Omit to use the bundled CNNIC/UniTrust production chain. Required only for Test IDCA Chain
+        # Omit to use the bundled CNNIC production chain. Required only for Test IDCA Chain
         # or a rotated production pair. Never merged with the shipped chain.
         # trust-certificate: /path/to/idca-chain.pem
     transparency:

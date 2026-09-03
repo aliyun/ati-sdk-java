@@ -456,7 +456,7 @@ ati:
         # policy: NONE         # L0 无认证：仅开发/测试（client-auth=none）
       idca:
         # 可选覆盖：整链替换 SDK 内嵌的生产 IDCA Chain（Root + Intermediate）。
-        # 省略则使用内嵌的 CNNIC/UniTrust 生产链。仅测试链或轮换生产对时需要配置。
+        # 省略则使用内嵌的 CNNIC 生产链。仅测试链或轮换生产对时需要配置。
         # 与内嵌链互斥，不会合并。
         # trust-certificate: /path/to/idca-chain.pem
     transparency:
