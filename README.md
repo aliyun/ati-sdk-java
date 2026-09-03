@@ -314,7 +314,7 @@ Optional `m=direct` may be appended; when omitted, Discovery Mode is `direct`. `
 **Badge TXT** (`_ati-badge.{identityHost}`):
 
 ```
-_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
+_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
 ```
 
 `av=` uses the same agentVersion grammar as Discovery. Verification extracts the path from `u=` and requests `TransparencyClient.baseUrl` + that path — the Badge TXT `u=` host is not the HTTP target.
@@ -360,7 +360,7 @@ import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import java.nio.file.Path;
 
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl("https://ati-tl.cnnic.cn:8180")
+    .baseUrl("https://ati-tl.cnnic.cn")
     .build();
 
 AtiDiscoveryClient discovery = new AtiDiscoveryClient();
@@ -428,7 +428,7 @@ ati:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
     verification:
       # BASIC | ENHANCED | ADVANCED (NONE is server-only)
       policy: ENHANCED
@@ -460,7 +460,7 @@ ati:
         # or a rotated production pair. Never merged with the shipped chain.
         # trust-certificate: /path/to/idca-chain.pem
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
 ```
 
 ### Server-side dual-track revocation
@@ -522,7 +522,7 @@ The Transparency Log (TL) stores agent Badges and is **operated by CNNIC only** 
 ```java
 // Production default — CNNIC TL
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn
     .build();
 
 // Custom timeouts and root key cache TTL
@@ -654,7 +654,7 @@ ati:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
     verification:
       policy: ENHANCED
     client:
@@ -665,7 +665,7 @@ ati:
 | Property | Description | Default |
 |----------|-------------|--------|
 | `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
-| `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn:8180` |
+| `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn` |
 | `ati.sdk.verification.policy` | Client verification policy | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | Server verification policy (`NONE` is server-only) | `BASIC` |
 | `ati.sdk.server.idca.trust-certificate` | Optional IDCA Chain PEM override (exactly 2 certs; replaces shipped chain) | shipped production IDCA Chain |

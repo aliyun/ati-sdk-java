@@ -28,7 +28,7 @@ ati:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
     verification:
       policy: ENHANCED
     client:

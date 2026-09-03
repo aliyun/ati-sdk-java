@@ -165,7 +165,7 @@ class AtiSdkPropertiesTest {
             AtiSdkProperties props = new AtiSdkProperties();
 
             assertThat(props.getTransparency().getBaseUrl())
-                .isEqualTo("https://ati-tl.cnnic.cn:8180");
+                .isEqualTo("https://ati-tl.cnnic.cn");
         }
 
         @Test

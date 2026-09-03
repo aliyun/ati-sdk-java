@@ -314,7 +314,7 @@ _ati.abc123.bailian.aliyun.com.  TXT  "v=ati1; av=v1.0.0; p=a2a; u=https://baili
 **Badge TXT**（`_ati-badge.{identityHost}`）：
 
 ```
-_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
+_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
 ```
 
 `av=` 与 Discovery 使用同一套 agentVersion 语法。校验时从 `u=` 取出 path，请求 `TransparencyClient.baseUrl` + 该 path — Badge TXT 的 `u=` host 不是 HTTP 目标。
@@ -360,7 +360,7 @@ import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import java.nio.file.Path;
 
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl("https://ati-tl.cnnic.cn:8180")
+    .baseUrl("https://ati-tl.cnnic.cn")
     .build();
 
 AtiDiscoveryClient discovery = new AtiDiscoveryClient();
@@ -428,7 +428,7 @@ ati:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
     verification:
       # BASIC | ENHANCED | ADVANCED（NONE 仅服务端）
       policy: ENHANCED
@@ -460,7 +460,7 @@ ati:
         # 与内嵌链互斥，不会合并。
         # trust-certificate: /path/to/idca-chain.pem
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
 ```
 
 ### 服务端双轨吊销
@@ -522,7 +522,7 @@ PEM 示例（顺序不限，SDK 会识别自签 Root 和由其签发的 Intermed
 ```java
 // 生产环境默认 — CNNIC TL
 TransparencyClient tl = TransparencyClient.builder()
-    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn
     .build();
 
 // 自定义超时和根密钥缓存 TTL
@@ -654,7 +654,7 @@ ati:
       certificate: /path/to/identity.crt
       private-key: /path/to/identity.key
     transparency:
-      base-url: https://ati-tl.cnnic.cn:8180
+      base-url: https://ati-tl.cnnic.cn
     verification:
       policy: ENHANCED
     client:
@@ -665,7 +665,7 @@ ati:
 | 属性 | 说明 | 默认值 |
 |------|------|--------|
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
-| `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn:8180` |
+| `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn` |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | 服务端验证策略（`NONE` 仅服务端） | `BASIC` |
 | `ati.sdk.server.idca.trust-certificate` | 可选 IDCA Chain PEM 覆盖（恰好两张证；整链替换内嵌生产链） | 内嵌生产 IDCA Chain |

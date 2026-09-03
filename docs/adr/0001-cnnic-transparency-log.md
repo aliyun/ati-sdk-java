@@ -4,7 +4,7 @@ status: accepted
 
 # CNNIC operates the sole ATI Transparency Log
 
-ATI Badge entries are stored in an append-only Transparency Log (TL) operated exclusively by CNNIC — not by Alibaba Cloud. The SDK default TL base URL is `https://ati-tl.cnnic.cn:8180`. The legacy hostname `tl.atiagent.cn` remains trusted for agents registered before the current endpoint.
+ATI Badge entries are stored in an append-only Transparency Log (TL) operated exclusively by CNNIC — not by Alibaba Cloud. The SDK default TL base URL is `https://ati-tl.cnnic.cn`. The legacy hostname `tl.atiagent.cn` remains trusted for agents registered before the current endpoint.
 
 Early SDK versions referenced Alibaba Cloud domains (`transparency.ati.aliyun.com`, `transparency.ati.ote-ati.aliyun.com`) as TL endpoints. Those domains were never production TL operators for ATI; they caused confusion with the RA (Alibaba Cloud ATI Console / OpenAPI), which is a separate system. The SDK removes those constants and trusted-domain entries.
 

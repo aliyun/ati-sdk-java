@@ -24,7 +24,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       idca:
  *         trust-certificate: /path/to/idca-trust.pem  # optional; replaces shipped IDCA Chain
  *     transparency:
- *       base-url: https://ati-tl.cnnic.cn:8180
+ *       base-url: https://ati-tl.cnnic.cn
  *     verification:
  *       policy: ENHANCED       # BASIC | ENHANCED | ADVANCED (client; NONE is server-only)
  *     client:
@@ -216,7 +216,7 @@ public class AtiSdkProperties {
      * Transparency log configuration.
      */
     public static class Transparency {
-        private String baseUrl = "https://ati-tl.cnnic.cn:8180";
+        private String baseUrl = "https://ati-tl.cnnic.cn";
         private boolean skipTlsVerification = false;
 
         public String getBaseUrl() {

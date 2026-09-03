@@ -22,7 +22,7 @@ Trusted CNNIC TL domains:
 `_ati-badge.{identityHost}` — semicolon-separated KV; this SDK parses **`ati-badge1`** only:
 
 ```
-_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
+_ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://ati-tl.cnnic.cn/tl/agents/6bf2b7a9-1383-4e33-a945-845f34af7526"
 ```
 
 Verification extracts the path from `u=` and requests `TransparencyClient.baseUrl` + that path. The Badge TXT `u=` host is not the HTTP target.
@@ -31,7 +31,7 @@ Verification extracts the path from `u=` and requests `TransparencyClient.baseUr
 
 ```java
 TransparencyClient client = TransparencyClient.builder()
-    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn:8180
+    .baseUrl(TransparencyClient.CNNIC_BASE_URL)   // https://ati-tl.cnnic.cn
     .skipTlsVerification(false)
     .build();
 
