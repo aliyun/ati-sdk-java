@@ -166,7 +166,10 @@ public final class BadgeVerificationService implements ServerVerifier {
      *   <li>Extracts the CN for agent.host matching (Section 4.4)</li>
      *   <li>Looks up the _ati-badge TXT record for the agentHost</li>
      *   <li>Fetches the registration(s) from the transparency log</li>
-     *   <li>Matches the certificate fingerprint and ANS name</li>
+     *   <li>Matches the Identity Certificate fingerprint against the Badge Entry's
+     *       current Identity Cert Fingerprint or, during Certificate Renewal, its
+     *       Previous Identity Cert Fingerprint (same-role OR), then the ATI Name and
+     *       Identity Hostname</li>
      * </ol>
      *
      * @param clientCert the client certificate to verify
@@ -273,7 +276,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             TransparencyLog registration = fetchResult.registration();
             String status = registration.getStatus();
             String fingerprint = registration.getServerCertFingerprint();
-            String previousFingerprint = registration.getPreviousServerCertFingerprint();
+            String previousServerCertFingerprint = registration.getPreviousServerCertFingerprint();
             String derivedIdentityHost = registration.getIdentityHost();
 
             if (isIdentityHostMismatch(lookupIdentityHost, derivedIdentityHost)) {
@@ -296,7 +299,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             anyFingerprintExtracted = true;
 
             if (ACTIVE_STATUSES.contains(status)) {
-                addServerFingerprints(activeFingerprints, fingerprint, previousFingerprint);
+                addServerFingerprints(activeFingerprints, fingerprint, previousServerCertFingerprint);
                 if (firstActiveRegistration == null) {
                     firstActiveRegistration = registration;
                     agentHost = registration.getIdentityHost();
@@ -307,7 +310,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 LOG.debug("Found ACTIVE registration with fingerprint: {}...",
                     fingerprint.length() > 20 ? fingerprint.substring(0, 20) : fingerprint);
             } else if (DEPRECATED_STATUS.equals(status)) {
-                addServerFingerprints(deprecatedFingerprints, fingerprint, previousFingerprint);
+                addServerFingerprints(deprecatedFingerprints, fingerprint, previousServerCertFingerprint);
                 if (firstDeprecatedRegistration == null) {
                     firstDeprecatedRegistration = registration;
                     if (agentHost == null) {
@@ -562,14 +565,16 @@ public final class BadgeVerificationService implements ServerVerifier {
             lastRegistration = registration;
 
             String expectedFingerprint = registration.getIdentityCertFingerprint();
+            String previousIdentityFingerprint = registration.getPreviousIdentityCertFingerprint();
             String expectedAtiName = registration.getAtiName();
             String expectedIdentityHost = registration.getIdentityHost();
             String status = registration.getStatus();
             String agentId = fetchResult.badge().agentId();
 
-            // Check fingerprint match (required per Section 4.4)
-            boolean fingerprintMatch = CertificateUtils.fingerprintMatches(
-                clientFingerprint, expectedFingerprint);
+            // Identity fingerprint match: current ∪ Previous Identity Cert Fingerprint
+            // (same-role OR, Section 4.4). Hostname and ATI Name checks still follow a hit.
+            boolean fingerprintMatch = identityFingerprintMatches(
+                clientFingerprint, expectedFingerprint, previousIdentityFingerprint);
 
             if (!fingerprintMatch) {
                 LOG.debug("Fingerprint mismatch for agent {}: expected={}, actual={}",
@@ -684,13 +689,40 @@ public final class BadgeVerificationService implements ServerVerifier {
      * Adds current Server Cert Fingerprint, then Previous Server Cert Fingerprint when present.
      */
     private static void addServerFingerprints(
-            List<String> dest, String currentFingerprint, String previousFingerprint) {
+            List<String> dest, String currentFingerprint, String previousServerCertFingerprint) {
         dest.add(currentFingerprint);
-        if (previousFingerprint != null
-                && !previousFingerprint.isBlank()
-                && !previousFingerprint.equals(currentFingerprint)) {
-            dest.add(previousFingerprint);
+        if (previousServerCertFingerprint != null
+                && !previousServerCertFingerprint.isBlank()
+                && !CertificateUtils.fingerprintMatches(
+                    previousServerCertFingerprint, currentFingerprint)) {
+            dest.add(previousServerCertFingerprint);
         }
+    }
+
+    /**
+     * Matches a presented Identity Certificate fingerprint against a Badge Entry's
+     * current Identity Cert Fingerprint or, during Certificate Renewal, its Previous
+     * Identity Cert Fingerprint (same-role OR).
+     *
+     * <p>The current Identity Cert Fingerprint is required: when it is missing or blank
+     * the Entry is not an identity match even if previous is set — previous is additive,
+     * never a substitute (fail-closed). Previous Server Cert Fingerprints are never
+     * consulted here; cross-role matching is forbidden. A previous equal to current is a
+     * one-element allowed set — still a match, not malformed.</p>
+     */
+    private static boolean identityFingerprintMatches(
+            String clientFingerprint,
+            String currentIdentityFingerprint,
+            String previousIdentityFingerprint) {
+        if (currentIdentityFingerprint == null || currentIdentityFingerprint.isBlank()) {
+            return false;
+        }
+        if (CertificateUtils.fingerprintMatches(clientFingerprint, currentIdentityFingerprint)) {
+            return true;
+        }
+        return previousIdentityFingerprint != null
+            && !previousIdentityFingerprint.isBlank()
+            && CertificateUtils.fingerprintMatches(clientFingerprint, previousIdentityFingerprint);
     }
 
     /**

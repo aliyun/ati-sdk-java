@@ -178,6 +178,18 @@ public class TransparencyLog {
     }
 
     /**
+     * Previous Identity Cert Fingerprint from the Badge Entry, if any.
+     *
+     * @return the previous identity certificate fingerprint, or null if not available
+     */
+    public String getPreviousIdentityCertFingerprint() {
+        if (parsedPayload != null && parsedPayload.getCertificates() != null) {
+            return parsedPayload.getCertificates().getPreviousIdentityCertFingerprint();
+        }
+        return null;
+    }
+
+    /**
      * Convenience method to get the ATI name.
      *
      * @return the ATI name (e.g. "ati://v1.0.0.agent.example.com"), or null

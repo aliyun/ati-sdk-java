@@ -84,6 +84,9 @@ public class TransparencyLogAtiV1 {
         @JsonProperty("identityCertFingerprint")
         private String identityCertFingerprint;
 
+        @JsonProperty("previousIdentityCertFingerprint")
+        private String previousIdentityCertFingerprint;
+
         public String getServerCertFingerprint() { return serverCertFingerprint; }
         public void setServerCertFingerprint(String serverCertFingerprint) { this.serverCertFingerprint = serverCertFingerprint; }
 
@@ -92,6 +95,9 @@ public class TransparencyLogAtiV1 {
 
         public String getIdentityCertFingerprint() { return identityCertFingerprint; }
         public void setIdentityCertFingerprint(String identityCertFingerprint) { this.identityCertFingerprint = identityCertFingerprint; }
+
+        public String getPreviousIdentityCertFingerprint() { return previousIdentityCertFingerprint; }
+        public void setPreviousIdentityCertFingerprint(String previousIdentityCertFingerprint) { this.previousIdentityCertFingerprint = previousIdentityCertFingerprint; }
 
         @Override
         public String toString() {

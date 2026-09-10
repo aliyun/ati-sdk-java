@@ -21,9 +21,12 @@ class BadgeServerCertificateRenewalTest {
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
     private static final String TEST_TL_PATH = "/tl/agents/" + TEST_AGENT_ID;
+    private static final String SECOND_AGENT_ID = "22222222-2222-2222-2222-222222222222";
+    private static final String SECOND_TL_PATH = "/tl/agents/" + SECOND_AGENT_ID;
     private static final String TEST_IDENTITY_FP = "SHA256:a1b2c3d4e5f6g7h8";
     private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
     private static final String CURRENT_SERVER_FP = "SHA-256:currentservercertfingerprint01";
+    private static final String CURRENT_SERVER_FP_SHA256_PREFIX = "SHA256:currentservercertfingerprint01";
     private static final String PREVIOUS_SERVER_FP = "SHA-256:previousservercertfingerprint01";
 
     @Mock
@@ -44,7 +47,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("ACTIVE Entry with previous contributes current and previous server fingerprints")
+    @DisplayName("ACTIVE Entry with Previous Server Cert Fingerprint contributes current and previous server fingerprints")
     void activeEntryWithPreviousContributesCurrentAndPrevious() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -58,7 +61,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Blank previous means no server renewal window")
+    @DisplayName("Blank Previous Server Cert Fingerprint means no server renewal window")
     void blankPreviousContributesCurrentOnly() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -72,7 +75,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Previous equal to current is a one-element allowed set")
+    @DisplayName("Previous Server Cert Fingerprint equal to current is a one-element allowed set")
     void previousEqualToCurrentIsStillAMatch() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -86,7 +89,21 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Missing previous contributes only the current Server Cert Fingerprint")
+    @DisplayName("Previous Server Cert Fingerprint equal to current after prefix normalization is a one-element allowed set")
+    void previousEqualToCurrentAfterPrefixNormalizationIsStillAMatch() {
+        stubSingleBadge();
+        when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
+            .thenReturn(registration("ACTIVE", CURRENT_SERVER_FP, CURRENT_SERVER_FP_SHA256_PREFIX));
+
+        ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.getExpectedServerCertFingerprints())
+            .containsExactly(CURRENT_SERVER_FP);
+    }
+
+    @Test
+    @DisplayName("Missing Previous Server Cert Fingerprint contributes only the current Server Cert Fingerprint")
     void missingPreviousContributesCurrentOnly() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -100,7 +117,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Entry missing current Server Cert Fingerprint contributes nothing even if previous is set")
+    @DisplayName("Entry missing current Server Cert Fingerprint contributes nothing even if Previous Server Cert Fingerprint is set")
     void missingCurrentContributesNoServerFingerprints() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -114,20 +131,14 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Two ACTIVE Entries each with current and previous union all four fingerprints")
+    @DisplayName("Two ACTIVE Entries each with current and Previous Server Cert Fingerprint union all four fingerprints")
     void twoActiveEntriesUnionCurrentAndPrevious() {
-        String agentId2 = "22222222-2222-2222-2222-222222222222";
         String current2 = "SHA-256:currentservercertfingerprint02";
         String previous2 = "SHA-256:previousservercertfingerprint02";
-        when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID),
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + agentId2)
-        ));
+        stubTwoBadges();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
             .thenReturn(registration("ACTIVE", CURRENT_SERVER_FP, PREVIOUS_SERVER_FP));
-        when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + agentId2))
+        when(transparencyClient.getTransparencyLogByPath(SECOND_TL_PATH))
             .thenReturn(registration("ACTIVE", current2, previous2));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -139,18 +150,12 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("REVOKED Entry previous server fingerprint is not in the allowed set")
+    @DisplayName("REVOKED Entry Previous Server Cert Fingerprint is not in the allowed set")
     void revokedEntryPreviousIsNotAllowed() {
-        String agentId2 = "22222222-2222-2222-2222-222222222222";
-        when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID),
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + agentId2)
-        ));
+        stubTwoBadges();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
             .thenReturn(registration("REVOKED", "SHA-256:revokedcurrentserverfp0001", PREVIOUS_SERVER_FP));
-        when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + agentId2))
+        when(transparencyClient.getTransparencyLogByPath(SECOND_TL_PATH))
             .thenReturn(registration("ACTIVE", CURRENT_SERVER_FP, null));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -162,18 +167,12 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("EXPIRED Entry previous server fingerprint is not in the allowed set")
+    @DisplayName("EXPIRED Entry Previous Server Cert Fingerprint is not in the allowed set")
     void expiredEntryPreviousIsNotAllowed() {
-        String agentId2 = "22222222-2222-2222-2222-222222222222";
-        when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID),
-            RaBadgeRecord.parse(
-                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + agentId2)
-        ));
+        stubTwoBadges();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
             .thenReturn(registration("EXPIRED", "SHA-256:expiredcurrentserverfp0001", PREVIOUS_SERVER_FP));
-        when(transparencyClient.getTransparencyLogByPath("/tl/agents/" + agentId2))
+        when(transparencyClient.getTransparencyLogByPath(SECOND_TL_PATH))
             .thenReturn(registration("ACTIVE", CURRENT_SERVER_FP, null));
 
         ServerVerificationResult result = verificationService.verifyServer(TEST_HOSTNAME);
@@ -185,7 +184,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("Current fingerprint accessor still returns current only")
+    @DisplayName("Current Server Cert Fingerprint accessor still returns current only")
     void currentFingerprintAccessorIgnoresPrevious() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -201,7 +200,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("DEPRECATED Entry with previous is DEPRECATED_OK and includes both fingerprints")
+    @DisplayName("DEPRECATED Entry with Previous Server Cert Fingerprint is DEPRECATED_OK and includes both fingerprints")
     void deprecatedEntryWithPreviousKeepsDeprecatedOk() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -215,7 +214,7 @@ class BadgeServerCertificateRenewalTest {
     }
 
     @Test
-    @DisplayName("WARNING Entry with previous is VERIFIED and includes both fingerprints")
+    @DisplayName("WARNING Entry with Previous Server Cert Fingerprint is VERIFIED and includes both fingerprints")
     void warningEntryWithPreviousIsVerified() {
         stubSingleBadge();
         when(transparencyClient.getTransparencyLogByPath(TEST_TL_PATH))
@@ -234,8 +233,17 @@ class BadgeServerCertificateRenewalTest {
         when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(badge));
     }
 
+    private void stubTwoBadges() {
+        when(raBadgeLookupService.lookupBadges(TEST_HOSTNAME)).thenReturn(List.of(
+            RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.0; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + TEST_AGENT_ID),
+            RaBadgeRecord.parse(
+                "v=ati-badge1; av=1.0.1; u=https://ati-tl.cnnic.cn:8180/tl/agents/" + SECOND_AGENT_ID)
+        ));
+    }
+
     private TransparencyLog registration(
-            String status, String currentFingerprint, String previousFingerprint) {
+            String status, String currentFingerprint, String previousServerCertFingerprint) {
         TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
         payload.setAgentName(TEST_ANS_NAME);
         payload.setAgentHost(TEST_HOSTNAME);
@@ -245,7 +253,7 @@ class BadgeServerCertificateRenewalTest {
 
         TransparencyLogAtiV1.Certificates certs = new TransparencyLogAtiV1.Certificates();
         certs.setServerCertFingerprint(currentFingerprint);
-        certs.setPreviousServerCertFingerprint(previousFingerprint);
+        certs.setPreviousServerCertFingerprint(previousServerCertFingerprint);
         certs.setIdentityCertFingerprint(TEST_IDENTITY_FP);
         payload.setCertificates(certs);
 
