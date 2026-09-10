@@ -73,9 +73,10 @@ public final class ServerVerificationResult {
     /**
      * Returns all expected server certificate fingerprints from the registrations.
      *
-     * <p>During version rotation, multiple badge records may exist with different
-     * fingerprints. Use this to verify the server's TLS certificate matches ANY
-     * of the registered fingerprints.</p>
+     * <p>During Version Rotation, multiple Badge Entries may exist with different
+     * fingerprints. During Certificate Renewal, an Entry may also contribute its
+     * Previous Server Cert Fingerprint. Use this list to verify the server's TLS
+     * certificate matches ANY of the allowed fingerprints.</p>
      *
      * @return list of expected fingerprints (may be empty, never null)
      */
@@ -208,7 +209,8 @@ public final class ServerVerificationResult {
         /**
          * Sets multiple expected server certificate fingerprints.
          *
-         * <p>Use this during version rotation when multiple badge records exist.</p>
+         * <p>Use this during Version Rotation and Certificate Renewal when multiple
+         * allowed server fingerprints exist.</p>
          *
          * @param fingerprints the expected fingerprints
          * @return this builder

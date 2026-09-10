@@ -154,6 +154,18 @@ public class TransparencyLog {
     }
 
     /**
+     * Previous Server Cert Fingerprint from the Badge Entry, if any.
+     *
+     * @return the previous server certificate fingerprint, or null if not available
+     */
+    public String getPreviousServerCertFingerprint() {
+        if (parsedPayload != null && parsedPayload.getCertificates() != null) {
+            return parsedPayload.getCertificates().getPreviousServerCertFingerprint();
+        }
+        return null;
+    }
+
+    /**
      * Convenience method to get the identity certificate fingerprint.
      *
      * @return the identity certificate fingerprint, or null if not available

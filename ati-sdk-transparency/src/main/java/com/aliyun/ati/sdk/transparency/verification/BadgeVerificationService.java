@@ -104,7 +104,8 @@ public final class BadgeVerificationService implements ServerVerifier {
      *   <li>Looks up ALL _ati-badge TXT records for the hostname (supports version rotation)</li>
      *   <li>Fetches registrations from the transparency log in parallel</li>
      *   <li>Checks registration statuses</li>
-     *   <li>Returns ALL expected server certificate fingerprints for comparison</li>
+     *   <li>Returns ALL expected server certificate fingerprints for comparison
+     *       (current ∪ previous per Entry, then unioned across ACTIVE/DEPRECATED Entries)</li>
      * </ol>
      *
      * @param hostname the server hostname to verify
@@ -237,7 +238,9 @@ public final class BadgeVerificationService implements ServerVerifier {
      * Evaluates multiple server registrations and collects all valid fingerprints.
      *
      * <p>This method processes all fetch results and returns a combined result with
-     * all valid fingerprints from ACTIVE or DEPRECATED registrations.</p>
+     * all valid fingerprints from ACTIVE or DEPRECATED registrations. Each Entry
+     * contributes current ∪ previous Server Cert Fingerprint (previous only if
+     * present and non-blank). REVOKED and EXPIRED Entries contribute nothing.</p>
      */
     private ServerVerificationResult evaluateServerRegistrations(
             List<FetchResult> fetchResults, String lookupIdentityHost) {
@@ -270,6 +273,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             TransparencyLog registration = fetchResult.registration();
             String status = registration.getStatus();
             String fingerprint = registration.getServerCertFingerprint();
+            String previousFingerprint = registration.getPreviousServerCertFingerprint();
             String derivedIdentityHost = registration.getIdentityHost();
 
             if (isIdentityHostMismatch(lookupIdentityHost, derivedIdentityHost)) {
@@ -292,7 +296,7 @@ public final class BadgeVerificationService implements ServerVerifier {
             anyFingerprintExtracted = true;
 
             if (ACTIVE_STATUSES.contains(status)) {
-                activeFingerprints.add(fingerprint);
+                addServerFingerprints(activeFingerprints, fingerprint, previousFingerprint);
                 if (firstActiveRegistration == null) {
                     firstActiveRegistration = registration;
                     agentHost = registration.getIdentityHost();
@@ -303,7 +307,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                 LOG.debug("Found ACTIVE registration with fingerprint: {}...",
                     fingerprint.length() > 20 ? fingerprint.substring(0, 20) : fingerprint);
             } else if (DEPRECATED_STATUS.equals(status)) {
-                                deprecatedFingerprints.add(fingerprint);
+                addServerFingerprints(deprecatedFingerprints, fingerprint, previousFingerprint);
                 if (firstDeprecatedRegistration == null) {
                     firstDeprecatedRegistration = registration;
                     if (agentHost == null) {
@@ -674,6 +678,19 @@ public final class BadgeVerificationService implements ServerVerifier {
             .status(VerificationStatus.LOOKUP_FAILED)
             .warningMessage("Failed to fetch any registrations")
             .build();
+    }
+
+    /**
+     * Adds current Server Cert Fingerprint, then Previous Server Cert Fingerprint when present.
+     */
+    private static void addServerFingerprints(
+            List<String> dest, String currentFingerprint, String previousFingerprint) {
+        dest.add(currentFingerprint);
+        if (previousFingerprint != null
+                && !previousFingerprint.isBlank()
+                && !previousFingerprint.equals(currentFingerprint)) {
+            dest.add(previousFingerprint);
+        }
     }
 
     /**

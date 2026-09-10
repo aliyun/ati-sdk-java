@@ -78,11 +78,17 @@ public class TransparencyLogAtiV1 {
         @JsonProperty("serverCertFingerprint")
         private String serverCertFingerprint;
 
+        @JsonProperty("previousServerCertFingerprint")
+        private String previousServerCertFingerprint;
+
         @JsonProperty("identityCertFingerprint")
         private String identityCertFingerprint;
 
         public String getServerCertFingerprint() { return serverCertFingerprint; }
         public void setServerCertFingerprint(String serverCertFingerprint) { this.serverCertFingerprint = serverCertFingerprint; }
+
+        public String getPreviousServerCertFingerprint() { return previousServerCertFingerprint; }
+        public void setPreviousServerCertFingerprint(String previousServerCertFingerprint) { this.previousServerCertFingerprint = previousServerCertFingerprint; }
 
         public String getIdentityCertFingerprint() { return identityCertFingerprint; }
         public void setIdentityCertFingerprint(String identityCertFingerprint) { this.identityCertFingerprint = identityCertFingerprint; }
