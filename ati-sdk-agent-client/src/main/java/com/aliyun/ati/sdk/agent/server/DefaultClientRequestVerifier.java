@@ -35,7 +35,8 @@ import java.util.regex.Pattern;
  *       <li><b>BASIC</b>: No Badge or DANE verification; extract identity from URI SAN</li>
  *       <li><b>ENHANCED</b>: Look up DNS {@code _ati-badge.{clientAgentHost}},
  *           query transparency log, verify seal signature + Merkle proof,
- *           compare SHA256(clientCert) vs identityCertFingerprint</li>
+ *           match SHA256(clientCert) against current or Previous Identity Cert
+ *           Fingerprint (same-role OR during Certificate Renewal)</li>
  *       <li><b>ADVANCED</b>: Enhanced + DNS
  *           {@code _ati-identity._tls.{clientAgentHost}} TLSA record,
  *           compare client Identity Cert public key fingerprint vs TLSA record</li>
@@ -172,31 +173,12 @@ public class DefaultClientRequestVerifier implements ClientRequestVerifier {
             //  the ATI name from the cert serves as the canonical agent identifier)
             String agentId = atiName;
 
-            // Verify certificate fingerprint matches the transparency log
+            // Fingerprint matching already happened in verifyClient: current ∪ previous
+            // Identity Cert Fingerprint (same-role OR). Do not re-compare against the
+            // current-only expected field — that rejects a Previous Identity Cert
+            // Fingerprint hit during Certificate Renewal.
             String clientFingerprint = CertificateUtils.computeSha256Fingerprint(clientCert);
             String expectedFingerprint = badgeResult.getExpectedIdentityCertFingerprint();
-            if (expectedFingerprint != null
-                    && !CertificateUtils.fingerprintMatches(clientFingerprint, expectedFingerprint)) {
-                LOGGER.debug("Post-verify: Client IDCA vs TL - mismatch");
-                LOGGER.warn("Certificate fingerprint mismatch for {}: actual={}, expected={}",
-                    agentHost,
-                    CertificateUtils.truncateFingerprint(clientFingerprint),
-                    CertificateUtils.truncateFingerprint(expectedFingerprint));
-                return ClientRequestVerificationResult.failure(
-                    List.of(
-                        "Certificate fingerprint mismatch",
-                        "Actual: " + CertificateUtils.truncateFingerprint(clientFingerprint),
-                        "Expected: " + CertificateUtils.truncateFingerprint(expectedFingerprint)
-                    ),
-                    agentHost,
-                    policy,
-                    elapsed(startNanos),
-                    clientFingerprint,
-                    expectedFingerprint,
-                    null, null
-                );
-            }
-            LOGGER.debug("Post-verify: Client IDCA vs TL - matched");
 
             LOGGER.debug("Badge verification succeeded for {} (agentId={})", agentHost, agentId);
 

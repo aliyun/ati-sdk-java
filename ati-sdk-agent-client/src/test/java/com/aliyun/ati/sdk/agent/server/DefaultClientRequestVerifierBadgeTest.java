@@ -142,6 +142,24 @@ class DefaultClientRequestVerifierBadgeTest {
         }
 
         @Test
+        @DisplayName("ENHANCED: previous-only Identity Certificate still succeeds after Badge VERIFIED")
+        void previousOnlyIdentityMatchStillSucceedsWhenBadgeVerified() {
+            String currentIdentityFingerprint = "SHA-256:currentidentitycertfingerprint01";
+            ClientVerificationResult badgeResult = ClientVerificationResult.builder()
+                .status(VerificationStatus.VERIFIED)
+                .expectedIdentityCertFingerprint(currentIdentityFingerprint)
+                .expectedAgentHost("client-agent.example.com")
+                .build();
+            when(mockBadgeService.verifyClient(clientCertWithAtiSan)).thenReturn(badgeResult);
+
+            ClientRequestVerificationResult result = verifier.verify(
+                clientCertWithAtiSan, VerificationPolicy.ENHANCED);
+
+            assertThat(result.verified()).isTrue();
+            assertThat(result.errors()).isEmpty();
+        }
+
+        @Test
         @DisplayName("Should accept DEPRECATED_OK status from badge service")
         void shouldAcceptDeprecatedOk() {
             String fingerprint = CertificateUtils.computeSha256Fingerprint(clientCertWithAtiSan);

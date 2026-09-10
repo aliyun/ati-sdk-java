@@ -37,7 +37,7 @@ class BadgeClientCertificateRenewalTest {
     private static final String TEST_HOSTNAME = "agent.example.com";
     private static final String TEST_AGENT_ID = "6bf2b7a9-1383-4e33-a945-845f34af7526";
     private static final String TEST_TL_PATH = "/tl/agents/" + TEST_AGENT_ID;
-    private static final String TEST_ANS_NAME = "ati://v1.0.0.agent.example.com";
+    private static final String TEST_ATI_NAME = "ati://v1.0.0.agent.example.com";
 
     /** Fingerprint the presented Identity Certificate computes to. */
     private static final String CLIENT_FP = "SHA256:presentedidentitycertfingerprint0001";
@@ -82,7 +82,7 @@ class BadgeClientCertificateRenewalTest {
 
             assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
             assertThat(result.getExpectedAgentHost()).isEqualTo(TEST_HOSTNAME);
-            assertThat(result.getExpectedAtiName()).isEqualTo(TEST_ANS_NAME);
+            assertThat(result.getExpectedAtiName()).isEqualTo(TEST_ATI_NAME);
         }
     }
 
@@ -350,8 +350,8 @@ class BadgeClientCertificateRenewalTest {
 
     private void stubClientCert(MockedStatic<CertificateUtils> certUtils, String clientFingerprint) {
         certUtils.when(() -> CertificateUtils.extractAtiName(mockCertificate))
-            .thenReturn(Optional.of(TEST_ANS_NAME));
-        certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ANS_NAME))
+            .thenReturn(Optional.of(TEST_ATI_NAME));
+        certUtils.when(() -> CertificateUtils.extractHostFromAtiName(TEST_ATI_NAME))
             .thenReturn(TEST_HOSTNAME);
         certUtils.when(() -> CertificateUtils.computeSha256Fingerprint(mockCertificate))
             .thenReturn(clientFingerprint);
@@ -383,7 +383,7 @@ class BadgeClientCertificateRenewalTest {
             String currentIdentityFingerprint,
             String previousIdentityFingerprint) {
         TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
-        payload.setAgentName(TEST_ANS_NAME);
+        payload.setAgentName(TEST_ATI_NAME);
         payload.setAgentHost(TEST_HOSTNAME);
         payload.setVersion("1.0.0");
         payload.setAgentId(TEST_AGENT_ID);
