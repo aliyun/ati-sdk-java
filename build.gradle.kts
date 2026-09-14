@@ -6,7 +6,7 @@ plugins {
 
 allprojects {
     group = "com.aliyun.ati"
-    version = "3.0.0"
+    version = "3.1.0"
 }
 
 subprojects {

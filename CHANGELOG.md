@@ -5,6 +5,12 @@ All notable changes to the ATI Java SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-09-14
+
+### Added
+
+- **Certificate Renewal** (ADR-0010): a Badge Entry on `ATI-TL-V1` may carry optional `previousServerCertFingerprint` and `previousIdentityCertFingerprint`. Badge verification matches **same-role OR** — a presented Server Certificate hits current ∪ Previous Server Cert Fingerprint; a presented Identity Certificate hits current ∪ Previous Identity Cert Fingerprint. The two previous fields are independently optional; the current fingerprint for that role remains required (previous cannot stand in for a missing current). Previous is one slot, not a history list; missing or blank means that role is not in a window. Hitting previous is the same Verification Result as hitting current (`VERIFIED` / `DEPRECATED_OK`); `REVOKED` / `EXPIRED` still fail. DANE is unchanged (`previous*` is not copied into TLSA). Un-upgraded SDKs ignore the new keys and still accept the current certificate.
+
 ## [3.0.0] - 2026-09-07
 
 ### Breaking Changes
@@ -80,6 +86,7 @@ First open-source release of the ATI Java SDK.
 - Restrict `NONE` verification policy to server-side configuration only.
 - README accuracy for CRL, dual-hostname connect, and API examples.
 
+[3.1.0]: #
 [3.0.0]: #
 [2.1.0]: #
 [2.0.0]: #
