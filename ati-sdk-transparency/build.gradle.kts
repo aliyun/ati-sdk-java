@@ -17,5 +17,6 @@ dependencies {
     testImplementation("org.mockito:mockito-core:${project.property("mockitoVersion")}")
     testImplementation("org.assertj:assertj-core:${project.property("assertjVersion")}")
     testImplementation("org.wiremock:wiremock:${project.property("wiremockVersion")}")
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
     testRuntimeOnly("org.slf4j:slf4j-simple:${project.property("slf4jVersion")}")
 }

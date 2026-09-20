@@ -19,7 +19,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  *     "signatureEncoding": "DER_BASE64",
  *     "keyId": "ati-tl-rsa-v1",
  *     "signature": "MEQCI...",
- *     "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+ *     "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+ *     "certificate": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"
  * }
  * }</pre>
  */
@@ -46,6 +47,16 @@ public class Seal {
 
     @JsonProperty("publicKey")
     private String publicKey;
+
+    /**
+     * PEM-encoded Seal Certificate (leaf) attached by CNNIC to each Seal.
+     *
+     * <p>The certificate's public key verifies {@link #signature}, and the certificate is
+     * PKIX path-validated to the SDK's built-in Seal CA Chain. See ADR 0011. May be a leaf-only
+     * PEM or a leaf + intermediate bundle; the leaf is the first certificate.</p>
+     */
+    @JsonProperty("certificate")
+    private String certificate;
 
     public Seal() {
     }
@@ -104,6 +115,14 @@ public class Seal {
 
     public void setPublicKey(String publicKey) {
         this.publicKey = publicKey;
+    }
+
+    public String getCertificate() {
+        return certificate;
+    }
+
+    public void setCertificate(String certificate) {
+        this.certificate = certificate;
     }
 
     @Override

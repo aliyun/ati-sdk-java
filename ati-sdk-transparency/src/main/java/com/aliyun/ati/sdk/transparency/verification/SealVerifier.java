@@ -1,11 +1,18 @@
 package com.aliyun.ati.sdk.transparency.verification;
 
+import com.aliyun.ati.sdk.crypto.CertificateUtils;
 import com.aliyun.ati.sdk.transparency.model.MerkleProof;
 import com.aliyun.ati.sdk.transparency.model.Seal;
 import com.aliyun.ati.sdk.transparency.model.TransparencyLog;
 import com.aliyun.ati.sdk.transparency.scitt.MerkleProofVerifier;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1String;
+import org.bouncycastle.asn1.x500.RDN;
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.erdtman.jcs.JsonCanonicalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +20,19 @@ import org.slf4j.LoggerFactory;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.cert.CertPath;
+import java.security.cert.CertPathValidator;
+import java.security.cert.CertificateFactory;
+import java.security.cert.PKIXParameters;
+import java.security.cert.TrustAnchor;
+import java.security.cert.X509Certificate;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * Verifies the cryptographic seal and Merkle inclusion proof of a CNNIC TL response.
@@ -39,6 +54,15 @@ public final class SealVerifier {
     private static final Logger LOG = LoggerFactory.getLogger(SealVerifier.class);
 
     private static final ObjectMapper MAPPER = createMapper();
+
+    /**
+     * The CNNIC ATI signing identity the leaf Seal Certificate Subject must carry. The Seal CA is a
+     * shared UniTrust CA, so chain validation alone would let any certificate under it impersonate
+     * the TL signing cert; the leaf is therefore bound to this Organization + Organizational Unit
+     * (ADR 0011). {@code O} is CNNIC's registered organization name.
+     */
+    private static final String EXPECTED_LEAF_ORGANIZATION = "中国互联网络信息中心";
+    private static final String EXPECTED_LEAF_ORGANIZATIONAL_UNIT = "ATI";
 
     private SealVerifier() {
         // Utility class
@@ -98,7 +122,8 @@ public final class SealVerifier {
     }
 
     /**
-     * Verifies both the seal signature and Merkle inclusion proof of a TL response.
+     * Verifies both the seal signature and Merkle inclusion proof of a TL response using the
+     * legacy self-asserted {@code seal.publicKey} path.
      *
      * <p>If the response has no seal or merkle data (e.g., legacy TL format),
      * verification is skipped and the result is considered valid for backwards compatibility.</p>
@@ -107,6 +132,40 @@ public final class SealVerifier {
      * @return the verification result
      */
     public static VerificationResult verify(TransparencyLog log) {
+        return verifyInternal(log, SealVerifier::verifySeal);
+    }
+
+    /**
+     * Verifies both the seal signature and Merkle inclusion proof of a TL response using the
+     * certificate-based path: {@code seal.signature} is verified with the public key inside
+     * {@code seal.certificate}, and that Seal Certificate is PKIX path-validated to the supplied
+     * {@link SealTrustChain} (ADR 0011).
+     *
+     * <p>Added beside {@link #verify(TransparencyLog)} in the expand phase; production Badge
+     * pre-verification still uses the legacy {@code publicKey} path until it is flipped in a later
+     * increment. Any chain failure (missing certificate, path build, expiry, Subject mismatch,
+     * signature mismatch) surfaces as a seal-verification failure.</p>
+     *
+     * @param log the transparency log response to verify
+     * @param trustChain the Seal CA Chain (Root + Intermediate) to anchor path validation on
+     * @return the verification result
+     */
+    public static VerificationResult verify(TransparencyLog log, SealTrustChain trustChain) {
+        Objects.requireNonNull(trustChain, "trustChain is required");
+        return verifyInternal(log, candidate -> verifySealWithCertificate(candidate, trustChain));
+    }
+
+    /**
+     * Strategy that verifies the seal signature of a TL response: returns {@code true} when the
+     * signature is valid, {@code false} when it does not match, and throws when verification cannot
+     * be performed (missing fields, untrusted certificate, disallowed algorithm).
+     */
+    @FunctionalInterface
+    private interface SealSignatureCheck {
+        boolean verify(TransparencyLog log) throws Exception;
+    }
+
+    private static VerificationResult verifyInternal(TransparencyLog log, SealSignatureCheck sealCheck) {
         if (log == null) {
             return VerificationResult.failure("TransparencyLog is null");
         }
@@ -123,7 +182,7 @@ public final class SealVerifier {
         Boolean sealValid = null;
         if (hasSeal) {
             try {
-                sealValid = verifySeal(log);
+                sealValid = sealCheck.verify(log);
                 if (!sealValid) {
                     LOG.warn("Seal signature verification failed");
                     return VerificationResult.failure("Seal signature verification failed");
@@ -155,7 +214,8 @@ public final class SealVerifier {
     }
 
     /**
-     * Verifies the seal signature over the canonicalized content.
+     * Verifies the seal signature over the canonicalized content using the legacy self-asserted
+     * {@code seal.publicKey}.
      *
      * <p>The signed content is: {status, schemaVersion, payload, evidenceRef}
      * canonicalized using RFC 8785 JCS, then verified with SHA-256withRSA.</p>
@@ -170,7 +230,52 @@ public final class SealVerifier {
             throw new IllegalArgumentException("Seal is missing required fields (signature, publicKey)");
         }
 
-        String algorithm = seal.getSignatureAlgorithm();
+        requireSha256WithRsa(seal.getSignatureAlgorithm());
+        PublicKey publicKey = parsePublicKey(seal.getPublicKey());
+        return verifySignature(publicKey, canonicalSignedContent(log), seal.getSignature());
+    }
+
+    /**
+     * Verifies the seal signature using the public key inside {@code seal.certificate}, after
+     * PKIX path-validating that Seal Certificate to {@code trustChain} and binding its Subject to
+     * the CNNIC ATI signing identity (ADR 0011).
+     *
+     * <p>Order of checks: certificate present → SHA-256withRSA allow-list → leaf parses →
+     * leaf valid at verification time → leaf chains to the trusted Root → leaf Subject is
+     * {@code O=中国互联网络信息中心} + {@code OU=ATI} → signature verifies with the leaf key.
+     * Any failure throws, which the caller turns into a seal-verification failure.</p>
+     *
+     * @param log the transparency log entry
+     * @param trustChain the Seal CA Chain to anchor path validation on
+     * @return true if the seal signature is valid
+     * @throws Exception if verification fails or cannot be performed
+     */
+    static boolean verifySealWithCertificate(TransparencyLog log, SealTrustChain trustChain) throws Exception {
+        Seal seal = log.getSeal();
+        if (seal == null || seal.getSignature() == null || seal.getCertificate() == null) {
+            throw new IllegalArgumentException("Seal is missing required fields (signature, certificate)");
+        }
+
+        requireSha256WithRsa(seal.getSignatureAlgorithm());
+
+        X509Certificate leaf = parseSealCertificate(seal.getCertificate());
+
+        // Seals are signed per-response, so enforce the leaf's validity at verification time.
+        leaf.checkValidity();
+
+        // Path-validate leaf → intermediate → root against the injected Seal CA Chain.
+        validateCertPath(leaf, trustChain);
+
+        // The Seal CA is shared; bind the leaf Subject to the CNNIC ATI signing identity.
+        requireCnnicAtiSubject(leaf);
+
+        return verifySignature(leaf.getPublicKey(), canonicalSignedContent(log), seal.getSignature());
+    }
+
+    /**
+     * Requires {@code signatureAlgorithm} to be SHA-256withRSA (hyphen-insensitive) per ADR 0009.
+     */
+    private static void requireSha256WithRsa(String algorithm) {
         if (algorithm == null || algorithm.isBlank()) {
             throw new IllegalArgumentException("Seal signatureAlgorithm is required");
         }
@@ -180,10 +285,13 @@ public final class SealVerifier {
             throw new IllegalArgumentException(
                 "Seal signatureAlgorithm must be SHA-256withRSA, got: " + algorithm);
         }
+    }
 
-        PublicKey publicKey = parsePublicKey(seal.getPublicKey());
-
-        // Build the content that was signed: {status, schemaVersion, payload, evidenceRef}
+    /**
+     * Builds and RFC 8785 JCS-canonicalizes the signed content
+     * {status, schemaVersion, payload, evidenceRef}.
+     */
+    private static byte[] canonicalSignedContent(TransparencyLog log) throws Exception {
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("status", log.getStatus());
         content.put("schemaVersion", log.getSchemaVersion());
@@ -194,17 +302,71 @@ public final class SealVerifier {
             content.put("evidenceRef", log.getRawEvidenceRef());
         }
 
-        // JCS canonicalize (RFC 8785)
         String contentJson = MAPPER.writeValueAsString(content);
-        JsonCanonicalizer canonicalizer = new JsonCanonicalizer(contentJson);
-        byte[] canonicalBytes = canonicalizer.getEncodedUTF8();
+        return new JsonCanonicalizer(contentJson).getEncodedUTF8();
+    }
 
-        byte[] signatureBytes = Base64.getDecoder().decode(seal.getSignature());
+    /**
+     * Verifies a DER/Base64 SHA-256withRSA signature over the canonicalized content.
+     */
+    private static boolean verifySignature(PublicKey publicKey, byte[] canonicalBytes, String base64Signature)
+            throws Exception {
+        byte[] signatureBytes = Base64.getDecoder().decode(base64Signature);
         Signature sig = Signature.getInstance("SHA256withRSA");
         sig.initVerify(publicKey);
         sig.update(canonicalBytes);
-
         return sig.verify(signatureBytes);
+    }
+
+    /**
+     * Parses the leaf Seal Certificate from {@code seal.certificate}, which may be a leaf-only PEM
+     * or a leaf + intermediate bundle; the leaf is the first certificate.
+     */
+    private static X509Certificate parseSealCertificate(String pem) {
+        // Handle escaped newlines (\\n in JSON) the same way as parsePublicKey.
+        String normalized = pem.replace("\\n", "\n");
+        List<X509Certificate> certs = CertificateUtils.parseCertificateChain(normalized);
+        return certs.get(0);
+    }
+
+    /**
+     * PKIX path-validates {@code leaf} → {@code trustChain.intermediate()} against a
+     * {@link TrustAnchor} of {@code trustChain.root()}. Revocation checking is disabled (ADR 0011).
+     * A wrong or absent anchor, or an expired/not-yet-valid certificate, throws.
+     */
+    private static void validateCertPath(X509Certificate leaf, SealTrustChain trustChain) throws Exception {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        CertPath certPath = cf.generateCertPath(List.of(leaf, trustChain.intermediate()));
+
+        PKIXParameters params = new PKIXParameters(Set.of(new TrustAnchor(trustChain.root(), null)));
+        params.setRevocationEnabled(false);
+
+        CertPathValidator.getInstance("PKIX").validate(certPath, params);
+    }
+
+    /**
+     * Requires the leaf Subject to carry {@code O=中国互联网络信息中心} (CNNIC) and {@code OU=ATI}.
+     */
+    private static void requireCnnicAtiSubject(X509Certificate leaf) {
+        X500Name subject = X500Name.getInstance(leaf.getSubjectX500Principal().getEncoded());
+        String organization = firstRdnValue(subject, BCStyle.O);
+        String organizationalUnit = firstRdnValue(subject, BCStyle.OU);
+        if (!EXPECTED_LEAF_ORGANIZATION.equals(organization)
+                || !EXPECTED_LEAF_ORGANIZATIONAL_UNIT.equals(organizationalUnit)) {
+            throw new IllegalArgumentException(
+                "Seal Certificate Subject must be O=" + EXPECTED_LEAF_ORGANIZATION
+                    + " + OU=" + EXPECTED_LEAF_ORGANIZATIONAL_UNIT
+                    + ", got O=" + organization + " + OU=" + organizationalUnit);
+        }
+    }
+
+    private static String firstRdnValue(X500Name name, ASN1ObjectIdentifier attributeType) {
+        RDN[] rdns = name.getRDNs(attributeType);
+        if (rdns.length == 0) {
+            return null;
+        }
+        ASN1Encodable value = rdns[0].getFirst().getValue();
+        return value instanceof ASN1String ? ((ASN1String) value).getString() : String.valueOf(value);
     }
 
     /**
