@@ -25,6 +25,8 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -55,6 +57,9 @@ class SealVerifierTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
+    /** CNNIC's timezone offset, matching the production {@code payload.timestamp} shape. */
+    private static final ZoneOffset SEALING_ZONE = ZoneOffset.ofHours(8);
+
     /** The CNNIC ATI signing identity the Seal Certificate leaf Subject must carry. */
     private static final X500Name CNNIC_ATI_LEAF_SUBJECT =
         new X500Name("C=CN, O=中国互联网络信息中心, OU=ATI, CN=cnnic-ati-tl-service");
@@ -62,6 +67,9 @@ class SealVerifierTest {
     /**
      * Production-shaped TL body (seal replaced with a locally signed value).
      * evidenceRef includes signature metadata that EvidenceRef does not model.
+     *
+     * <p>The payload carries no {@code timestamp}: the signing helpers inject the sealing time (see
+     * {@link #applySealingTime}), replacing the old hardcoded {@code 2026-05-18} value.</p>
      */
     private static final String TL_BODY = """
         {
@@ -70,7 +78,6 @@ class SealVerifierTest {
           "payload": {
             "logId": "28b8f491-f110-4705-b8b9-dc8e91d452e0",
             "eventType": "AGENT_REGISTERED",
-            "timestamp": "2026-05-18T16:00:00+08:00",
             "agentName": "ati://v1.demo.example.com",
             "agentDisplayName": "demo-agent",
             "agentHost": "demo.example.com",
@@ -150,6 +157,22 @@ class SealVerifierTest {
                 "signedContentLocation",
                 "signatureLocation",
                 "keyId");
+        }
+
+        @Test
+        @DisplayName("A chosen sealing time inside the leaf window verifies (harness parameterization)")
+        void shouldVerifyWithChosenSealingTimeInsideLeafWindow() throws Exception {
+            // Chosen sealing time inside the leaf window: proves the timestamp is injected into the
+            // JCS-signed content, staying green under validity-at-now and ticket 02's as-of rule.
+            Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(10), daysAhead(10));
+            String sealingTime = sealingTimeAt(daysAgo(5));
+            TransparencyLog log = certSignedLog(leaf, "SHA-256withRSA", sealingTime);
+
+            SealVerifier.VerificationResult result = SealVerifier.verify(log, TEST_CHAIN);
+
+            assertThat(result.isValid()).isTrue();
+            assertThat(result.sealValid()).isTrue();
+            assertThat(log.getPayload()).containsEntry("timestamp", sealingTime);
         }
 
         @Test
@@ -335,11 +358,21 @@ class SealVerifierTest {
     // ==================== Signing helpers ====================
 
     /**
-     * Builds a TL whose seal carries {@code leaf.certificate} and a SHA-256withRSA signature made
-     * with the leaf's private key over the JCS-canonicalized signed content.
+     * Builds a TL whose seal carries {@code leaf.certificate} and a SHA-256withRSA signature over
+     * the JCS-canonicalized content. Sealing time defaults to "now" (inside the happy-path window).
      */
     private static TransparencyLog certSignedLog(Leaf leaf, String signatureAlgorithm) throws Exception {
+        return certSignedLog(leaf, signatureAlgorithm, sealingTimeAt(new Date()));
+    }
+
+    /**
+     * Builds a cert-based TL whose signed {@code payload.timestamp} (sealing time) is
+     * {@code payloadTimestamp}, chosen independently of the leaf window; {@code null} omits it.
+     */
+    private static TransparencyLog certSignedLog(
+            Leaf leaf, String signatureAlgorithm, String payloadTimestamp) throws Exception {
         Map<String, Object> response = readTlBody();
+        applySealingTime(response, payloadTimestamp);
         byte[] canonicalBytes = canonicalSignedBytes(response);
 
         Map<String, Object> seal = new LinkedHashMap<>();
@@ -357,10 +390,11 @@ class SealVerifierTest {
         return MAPPER.readValue(MAPPER.writeValueAsString(response), TransparencyLog.class);
     }
 
-    /** Legacy self-asserted {@code publicKey} seal (no certificate). */
+    /** Legacy self-asserted {@code publicKey} seal (no certificate); sealing time defaults to now. */
     private static TransparencyLog signedLog(String signatureAlgorithm) throws Exception {
         KeyPair keyPair = generateRsaKeyPair();
         Map<String, Object> response = readTlBody();
+        applySealingTime(response, sealingTimeAt(new Date()));
         byte[] canonicalBytes = canonicalSignedBytes(response);
 
         Map<String, Object> seal = new LinkedHashMap<>();
@@ -381,6 +415,25 @@ class SealVerifierTest {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> readTlBody() throws Exception {
         return MAPPER.readValue(TL_BODY, Map.class);
+    }
+
+    /**
+     * Sets the payload's {@code timestamp} (the sealing time), or removes it when {@code null}.
+     * Runs before canonicalization so the chosen sealing time is covered by the Seal signature.
+     */
+    @SuppressWarnings("unchecked")
+    private static void applySealingTime(Map<String, Object> response, String payloadTimestamp) {
+        Map<String, Object> payload = (Map<String, Object>) response.get("payload");
+        if (payloadTimestamp == null) {
+            payload.remove("timestamp");
+        } else {
+            payload.put("timestamp", payloadTimestamp);
+        }
+    }
+
+    /** Formats {@code time} as ISO-8601 with CNNIC's {@code +08:00} offset (production shape). */
+    private static String sealingTimeAt(Date time) {
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(time.toInstant().atOffset(SEALING_ZONE));
     }
 
     private static byte[] canonicalSignedBytes(Map<String, Object> response) throws Exception {

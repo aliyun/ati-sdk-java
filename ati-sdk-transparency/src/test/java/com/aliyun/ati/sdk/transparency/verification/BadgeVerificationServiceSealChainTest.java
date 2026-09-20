@@ -28,6 +28,8 @@ import java.security.PublicKey;
 import java.security.Signature;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -63,6 +65,9 @@ class BadgeVerificationServiceSealChainTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
+    /** CNNIC's timezone offset, matching the production {@code payload.timestamp} shape. */
+    private static final ZoneOffset SEALING_ZONE = ZoneOffset.ofHours(8);
+
     /** The CNNIC ATI signing identity the Seal Certificate leaf Subject must carry. */
     private static final X500Name CNNIC_ATI_LEAF_SUBJECT =
         new X500Name("C=CN, O=中国互联网络信息中心, OU=ATI, CN=cnnic-ati-tl-service");
@@ -81,6 +86,24 @@ class BadgeVerificationServiceSealChainTest {
         assertThat(result.isSealVerified()).isTrue();
         assertThat(result.getExpectedServerCertFingerprint()).isEqualTo(FINGERPRINT);
         assertThat(result.getExpectedAgentHost()).isEqualTo(HOSTNAME);
+    }
+
+    @Test
+    @DisplayName("A chosen sealing time inside the leaf window verifies → VERIFIED (harness parameterization)")
+    void chosenSealingTimeInsideLeafWindowVerifies() throws Exception {
+        // Chosen sealing time inside the leaf window: proves the timestamp is injected into the
+        // JCS-signed content, staying green under validity-at-now and ticket 02's as-of rule.
+        Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(10), daysAhead(10));
+        String sealingTime = sealingTimeAt(daysAgo(5));
+        TransparencyLog registration = signedRegistration(leaf, true, sealingTime);
+
+        BadgeVerificationService service = serviceReturning(registration, TEST_CHAIN);
+
+        ServerVerificationResult result = service.verifyServer(HOSTNAME);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.isSealVerified()).isTrue();
+        assertThat(registration.getPayload()).containsEntry("timestamp", sealingTime);
     }
 
     @Test
@@ -139,9 +162,21 @@ class BadgeVerificationServiceSealChainTest {
      * Builds an ACTIVE registration whose Seal carries a SHA-256withRSA signature over the JCS
      * content {status, schemaVersion, payload}. When {@code withCertificate} the seal carries the
      * leaf certificate (chains to {@link #TEST_CHAIN}); otherwise it is a legacy publicKey-only
-     * seal with no {@code seal.certificate}, which must fail closed after the contract.
+     * seal with no {@code seal.certificate}, which must fail closed after the contract. The sealing
+     * time defaults to "now", which sits inside the happy-path leaf window ({@code daysAgo(1)} to
+     * {@code daysAhead(365)}).
      */
     private static TransparencyLog signedRegistration(Leaf leaf, boolean withCertificate) throws Exception {
+        return signedRegistration(leaf, withCertificate, sealingTimeAt(new Date()));
+    }
+
+    /**
+     * Builds an ACTIVE registration whose signed {@code payload.timestamp} (the sealing time) is
+     * {@code payloadTimestamp}, chosen independently of the leaf's validity window. A {@code null}
+     * timestamp omits the field, modelling an entry with no authenticated sealing time.
+     */
+    private static TransparencyLog signedRegistration(
+            Leaf leaf, boolean withCertificate, String payloadTimestamp) throws Exception {
         Map<String, Object> certificates = new LinkedHashMap<>();
         certificates.put("serverCertFingerprint", FINGERPRINT);
         certificates.put("identityCertFingerprint", FINGERPRINT);
@@ -149,7 +184,9 @@ class BadgeVerificationServiceSealChainTest {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("logId", AGENT_ID);
         payload.put("eventType", "AGENT_REGISTERED");
-        payload.put("timestamp", "2026-05-18T16:00:00+08:00");
+        if (payloadTimestamp != null) {
+            payload.put("timestamp", payloadTimestamp);
+        }
         payload.put("agentName", ATI_NAME);
         payload.put("agentHost", HOSTNAME);
         payload.put("version", "1.0.0");
@@ -185,12 +222,13 @@ class BadgeVerificationServiceSealChainTest {
 
         TransparencyLog log =
             MAPPER.readValue(MAPPER.writeValueAsString(response), TransparencyLog.class);
-        log.setParsedPayload(parsedPayload());
+        log.setParsedPayload(parsedPayload(payloadTimestamp));
         return log;
     }
 
-    private static TransparencyLogAtiV1 parsedPayload() {
+    private static TransparencyLogAtiV1 parsedPayload(String timestamp) {
         TransparencyLogAtiV1 payload = new TransparencyLogAtiV1();
+        payload.setTimestamp(timestamp);
         payload.setAgentName(ATI_NAME);
         payload.setAgentHost(HOSTNAME);
         payload.setVersion("1.0.0");
@@ -287,5 +325,13 @@ class BadgeVerificationServiceSealChainTest {
 
     private static Date daysAhead(long days) {
         return Date.from(Instant.now().plusSeconds(86400L * days));
+    }
+
+    /**
+     * Formats {@code time} as an ISO-8601 timestamp with CNNIC's {@code +08:00} offset, matching the
+     * production {@code payload.timestamp} shape the Seal Validation Time parser (ticket 02) reads.
+     */
+    private static String sealingTimeAt(Date time) {
+        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(time.toInstant().atOffset(SEALING_ZONE));
     }
 }
