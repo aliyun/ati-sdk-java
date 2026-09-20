@@ -43,8 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li><b>Certificate path</b> — {@link SealVerifier#verify(TransparencyLog, SealTrustChain)}
  *       verifies with the public key inside {@code seal.certificate}, PKIX path-validates that leaf
- *       to an injected {@link SealTrustChain}, enforces leaf validity, and binds the leaf Subject to
- *       {@code O=中国互联网络信息中心} (CNNIC) + {@code OU=ATI} (ADR 0011).</li>
+ *       to an injected {@link SealTrustChain} as-of the entry's sealing time (ADR 0012), and binds
+ *       the leaf Subject to {@code O=中国互联网络信息中心} (CNNIC) + {@code OU=ATI} (ADR 0011).</li>
  *   <li><b>Convenience overload</b> — {@link SealVerifier#verify(TransparencyLog)} delegates to the
  *       shipped Seal CA Chain, so a Seal without {@code seal.certificate} fails closed.</li>
  * </ul>
@@ -239,7 +239,7 @@ class SealVerifierTest {
         }
 
         @Test
-        @DisplayName("An expired Seal Certificate fails")
+        @DisplayName("A leaf already expired at the sealing time (defaults to now) fails")
         void shouldRejectExpiredLeaf() throws Exception {
             Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(30), daysAgo(1));
             TransparencyLog log = certSignedLog(leaf, "SHA-256withRSA");
@@ -251,7 +251,7 @@ class SealVerifierTest {
         }
 
         @Test
-        @DisplayName("A not-yet-valid Seal Certificate fails")
+        @DisplayName("A leaf not yet valid at the sealing time (defaults to now) fails")
         void shouldRejectNotYetValidLeaf() throws Exception {
             Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAhead(1), daysAhead(30));
             TransparencyLog log = certSignedLog(leaf, "SHA-256withRSA");
@@ -311,10 +311,12 @@ class SealVerifierTest {
         try {
             ROOT_KEY = generateRsaKeyPair();
             INTERMEDIATE_KEY = generateRsaKeyPair();
+            // Long-lived CA (production Root →2043, Intermediate →2033): backdate notBefore so a
+            // historical sealing time still chains under as-of validation (ADR 0012).
             ROOT_CERT = buildCertificate(ROOT_SUBJECT, ROOT_KEY.getPublic(),
-                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(1), daysAhead(3650), true, null);
+                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(3650), true, null);
             INTERMEDIATE_CERT = buildCertificate(INTERMEDIATE_SUBJECT, INTERMEDIATE_KEY.getPublic(),
-                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(1), daysAhead(1825), true, 0);
+                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(1825), true, 0);
             TEST_CHAIN = SealTrustChain.of(ROOT_CERT, INTERMEDIATE_CERT);
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

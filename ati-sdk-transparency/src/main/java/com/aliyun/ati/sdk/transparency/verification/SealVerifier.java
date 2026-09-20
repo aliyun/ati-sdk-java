@@ -25,7 +25,11 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Base64;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -211,9 +215,15 @@ public final class SealVerifier {
      * the CNNIC ATI signing identity (ADR 0011).
      *
      * <p>Order of checks: certificate present → SHA-256withRSA allow-list → leaf parses →
-     * leaf valid at verification time → leaf chains to the trusted Root → leaf Subject is
-     * {@code O=中国互联网络信息中心} + {@code OU=ATI} → signature verifies with the leaf key.
-     * Any failure throws, which the caller turns into a seal-verification failure.</p>
+     * leaf valid as-of the Seal Validation Time → leaf chains to the trusted Root as-of that same
+     * instant → leaf Subject is {@code O=中国互联网络信息中心} + {@code OU=ATI} → signature verifies
+     * with the leaf key. Any failure throws, which the caller turns into a seal-verification
+     * failure.</p>
+     *
+     * <p>The leaf and its whole chain are validated as-of the <b>Seal Validation Time</b>
+     * {@code min(payload.timestamp, now)} (ADR 0012) — the entry's own signed sealing time — rather
+     * than verification-time "now," so a historical entry whose leaf has since expired still
+     * verifies, while a signature sealed after the leaf's {@code notAfter} fails closed.</p>
      *
      * @param log the transparency log entry
      * @param trustChain the Seal CA Chain to anchor path validation on
@@ -230,16 +240,46 @@ public final class SealVerifier {
 
         X509Certificate leaf = parseSealCertificate(seal.getCertificate());
 
-        // Seals are signed per-response, so enforce the leaf's validity at verification time.
-        leaf.checkValidity();
+        // Validate the leaf and its chain as-of the entry's own sealing time (ADR 0012), so a
+        // historical entry whose leaf has since expired still verifies.
+        Date asOf = sealValidationTime(log);
+        leaf.checkValidity(asOf);
 
-        // Path-validate leaf → intermediate → root against the injected Seal CA Chain.
-        validateCertPath(leaf, trustChain);
+        // Path-validate leaf → intermediate → root against the injected Seal CA Chain, as-of asOf.
+        validateCertPath(leaf, trustChain, asOf);
 
         // The Seal CA is shared; bind the leaf Subject to the CNNIC ATI signing identity.
         requireCnnicAtiSubject(leaf);
 
         return verifySignature(leaf.getPublicKey(), canonicalSignedContent(log), seal.getSignature());
+    }
+
+    /**
+     * Returns the <b>Seal Validation Time</b> (ADR 0012): {@code min(payload.timestamp, now)}, the
+     * instant the Seal Certificate's validity is assessed. The sealing time is read from the raw
+     * signed {@code payload} map ({@code log.getPayload().get("timestamp")}) so it equals exactly
+     * the JCS-signed bytes — being inside the signed content, it is authenticated by the Seal.
+     *
+     * <p>A missing, blank, or unparseable timestamp falls back to {@code now}; a future timestamp is
+     * clamped to {@code now}, preserving the "not-yet-valid leaf fails closed" guarantee.</p>
+     */
+    private static Date sealValidationTime(TransparencyLog log) {
+        Date now = new Date();
+        Map<String, Object> payload = log.getPayload();
+        if (payload == null) {
+            return now;
+        }
+        Object raw = payload.get("timestamp");
+        if (!(raw instanceof String timestamp) || timestamp.isBlank()) {
+            return now;
+        }
+        try {
+            Instant sealingTime = OffsetDateTime.parse(timestamp).toInstant();
+            return sealingTime.isAfter(now.toInstant()) ? now : Date.from(sealingTime);
+        } catch (DateTimeParseException e) {
+            LOG.debug("Unparseable payload.timestamp '{}'; validating Seal as-of now", timestamp);
+            return now;
+        }
     }
 
     /**
@@ -301,15 +341,18 @@ public final class SealVerifier {
 
     /**
      * PKIX path-validates {@code leaf} → {@code trustChain.intermediate()} against a
-     * {@link TrustAnchor} of {@code trustChain.root()}. Revocation checking is disabled (ADR 0011).
-     * A wrong or absent anchor, or an expired/not-yet-valid certificate, throws.
+     * {@link TrustAnchor} of {@code trustChain.root()}, as-of {@code asOf} (ADR 0012). Revocation
+     * checking is disabled (ADR 0011). A wrong or absent anchor, or a certificate not valid at
+     * {@code asOf}, throws.
      */
-    private static void validateCertPath(X509Certificate leaf, SealTrustChain trustChain) throws Exception {
+    private static void validateCertPath(X509Certificate leaf, SealTrustChain trustChain, Date asOf)
+            throws Exception {
         CertificateFactory cf = CertificateFactory.getInstance("X.509");
         CertPath certPath = cf.generateCertPath(List.of(leaf, trustChain.intermediate()));
 
         PKIXParameters params = new PKIXParameters(Set.of(new TrustAnchor(trustChain.root(), null)));
         params.setRevocationEnabled(false);
+        params.setDate(asOf);
 
         CertPathValidator.getInstance("PKIX").validate(certPath, params);
     }

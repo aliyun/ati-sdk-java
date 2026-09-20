@@ -50,6 +50,10 @@ import static org.mockito.Mockito.when;
  * locally generated leaf does not chain to the SDK-shipped production anchor. A certificate-less
  * (legacy {@code publicKey}-only) Seal or a tampered entry fails closed with
  * {@link VerificationStatus#SEAL_VERIFICATION_FAILED}.</p>
+ *
+ * <p>The chain is validated as-of the <b>Seal Validation Time</b> {@code min(payload.timestamp,
+ * now)} (ADR 0012), so a historical entry whose leaf has since expired — but was sealed inside its
+ * window — still verifies end-to-end.</p>
  */
 class BadgeVerificationServiceSealChainTest {
 
@@ -104,6 +108,25 @@ class BadgeVerificationServiceSealChainTest {
         assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
         assertThat(result.isSealVerified()).isTrue();
         assertThat(registration.getPayload()).containsEntry("timestamp", sealingTime);
+    }
+
+    @Test
+    @DisplayName("An expired-leaf entry sealed inside the leaf window verifies → VERIFIED (ADR 0012)")
+    void expiredLeafSealedInWindowVerifies() throws Exception {
+        // The leaf rotated out (expired 30d ago) but CNNIC sealed this entry 60d ago, while the leaf
+        // was valid. Badge pre-verification validates the Seal as-of min(payload.timestamp, now) =
+        // 60d ago — inside [notBefore=90d, notAfter=30d] — so the historical entry still verifies
+        // end-to-end. Under the old validity-at-now rule the expired leaf would have failed closed.
+        Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(90), daysAgo(30));
+        TransparencyLog registration = signedRegistration(leaf, true, sealingTimeAt(daysAgo(60)));
+
+        BadgeVerificationService service = serviceReturning(registration, TEST_CHAIN);
+
+        ServerVerificationResult result = service.verifyServer(HOSTNAME);
+
+        assertThat(result.getStatus()).isEqualTo(VerificationStatus.VERIFIED);
+        assertThat(result.isSealVerified()).isTrue();
+        assertThat(result.getExpectedServerCertFingerprint()).isEqualTo(FINGERPRINT);
     }
 
     @Test
@@ -259,10 +282,12 @@ class BadgeVerificationServiceSealChainTest {
         try {
             ROOT_KEY = generateRsaKeyPair();
             INTERMEDIATE_KEY = generateRsaKeyPair();
+            // Long-lived CA (production Root →2043, Intermediate →2033): backdate notBefore so a
+            // historical sealing time still chains under as-of validation (ADR 0012).
             ROOT_CERT = buildCertificate(ROOT_SUBJECT, ROOT_KEY.getPublic(),
-                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(1), daysAhead(3650), true, null);
+                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(3650), true, null);
             INTERMEDIATE_CERT = buildCertificate(INTERMEDIATE_SUBJECT, INTERMEDIATE_KEY.getPublic(),
-                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(1), daysAhead(1825), true, 0);
+                ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(1825), true, 0);
             TEST_CHAIN = SealTrustChain.of(ROOT_CERT, INTERMEDIATE_CERT);
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);

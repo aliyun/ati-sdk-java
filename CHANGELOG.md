@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`ati.sdk.transparency.seal.trust-certificate` override**: operators can replace the shipped Seal CA Chain with a two-certificate (Root + Intermediate) PEM without an SDK upgrade. Blank/unset uses the shipped chain; a present-but-missing or malformed override fails closed at startup. The property flows Spring → `BadgeVerificationService` builder, and `SealVerifier.verify(log, sealTrustChain)` accepts an injected chain directly.
 
+### Changed
+
+- **Seal Certificate validity as-of sealing time** (ADR-0012): Badge pre-verification now validates the Seal Certificate and its whole chain (`leaf → Intermediate → Root`) as-of the **Seal Validation Time** `min(payload.timestamp, now)` — the entry's own JCS-signed sealing time — instead of verification-time "now". A genuine long-lived or historical Badge Entry whose leaf has expired *since it was sealed* now verifies, while a signature sealed after the leaf's `notAfter` still fails closed with `SEAL_VERIFICATION_FAILED`. A future `payload.timestamp` is clamped to `now`; a missing, blank, or unparseable timestamp falls back to `now`. Applies to both `SealVerifier.verify(log)` and `verify(log, sealTrustChain)`; no new public API or `VerificationStatus`.
+
 ## [3.1.0] - 2026-09-14
 
 ### Added
