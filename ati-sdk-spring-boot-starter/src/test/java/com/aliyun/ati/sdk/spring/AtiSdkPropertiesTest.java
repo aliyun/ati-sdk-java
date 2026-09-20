@@ -193,6 +193,47 @@ class AtiSdkPropertiesTest {
         }
     }
 
+    // ==================== Seal Trust Properties ====================
+
+    @Nested
+    @DisplayName("Seal trust properties")
+    class SealTrustTests {
+
+        @Test
+        @DisplayName("transparency.seal.trustCertificate should default to null")
+        void trustCertificateShouldDefaultToNull() {
+            AtiSdkProperties props = new AtiSdkProperties();
+
+            assertThat(props.getTransparency().getSeal()).isNotNull();
+            assertThat(props.getTransparency().getSeal().getTrustCertificate())
+                .isNull();
+        }
+
+        @Test
+        @DisplayName("Should set and get transparency.seal.trustCertificate")
+        void shouldSetAndGetTrustCertificate() {
+            AtiSdkProperties props = new AtiSdkProperties();
+            props.getTransparency().getSeal()
+                .setTrustCertificate("/path/to/seal-ca-chain.pem");
+
+            assertThat(props.getTransparency().getSeal().getTrustCertificate())
+                .isEqualTo("/path/to/seal-ca-chain.pem");
+        }
+
+        @Test
+        @DisplayName("Should replace entire seal object")
+        void shouldReplaceEntireSealObject() {
+            AtiSdkProperties props = new AtiSdkProperties();
+            AtiSdkProperties.Seal newSeal = new AtiSdkProperties.Seal();
+            newSeal.setTrustCertificate("/new/seal-ca-chain.pem");
+
+            props.getTransparency().setSeal(newSeal);
+
+            assertThat(props.getTransparency().getSeal().getTrustCertificate())
+                .isEqualTo("/new/seal-ca-chain.pem");
+        }
+    }
+
     // ==================== Verification Properties ====================
 
     @Nested
@@ -432,6 +473,7 @@ class AtiSdkPropertiesTest {
             assertThat(props.getClient()).isNotNull();
             assertThat(props.getServer().getVerification()).isNotNull();
             assertThat(props.getServer().getIdca()).isNotNull();
+            assertThat(props.getTransparency().getSeal()).isNotNull();
         }
     }
 }

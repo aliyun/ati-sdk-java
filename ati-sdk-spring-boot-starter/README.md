@@ -29,12 +29,20 @@ ati:
       private-key: /path/to/identity.key
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      seal:
+        # Optional; replaces the SDK-shipped Seal CA Chain used for Badge pre-verification.
+        # A two-certificate (Root + Intermediate) PEM. Blank/unset uses the shipped chain.
+        trust-certificate: /path/to/seal-ca-chain.pem
     verification:
       policy: ENHANCED
     client:
       dns-timeout: 5s
       connect-timeout: 10s
 ```
+
+### Badge pre-verification trust (`ati.sdk.transparency.seal.trust-certificate`)
+
+At Badge policies (`ENHANCED`/`ADVANCED`), the server verifies each Badge Entry's Seal against a **Seal CA Chain** (ADR-0011). By default this is the SDK-shipped production chain; `ati.sdk.transparency.seal.trust-certificate` optionally replaces it with an operator-supplied Root + Intermediate PEM. A present-but-missing or malformed override fails closed at startup (`BadgeVerificationService` is not created). The Seal itself must carry `seal.certificate`; the legacy `publicKey`-only path is removed.
 
 ## Dependencies
 

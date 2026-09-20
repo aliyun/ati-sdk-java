@@ -1,13 +1,22 @@
 package com.aliyun.ati.sdk.spring;
 
+import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.web.server.WebServerFactoryCustomizer;
 
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests for {@link AtiServerAutoConfiguration}.
@@ -216,6 +225,66 @@ class AtiServerAutoConfigurationTest {
                         context.getBean(AtiSdkProperties.class);
 
                     assertThat(props.getServer().getPort()).isEqualTo(443);
+                });
+        }
+    }
+
+    // ==================== Seal CA Chain Wiring Tests ====================
+
+    @Nested
+    @DisplayName("Seal CA Chain wiring (BadgeVerificationService)")
+    class SealTrustChainWiringTests {
+
+        /** Classpath location of the SDK-shipped production Seal CA Chain (Root + Intermediate). */
+        private static final String SHIPPED_SEAL_CHAIN_RESOURCE =
+            "/com/aliyun/ati/sdk/transparency/seal/seal-ca-chain.crt";
+
+        @Test
+        @DisplayName("Default (no property) builds the badge service on the shipped Seal CA Chain")
+        void shouldCreateBadgeServiceWithShippedChainByDefault() {
+            contextRunner
+                .withBean(TransparencyClient.class, () -> mock(TransparencyClient.class))
+                .withPropertyValues("ati.sdk.mode=server")
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(BadgeVerificationService.class);
+                });
+        }
+
+        @Test
+        @DisplayName("ati.sdk.transparency.seal.trust-certificate injects an override chain end-to-end")
+        void shouldInjectOverrideChainFromProperty(@TempDir Path tempDir) throws Exception {
+            Path override = tempDir.resolve("seal-ca-chain.pem");
+            try (InputStream in = getClass().getResourceAsStream(SHIPPED_SEAL_CHAIN_RESOURCE)) {
+                assertThat(in)
+                    .as("shipped Seal CA Chain resource must be on the test classpath")
+                    .isNotNull();
+                Files.copy(in, override, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            contextRunner
+                .withBean(TransparencyClient.class, () -> mock(TransparencyClient.class))
+                .withPropertyValues(
+                    "ati.sdk.mode=server",
+                    "ati.sdk.transparency.seal.trust-certificate=" + override)
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(BadgeVerificationService.class);
+                });
+        }
+
+        @Test
+        @DisplayName("A malformed (nonexistent) override path fails closed at startup")
+        void shouldFailClosedOnMalformedOverride() {
+            contextRunner
+                .withBean(TransparencyClient.class, () -> mock(TransparencyClient.class))
+                .withPropertyValues(
+                    "ati.sdk.mode=server",
+                    "ati.sdk.transparency.seal.trust-certificate=/nonexistent/seal-ca-chain.pem")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                        .hasStackTraceContaining("Seal CA Chain");
                 });
         }
     }

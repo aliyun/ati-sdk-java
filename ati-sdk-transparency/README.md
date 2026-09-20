@@ -7,6 +7,9 @@ Transparency log module — fetches and verifies Badge entries (Seal, Merkle pro
 - `TransparencyClient` — TL service client (fetch badges, seals, Merkle proofs)
 - `RootKeyManager` — Manages TL root public key for verification
 - `TrustedDomainRegistry` — Registry of trusted TL domains
+- `BadgeVerificationService` — Badge pre-verification (Seal + Merkle) for a hostname
+- `SealVerifier` — Verifies a Seal's signature and its `seal.certificate` against a `SealTrustChain`
+- `SealTrustChain` — The Seal CA Chain (Root + Intermediate) the SDK trusts when path-validating a Seal Certificate
 
 ## Transparency Log
 
@@ -26,6 +29,17 @@ _ati-badge.abc123.bailian.aliyun.com.  TXT  "v=ati-badge1; av=v1.0.0; u=https://
 ```
 
 Verification extracts the path from `u=` and requests `TransparencyClient.baseUrl` + that path. The Badge TXT `u=` host is not the HTTP target.
+
+## Seal verification
+
+A Badge Entry's Seal proves the TL body was published by CNNIC. Verification is **certificate-based** (ADR-0011):
+
+- The Seal **must** carry `seal.certificate` — the leaf Seal Certificate. The legacy self-asserted `seal.publicKey`-only path is removed; a Seal without `seal.certificate` fails closed with `SEAL_VERIFICATION_FAILED`.
+- `SealVerifier` path-validates that leaf (`leaf → Intermediate → Root`) against a `SealTrustChain`, enforces leaf validity, binds the leaf Subject to `O=中国互联网络信息中心` + `OU=ATI`, and checks the signature over the JCS (RFC 8785) canonical content with `SHA-256withRSA` (ADR-0009).
+- `SealVerifier.verify(log)` anchors on `SealTrustChain.shipped()` — the SDK-shipped production Seal CA Chain (Root + Intermediate). `SealVerifier.verify(log, sealTrustChain)` accepts an injected chain.
+- Operators replace the shipped chain without an SDK upgrade via the Spring property `ati.sdk.transparency.seal.trust-certificate` (a two-certificate Root + Intermediate PEM). Any chain failure — path, expiry, Subject, signature, or anchor load — yields `SEAL_VERIFICATION_FAILED` and fails Badge pre-verification.
+
+Seal verification runs only at Badge policies (`ENHANCED`/`ADVANCED`); `NONE`/`BASIC` do not fetch or verify Badges.
 
 ## Usage
 

@@ -84,6 +84,7 @@ public final class BadgeVerificationService implements ServerVerifier {
     private final TransparencyClient transparencyClient;
     private final RaBadgeLookupService raBadgeLookupService;
     private final Executor executor;
+    private final SealTrustChain sealTrustChain;
 
     private BadgeVerificationService(Builder builder) {
         this.transparencyClient = Objects.requireNonNull(
@@ -94,6 +95,9 @@ public final class BadgeVerificationService implements ServerVerifier {
         this.executor = builder.executor != null
             ? builder.executor
             : AtiExecutors.sharedIoExecutor();
+        this.sealTrustChain = builder.sealTrustChain != null
+            ? builder.sealTrustChain
+            : SealTrustChain.shipped();
     }
 
     /**
@@ -247,6 +251,19 @@ public final class BadgeVerificationService implements ServerVerifier {
      */
     private ServerVerificationResult evaluateServerRegistrations(
             List<FetchResult> fetchResults, String lookupIdentityHost) {
+        // Fail closed on any Seal/Merkle cryptographic failure: it signals tampering or a bad
+        // trust anchor, which outranks a plain lookup failure (ADR 0011, spec user story 17).
+        String cryptoFailureStep = firstCryptoFailureStep(fetchResults);
+        if (cryptoFailureStep != null) {
+            LOG.warn("Badge pre-verification failed: Seal/Merkle verification failed at step {}",
+                cryptoFailureStep);
+            return ServerVerificationResult.builder()
+                .status(VerificationStatus.SEAL_VERIFICATION_FAILED)
+                .warningMessage(cryptoFailureWarning(cryptoFailureStep))
+                .failureStep(cryptoFailureStep)
+                .build();
+        }
+
         List<String> activeFingerprints = new ArrayList<>();
         List<String> deprecatedFingerprints = new ArrayList<>();
         TransparencyLog firstActiveRegistration = null;
@@ -427,26 +444,65 @@ public final class BadgeVerificationService implements ServerVerifier {
 
     /**
      * Result of fetching a registration from the transparency log.
+     *
+     * <p>{@code cryptoFailureStep} is non-null only when Seal or Merkle cryptographic verification
+     * failed ({@code "seal"} / {@code "merkle"}), distinguishing a tampering signal from a plain
+     * transport failure. A crypto failure fails Badge pre-verification closed with
+     * {@link VerificationStatus#SEAL_VERIFICATION_FAILED} (ADR 0011).</p>
      */
     private record FetchResult(
             RaBadgeRecord badge,
             TransparencyLog registration,
             Exception error,
             boolean sealVerified,
-            boolean merkleVerified
+            boolean merkleVerified,
+            String cryptoFailureStep
     ) {
         static FetchResult success(RaBadgeRecord badge, TransparencyLog registration,
                                    boolean sealVerified, boolean merkleVerified) {
-            return new FetchResult(badge, registration, null, sealVerified, merkleVerified);
+            return new FetchResult(badge, registration, null, sealVerified, merkleVerified, null);
         }
 
-        static FetchResult failure(RaBadgeRecord badge, Exception error) {
-            return new FetchResult(badge, null, error, false, false);
+        static FetchResult transportFailure(RaBadgeRecord badge, Exception error) {
+            return new FetchResult(badge, null, error, false, false, null);
+        }
+
+        static FetchResult sealFailure(RaBadgeRecord badge, Exception error) {
+            return new FetchResult(badge, null, error, false, false, "seal");
+        }
+
+        static FetchResult merkleFailure(RaBadgeRecord badge, Exception error) {
+            return new FetchResult(badge, null, error, false, false, "merkle");
         }
 
         boolean isSuccess() {
             return registration != null;
         }
+
+        boolean isCryptoFailure() {
+            return cryptoFailureStep != null;
+        }
+    }
+
+    /**
+     * Returns the step of the first Seal/Merkle cryptographic failure among {@code fetchResults},
+     * or {@code null} when none failed cryptographically (transport-only failures do not count).
+     */
+    private static String firstCryptoFailureStep(List<FetchResult> fetchResults) {
+        for (FetchResult fetchResult : fetchResults) {
+            if (fetchResult.isCryptoFailure()) {
+                return fetchResult.cryptoFailureStep();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Builds the shared user-facing warning for a Seal/Merkle cryptographic failure at
+     * {@code cryptoFailureStep}, so the Server and Client paths report it identically.
+     */
+    private static String cryptoFailureWarning(String cryptoFailureStep) {
+        return "Seal verification failed at step: " + cryptoFailureStep;
     }
 
     /**
@@ -499,8 +555,9 @@ public final class BadgeVerificationService implements ServerVerifier {
                     // Spec 7.1: use full path from badge URL, not reconstructed from agentId
                     TransparencyLog registration = transparencyClient.getTransparencyLogByPath(badge.tlPath());
 
-                    // Spec 8.2: verify seal signature and Merkle proof if present
-                    SealVerifier.VerificationResult sealResult = SealVerifier.verify(registration);
+                    // Spec 8.2 + ADR 0011: verify the Seal against the injected Seal CA Chain
+                    // (shipped by default) and the Merkle inclusion proof if present.
+                    SealVerifier.VerificationResult sealResult = SealVerifier.verify(registration, sealTrustChain);
 
                     // Sub-step 1: Seal signature verification
                     boolean sealOk = sealResult.sealValid() == null || sealResult.sealValid();
@@ -508,7 +565,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                     if (!sealOk) {
                         LOG.warn("Seal verification failed for path {}: {}",
                             badge.tlPath(), sealResult.failureReason());
-                        return FetchResult.failure(badge,
+                        return FetchResult.sealFailure(badge,
                             new SecurityException("Seal signature verification failed: "
                                 + sealResult.failureReason()));
                     }
@@ -519,7 +576,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                     if (!merkleOk) {
                         LOG.warn("Merkle proof verification failed for path {}: {}",
                             badge.tlPath(), sealResult.failureReason());
-                        return FetchResult.failure(badge,
+                        return FetchResult.merkleFailure(badge,
                             new SecurityException("Merkle proof verification failed: "
                                 + sealResult.failureReason()));
                     }
@@ -527,7 +584,7 @@ public final class BadgeVerificationService implements ServerVerifier {
                     return FetchResult.success(badge, registration, sealOk, merkleOk);
                 } catch (Exception e) {
                     LOG.debug("Failed to fetch registration for path {}: {}", badge.tlPath(), e.getMessage());
-                    return FetchResult.failure(badge, e);
+                    return FetchResult.transportFailure(badge, e);
                 }
             }, executor))
             .toList();
@@ -548,6 +605,18 @@ public final class BadgeVerificationService implements ServerVerifier {
             String clientFingerprint,
             String certAtiName,
             String agentHost) {
+
+        // Fail closed on any Seal/Merkle cryptographic failure (ADR 0011, spec user story 17):
+        // Client Verification applies the same Seal CA Chain trust model as Server Verification.
+        String cryptoFailureStep = firstCryptoFailureStep(fetchResults);
+        if (cryptoFailureStep != null) {
+            LOG.warn("Client Badge verification failed: Seal/Merkle verification failed at step {}",
+                cryptoFailureStep);
+            return ClientVerificationResult.builder()
+                .status(VerificationStatus.SEAL_VERIFICATION_FAILED)
+                .warningMessage(cryptoFailureWarning(cryptoFailureStep))
+                .build();
+        }
 
         TransparencyLog activeMatch = null;
         TransparencyLog deprecatedMatch = null;
@@ -799,6 +868,7 @@ public final class BadgeVerificationService implements ServerVerifier {
         private TransparencyClient transparencyClient;
         private RaBadgeLookupService raBadgeLookupService;
         private Executor executor;
+        private SealTrustChain sealTrustChain;
 
         private Builder() {
         }
@@ -837,6 +907,21 @@ public final class BadgeVerificationService implements ServerVerifier {
          */
         public Builder executor(Executor executor) {
             this.executor = executor;
+            return this;
+        }
+
+        /**
+         * Sets the Seal CA Chain used to path-validate each Seal Certificate.
+         *
+         * <p>If not specified, the SDK-shipped production Seal CA Chain
+         * ({@link SealTrustChain#shipped()}) is used. Operators override it via
+         * {@code ati.sdk.transparency.seal.trust-certificate} (ADR 0011).</p>
+         *
+         * @param sealTrustChain the Seal CA Chain trust anchor
+         * @return this builder
+         */
+        public Builder sealTrustChain(SealTrustChain sealTrustChain) {
+            this.sealTrustChain = sealTrustChain;
             return this;
         }
 

@@ -14,9 +14,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Verifies ATI SDK can correctly validate a captured CNNIC TL response
- * including Merkle inclusion proof (RFC 9162). Historical Seal signatures
- * on this fixture use SHA-256withECDSA, which production verification rejects
- * (ADR-0009: SHA-256withRSA only).
+ * including Merkle inclusion proof (RFC 9162). This legacy fixture carries a
+ * publicKey-only Seal with SHA-256withECDSA; after the Seal CA Chain contract it
+ * fails closed on the missing {@code seal.certificate} (the ECDSA algorithm is off
+ * the ADR-0009 allow-list regardless).
  */
 class CnnicTlVerificationTest {
 
@@ -85,8 +86,11 @@ class CnnicTlVerificationTest {
         TransparencyLog log = mapper.readValue(CNNIC_TL_RESPONSE, TransparencyLog.class);
         SealVerifier.VerificationResult result = SealVerifier.verify(log);
 
+        // Post Seal CA Chain contract, verify(log) requires seal.certificate; this legacy
+        // publicKey-only fixture fails closed on the missing certificate (its SHA-256withECDSA
+        // algorithm is off the ADR-0009 allow-list regardless).
         assertThat(result.isValid()).isFalse();
-        assertThat(result.failureReason()).contains("SHA-256withRSA");
+        assertThat(result.failureReason()).contains("certificate");
     }
 
     @Test

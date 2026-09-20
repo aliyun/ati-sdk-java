@@ -5,6 +5,16 @@ All notable changes to the ATI Java SDK are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking Changes
+
+- **Seal Certificate required for Badge pre-verification** (ADR-0011): Badge pre-verification now path-validates the Seal signing certificate (`seal.certificate`) against the SDK-shipped **Seal CA Chain** (Seal CA Root + Intermediate) and binds the leaf Subject to `O=中国互联网络信息中心` + `OU=ATI`. The legacy self-asserted `seal.publicKey`-only path is removed: a Seal without `seal.certificate` now fails closed with `SEAL_VERIFICATION_FAILED`. `SealVerifier.verify(log)` anchors on the shipped chain (it previously trusted the Seal's own `publicKey`), so any chain failure — path, expiry, Subject binding, signature, or anchor load — surfaces as `SEAL_VERIFICATION_FAILED` and fails Badge pre-verification. Seal verification still runs only at Badge policies (`ENHANCED`/`ADVANCED`); no separate toggle is added.
+
+### Added
+
+- **`ati.sdk.transparency.seal.trust-certificate` override**: operators can replace the shipped Seal CA Chain with a two-certificate (Root + Intermediate) PEM without an SDK upgrade. Blank/unset uses the shipped chain; a present-but-missing or malformed override fails closed at startup. The property flows Spring → `BadgeVerificationService` builder, and `SealVerifier.verify(log, sealTrustChain)` accepts an injected chain directly.
+
 ## [3.1.0] - 2026-09-14
 
 ### Added

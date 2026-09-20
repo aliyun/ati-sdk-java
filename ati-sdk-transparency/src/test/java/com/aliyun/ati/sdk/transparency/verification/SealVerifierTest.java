@@ -36,15 +36,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Tests for {@link SealVerifier}.
  *
- * <p>Covers both verification paths:</p>
+ * <p>Covers the certificate-based verification path — the only path after the Seal CA Chain
+ * contract:</p>
  * <ul>
- *   <li><b>Legacy {@code publicKey} path</b> — {@link SealVerifier#verify(TransparencyLog)} verifies
- *       the seal with the response-embedded {@code seal.publicKey}. Unchanged by the Seal CA Chain
- *       work; kept here to prove production behaviour is identical during the expand phase.</li>
  *   <li><b>Certificate path</b> — {@link SealVerifier#verify(TransparencyLog, SealTrustChain)}
  *       verifies with the public key inside {@code seal.certificate}, PKIX path-validates that leaf
  *       to an injected {@link SealTrustChain}, enforces leaf validity, and binds the leaf Subject to
  *       {@code O=中国互联网络信息中心} (CNNIC) + {@code OU=ATI} (ADR 0011).</li>
+ *   <li><b>Convenience overload</b> — {@link SealVerifier#verify(TransparencyLog)} delegates to the
+ *       shipped Seal CA Chain, so a Seal without {@code seal.certificate} fails closed.</li>
  * </ul>
  *
  * <p>The certificate path is exercised against a locally generated BouncyCastle
@@ -103,75 +103,25 @@ class SealVerifierTest {
         }
         """;
 
-    // ==================== Legacy publicKey path (unchanged) ====================
+    // ==================== Convenience overload — verify(log) delegates to shipped() ====================
 
     @Nested
-    @DisplayName("Legacy publicKey path — verify(log)")
-    class LegacyPublicKeyPath {
+    @DisplayName("Convenience verify(log) — delegates to the shipped Seal CA Chain")
+    class ConvenienceOverload {
 
         @Test
-        @DisplayName("Seal verify should succeed for SHA-256withRSA over production evidenceRef extra keys")
-        void shouldVerifySealForProductionTlEvidenceRefShape() throws Exception {
+        @DisplayName("A publicKey-only Seal (no seal.certificate) fails closed via verify(log)")
+        void shouldRejectPublicKeyOnlySeal() throws Exception {
+            // The legacy self-asserted publicKey path is gone: verify(log) now anchors on the
+            // shipped Seal CA Chain, so a Seal with no certificate cannot verify.
             TransparencyLog log = signedLog("SHA-256withRSA");
-
-            SealVerifier.VerificationResult result = SealVerifier.verify(log);
-
-            assertThat(result.isValid()).isTrue();
-            assertThat(result.sealValid()).isTrue();
-            assertThat(log.getPayload()).containsEntry("agentDisplayName", "demo-agent");
-            assertThat(log.getEvidenceRef().getEvidenceId()).isEqualTo("aliyun-evidence-agent-001");
-            assertThat(log.getRawEvidenceRef()).containsKeys(
-                "signatureAlgorithm",
-                "signatureEncoding",
-                "signatureCanonicalization",
-                "signedContentLocation",
-                "signatureLocation",
-                "keyId");
-        }
-
-        @Test
-        @DisplayName("Seal verify should accept SHA256withRSA without hyphen")
-        void shouldAcceptSha256withRsaWithoutHyphen() throws Exception {
-            TransparencyLog log = signedLog("SHA256withRSA");
-
-            SealVerifier.VerificationResult result = SealVerifier.verify(log);
-
-            assertThat(result.isValid()).isTrue();
-            assertThat(result.sealValid()).isTrue();
-        }
-
-        @Test
-        @DisplayName("Seal verify should reject SHA-256withECDSA")
-        void shouldRejectEcdsaSignatureAlgorithm() throws Exception {
-            TransparencyLog log = signedLog("SHA-256withECDSA");
+            assertThat(log.getSeal().getCertificate()).isNull();
 
             SealVerifier.VerificationResult result = SealVerifier.verify(log);
 
             assertThat(result.isValid()).isFalse();
-            assertThat(result.failureReason()).contains("SHA-256withRSA");
-        }
-
-        @Test
-        @DisplayName("Seal verify should reject missing signatureAlgorithm")
-        void shouldRejectMissingSignatureAlgorithm() throws Exception {
-            TransparencyLog log = signedLog(null);
-
-            SealVerifier.VerificationResult result = SealVerifier.verify(log);
-
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.failureReason()).contains("signatureAlgorithm is required");
-        }
-
-        @Test
-        @DisplayName("Seal verify should reject tampered RSA-signed content")
-        void shouldRejectTamperedRsaSeal() throws Exception {
-            TransparencyLog log = signedLog("SHA-256withRSA");
-            log.setStatus("REVOKED");
-
-            SealVerifier.VerificationResult result = SealVerifier.verify(log);
-
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.failureReason()).contains("Seal signature verification failed");
+            assertThat(result.sealValid()).isFalse();
+            assertThat(result.failureReason()).contains("certificate");
         }
     }
 
@@ -191,6 +141,15 @@ class SealVerifierTest {
 
             assertThat(result.isValid()).isTrue();
             assertThat(result.sealValid()).isTrue();
+            // The signature only verifies because JCS canonicalization keeps the raw evidenceRef
+            // extra keys that the typed EvidenceRef would drop (CHANGELOG 2.1.0 regression guard).
+            assertThat(log.getRawEvidenceRef()).containsKeys(
+                "signatureAlgorithm",
+                "signatureEncoding",
+                "signatureCanonicalization",
+                "signedContentLocation",
+                "signatureLocation",
+                "keyId");
         }
 
         @Test

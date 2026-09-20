@@ -17,7 +17,6 @@ import org.erdtman.jcs.JsonCanonicalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.cert.CertPath;
@@ -26,7 +25,6 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.PKIXParameters;
 import java.security.cert.TrustAnchor;
 import java.security.cert.X509Certificate;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -122,8 +120,14 @@ public final class SealVerifier {
     }
 
     /**
-     * Verifies both the seal signature and Merkle inclusion proof of a TL response using the
-     * legacy self-asserted {@code seal.publicKey} path.
+     * Verifies both the seal signature and Merkle inclusion proof of a TL response against the
+     * SDK-shipped Seal CA Chain.
+     *
+     * <p>Convenience overload equivalent to {@code verify(log, SealTrustChain.shipped())}. The seal
+     * signature is verified with the public key inside {@code seal.certificate}, and that Seal
+     * Certificate is PKIX path-validated to the shipped Seal CA Chain (ADR 0011). A Seal without
+     * {@code seal.certificate} fails closed — the legacy self-asserted {@code seal.publicKey} path
+     * is gone.</p>
      *
      * <p>If the response has no seal or merkle data (e.g., legacy TL format),
      * verification is skipped and the result is considered valid for backwards compatibility.</p>
@@ -132,7 +136,7 @@ public final class SealVerifier {
      * @return the verification result
      */
     public static VerificationResult verify(TransparencyLog log) {
-        return verifyInternal(log, SealVerifier::verifySeal);
+        return verify(log, SealTrustChain.shipped());
     }
 
     /**
@@ -141,9 +145,7 @@ public final class SealVerifier {
      * {@code seal.certificate}, and that Seal Certificate is PKIX path-validated to the supplied
      * {@link SealTrustChain} (ADR 0011).
      *
-     * <p>Added beside {@link #verify(TransparencyLog)} in the expand phase; production Badge
-     * pre-verification still uses the legacy {@code publicKey} path until it is flipped in a later
-     * increment. Any chain failure (missing certificate, path build, expiry, Subject mismatch,
+     * <p>Any chain failure (missing certificate, path build, expiry, Subject mismatch,
      * signature mismatch) surfaces as a seal-verification failure.</p>
      *
      * @param log the transparency log response to verify
@@ -152,20 +154,10 @@ public final class SealVerifier {
      */
     public static VerificationResult verify(TransparencyLog log, SealTrustChain trustChain) {
         Objects.requireNonNull(trustChain, "trustChain is required");
-        return verifyInternal(log, candidate -> verifySealWithCertificate(candidate, trustChain));
+        return verifyInternal(log, trustChain);
     }
 
-    /**
-     * Strategy that verifies the seal signature of a TL response: returns {@code true} when the
-     * signature is valid, {@code false} when it does not match, and throws when verification cannot
-     * be performed (missing fields, untrusted certificate, disallowed algorithm).
-     */
-    @FunctionalInterface
-    private interface SealSignatureCheck {
-        boolean verify(TransparencyLog log) throws Exception;
-    }
-
-    private static VerificationResult verifyInternal(TransparencyLog log, SealSignatureCheck sealCheck) {
+    private static VerificationResult verifyInternal(TransparencyLog log, SealTrustChain trustChain) {
         if (log == null) {
             return VerificationResult.failure("TransparencyLog is null");
         }
@@ -182,7 +174,7 @@ public final class SealVerifier {
         Boolean sealValid = null;
         if (hasSeal) {
             try {
-                sealValid = sealCheck.verify(log);
+                sealValid = verifySealWithCertificate(log, trustChain);
                 if (!sealValid) {
                     LOG.warn("Seal signature verification failed");
                     return VerificationResult.failure("Seal signature verification failed");
@@ -211,28 +203,6 @@ public final class SealVerifier {
         }
 
         return VerificationResult.success(sealValid, merkleValid);
-    }
-
-    /**
-     * Verifies the seal signature over the canonicalized content using the legacy self-asserted
-     * {@code seal.publicKey}.
-     *
-     * <p>The signed content is: {status, schemaVersion, payload, evidenceRef}
-     * canonicalized using RFC 8785 JCS, then verified with SHA-256withRSA.</p>
-     *
-     * @param log the transparency log entry
-     * @return true if the seal signature is valid
-     * @throws Exception if verification fails due to an error
-     */
-    static boolean verifySeal(TransparencyLog log) throws Exception {
-        Seal seal = log.getSeal();
-        if (seal == null || seal.getSignature() == null || seal.getPublicKey() == null) {
-            throw new IllegalArgumentException("Seal is missing required fields (signature, publicKey)");
-        }
-
-        requireSha256WithRsa(seal.getSignatureAlgorithm());
-        PublicKey publicKey = parsePublicKey(seal.getPublicKey());
-        return verifySignature(publicKey, canonicalSignedContent(log), seal.getSignature());
     }
 
     /**
@@ -323,7 +293,7 @@ public final class SealVerifier {
      * or a leaf + intermediate bundle; the leaf is the first certificate.
      */
     private static X509Certificate parseSealCertificate(String pem) {
-        // Handle escaped newlines (\\n in JSON) the same way as parsePublicKey.
+        // Handle escaped newlines (\n in JSON) before PEM parsing.
         String normalized = pem.replace("\\n", "\n");
         List<X509Certificate> certs = CertificateUtils.parseCertificateChain(normalized);
         return certs.get(0);
@@ -394,24 +364,5 @@ public final class SealVerifier {
 
         return MerkleProofVerifier.verifyInclusionWithHash(
             leafHash, leafIndex, treeSize, path, rootHash);
-    }
-
-    /**
-     * Parses a PEM-encoded public key.
-     *
-     * @param pem the PEM string (may contain escaped newlines)
-     * @return the parsed public key
-     * @throws Exception if parsing fails
-     */
-    private static PublicKey parsePublicKey(String pem) throws Exception {
-        // Handle both real newlines and escaped newlines (\\n in JSON)
-        String normalized = pem.replace("\\n", "\n");
-        String base64Key = normalized
-            .replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "")
-            .replaceAll("\\s+", "");
-        byte[] keyBytes = Base64.getDecoder().decode(base64Key);
-        return KeyFactory.getInstance("RSA")
-            .generatePublic(new X509EncodedKeySpec(keyBytes));
     }
 }

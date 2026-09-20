@@ -25,6 +25,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *         trust-certificate: /path/to/idca-trust.pem  # optional; replaces shipped IDCA Chain
  *     transparency:
  *       base-url: https://ati-tl.cnnic.cn
+ *       seal:
+ *         trust-certificate: /path/to/seal-ca-chain.pem  # optional; replaces shipped Seal CA Chain
  *     verification:
  *       policy: ENHANCED       # BASIC | ENHANCED | ADVANCED (client; NONE is server-only)
  *     client:
@@ -218,6 +220,7 @@ public class AtiSdkProperties {
     public static class Transparency {
         private String baseUrl = "https://ati-tl.cnnic.cn";
         private boolean skipTlsVerification = false;
+        private Seal seal = new Seal();
 
         public String getBaseUrl() {
             return baseUrl;
@@ -233,6 +236,31 @@ public class AtiSdkProperties {
 
         public void setSkipTlsVerification(boolean skipTlsVerification) {
             this.skipTlsVerification = skipTlsVerification;
+        }
+
+        public Seal getSeal() {
+            return seal;
+        }
+
+        public void setSeal(Seal seal) {
+            this.seal = seal;
+        }
+    }
+
+    /**
+     * Seal trust configuration for Badge pre-verification. When unset, the SDK-shipped
+     * production Seal CA Chain (Root + Intermediate) is used. A configured path replaces
+     * that chain entirely and must contain a Root + Intermediate certificate pair.
+     */
+    public static class Seal {
+        private String trustCertificate;
+
+        public String getTrustCertificate() {
+            return trustCertificate;
+        }
+
+        public void setTrustCertificate(String trustCertificate) {
+            this.trustCertificate = trustCertificate;
         }
     }
 

@@ -14,8 +14,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Verifies badge for ats-server.asia (agentId: d4bdc2a2-17cf-4010-b7fb-58d3216572e7)
- * using a captured CNNIC TL response. Historical Seal on this fixture is
- * SHA-256withECDSA, which production verification rejects (ADR-0009).
+ * using a captured CNNIC TL response. This legacy fixture carries a publicKey-only Seal
+ * with SHA-256withECDSA; after the Seal CA Chain contract it fails closed — the missing
+ * {@code seal.certificate} is rejected first, and the ECDSA algorithm is off the ADR-0009
+ * allow-list regardless.
  */
 class AtsServerBadgeTest {
 
@@ -31,8 +33,11 @@ class AtsServerBadgeTest {
         TransparencyLog log = mapper.readValue(TL_RESPONSE, TransparencyLog.class);
         SealVerifier.VerificationResult result = SealVerifier.verify(log);
 
+        // Post Seal CA Chain contract, verify(log) anchors on the shipped chain and requires
+        // seal.certificate; this legacy publicKey-only fixture fails closed on the missing
+        // certificate (its SHA-256withECDSA algorithm is off the ADR-0009 allow-list regardless).
         assertThat(result.isValid()).isFalse();
-        assertThat(result.failureReason()).contains("SHA-256withRSA");
+        assertThat(result.failureReason()).contains("certificate");
     }
 
     @Test
