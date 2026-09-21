@@ -9,6 +9,9 @@ import com.aliyun.ati.sdk.agent.verification.DefaultDaneTlsaVerifier;
 import com.aliyun.ati.sdk.agent.verification.PreVerificationResult;
 import com.aliyun.ati.sdk.agent.exception.ClientConfigurationException;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
+import com.aliyun.ati.sdk.transparency.verification.ServerVerifier;
 import com.aliyun.ati.sdk.transparency.scitt.DefaultScittHeaderProvider;
 import com.aliyun.ati.sdk.transparency.scitt.ScittParseException;
 import com.aliyun.ati.sdk.transparency.scitt.ScittPreVerifyResult;
@@ -69,6 +72,7 @@ public class AtiVerifiedClient implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(AtiVerifiedClient.class);
 
     private final TransparencyClient transparencyClient;
+    private final SealTrustChain sealTrustChain;
     private final DefaultConnectionVerifier connectionVerifier;
     private final VerificationPolicy policy;
     private final SSLContext sslContext;
@@ -103,6 +107,7 @@ public class AtiVerifiedClient implements AutoCloseable {
 
     private AtiVerifiedClient(Builder builder) {
         this.transparencyClient = builder.transparencyClient;
+        this.sealTrustChain = builder.sealTrustChain;
         this.connectionVerifier = builder.connectionVerifier;
         this.policy = builder.policy;
         this.sslContext = builder.sslContext;
@@ -267,6 +272,16 @@ public class AtiVerifiedClient implements AutoCloseable {
     }
 
     /**
+     * Returns the Seal CA Chain used to path-validate Seal Certificates during Badge
+     * pre-verification.
+     *
+     * @return the Seal CA Chain (never null; defaults to the shipped production chain)
+     */
+    public SealTrustChain sealTrustChain() {
+        return sealTrustChain;
+    }
+
+    /**
      * Connects to a server and performs all enabled pre-verifications.
      *
      * <p><b>Blocking:</b> This method blocks the calling thread until all pre-verifications
@@ -382,6 +397,7 @@ public class AtiVerifiedClient implements AutoCloseable {
         private char[] keyPassword;
         private String keyStorePath;
         private TransparencyClient transparencyClient;
+        private SealTrustChain sealTrustChain;
         private VerificationPolicy policy = VerificationPolicy.ENHANCED;
         private Duration connectTimeout = Duration.ofSeconds(30);
         private SSLContext sslContext;
@@ -434,6 +450,20 @@ public class AtiVerifiedClient implements AutoCloseable {
          */
         public Builder transparencyClient(TransparencyClient client) {
             this.transparencyClient = client;
+            return this;
+        }
+
+        /**
+         * Sets the Seal CA Chain used to path-validate Seal Certificates during Badge
+         * pre-verification (ADR 0011).
+         *
+         * <p>{@code null} (the default) uses the SDK-shipped production chain.</p>
+         *
+         * @param chain the Seal CA Chain, or null for the shipped chain
+         * @return this builder
+         */
+        public Builder sealTrustChain(SealTrustChain chain) {
+            this.sealTrustChain = chain;
             return this;
         }
 
@@ -520,10 +550,18 @@ public class AtiVerifiedClient implements AutoCloseable {
                 }
             }
 
-            // Build ConnectionVerifier based on policy using shared factory
+            // Build ConnectionVerifier based on policy using shared factory. Badge pre-verification
+            // anchors on the injected Seal CA Chain (shipped when unset).
+            if (sealTrustChain == null) {
+                sealTrustChain = SealTrustChain.shipped();
+            }
+            ServerVerifier badgeService = policy.hasBadgeVerification()
+                ? CachingBadgeVerificationService.create(transparencyClient, sealTrustChain)
+                : null;
             connectionVerifier = DefaultConnectionVerifier.fromPolicy(
                 policy, transparencyClient,
-                new DefaultDaneTlsaVerifier(DaneConfig.defaults()));
+                new DefaultDaneTlsaVerifier(DaneConfig.defaults()),
+                badgeService);
             return new AtiVerifiedClient(this);
         }
     }

@@ -43,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li><b>Certificate path</b> — {@link SealVerifier#verify(TransparencyLog, SealTrustChain)}
  *       verifies with the public key inside {@code seal.certificate}, PKIX path-validates that leaf
- *       to an injected {@link SealTrustChain} as-of the entry's sealing time (ADR 0012), and binds
+ *       to an injected {@link SealTrustChain} as-of the <b>Seal Validation Time</b> (ADR 0012), and binds
  *       the leaf Subject to {@code O=中国互联网络信息中心} (CNNIC) + {@code OU=ATI} (ADR 0011).</li>
  *   <li><b>Convenience overload</b> — {@link SealVerifier#verify(TransparencyLog)} delegates to the
  *       shipped Seal CA Chain, so a Seal without {@code seal.certificate} fails closed.</li>
@@ -163,7 +163,7 @@ class SealVerifierTest {
         @DisplayName("A chosen sealing time inside the leaf window verifies (harness parameterization)")
         void shouldVerifyWithChosenSealingTimeInsideLeafWindow() throws Exception {
             // Chosen sealing time inside the leaf window: proves the timestamp is injected into the
-            // JCS-signed content, staying green under validity-at-now and ticket 02's as-of rule.
+            // JCS-signed content, staying green under validity-at-now and the Seal Validation Time rule.
             Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(10), daysAhead(10));
             String sealingTime = sealingTimeAt(daysAgo(5));
             TransparencyLog log = certSignedLog(leaf, "SHA-256withRSA", sealingTime);
@@ -312,7 +312,7 @@ class SealVerifierTest {
             ROOT_KEY = generateRsaKeyPair();
             INTERMEDIATE_KEY = generateRsaKeyPair();
             // Long-lived CA (production Root →2043, Intermediate →2033): backdate notBefore so a
-            // historical sealing time still chains under as-of validation (ADR 0012).
+            // historical sealing time still chains under Seal Validation Time checks (ADR 0012).
             ROOT_CERT = buildCertificate(ROOT_SUBJECT, ROOT_KEY.getPublic(),
                 ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(3650), true, null);
             INTERMEDIATE_CERT = buildCertificate(INTERMEDIATE_SUBJECT, INTERMEDIATE_KEY.getPublic(),

@@ -245,7 +245,7 @@ public final class SealVerifier {
         Date asOf = sealValidationTime(log);
         leaf.checkValidity(asOf);
 
-        // Path-validate leaf → intermediate → root against the injected Seal CA Chain, as-of asOf.
+        // Path-validate leaf → intermediate → root against the injected Seal CA Chain at asOf.
         validateCertPath(leaf, trustChain, asOf);
 
         // The Seal CA is shared; bind the leaf Subject to the CNNIC ATI signing identity.
@@ -277,7 +277,7 @@ public final class SealVerifier {
             Instant sealingTime = OffsetDateTime.parse(timestamp).toInstant();
             return sealingTime.isAfter(now.toInstant()) ? now : Date.from(sealingTime);
         } catch (DateTimeParseException e) {
-            LOG.debug("Unparseable payload.timestamp '{}'; validating Seal as-of now", timestamp);
+            LOG.debug("Unparseable payload.timestamp '{}'; using Seal Validation Time = now", timestamp);
             return now;
         }
     }
@@ -341,7 +341,8 @@ public final class SealVerifier {
 
     /**
      * PKIX path-validates {@code leaf} → {@code trustChain.intermediate()} against a
-     * {@link TrustAnchor} of {@code trustChain.root()}, as-of {@code asOf} (ADR 0012). Revocation
+     * {@link TrustAnchor} of {@code trustChain.root()}, at the Seal Validation Time {@code asOf}
+     * (ADR 0012). Revocation
      * checking is disabled (ADR 0011). A wrong or absent anchor, or a certificate not valid at
      * {@code asOf}, throws.
      */

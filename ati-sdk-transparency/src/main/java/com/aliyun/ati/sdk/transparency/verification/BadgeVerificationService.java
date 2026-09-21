@@ -502,7 +502,10 @@ public final class BadgeVerificationService implements ServerVerifier {
      * {@code cryptoFailureStep}, so the Server and Client paths report it identically.
      */
     private static String cryptoFailureWarning(String cryptoFailureStep) {
-        return "Seal verification failed at step: " + cryptoFailureStep;
+        if ("merkle".equals(cryptoFailureStep)) {
+            return "Merkle proof verification failed";
+        }
+        return "Seal verification failed";
     }
 
     /**

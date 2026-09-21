@@ -233,14 +233,34 @@ public final class CachingBadgeVerificationService implements ServerVerifier {
     }
 
     /**
-     * Creates a caching service wrapping a badge service for the given transparency client.
+     * Creates a caching service wrapping a badge service for the given transparency client,
+     * anchored on the SDK-shipped Seal CA Chain.
      *
      * @param transparencyClient the transparency client to use
      * @return a new caching service
      */
     public static CachingBadgeVerificationService create(TransparencyClient transparencyClient) {
+        return create(transparencyClient, null);
+    }
+
+    /**
+     * Creates a caching service wrapping a badge service for the given transparency client
+     * and Seal CA Chain.
+     *
+     * @param transparencyClient the transparency client to use
+     * @param sealTrustChain the Seal CA Chain to path-validate Seal Certificates against;
+     *                       {@code null} uses the SDK-shipped production chain
+     * @return a new caching service
+     */
+    public static CachingBadgeVerificationService create(TransparencyClient transparencyClient,
+                                                         SealTrustChain sealTrustChain) {
+        BadgeVerificationService.Builder delegate = BadgeVerificationService.builder()
+            .transparencyClient(transparencyClient);
+        if (sealTrustChain != null) {
+            delegate.sealTrustChain(sealTrustChain);
+        }
         return builder()
-            .delegate(BadgeVerificationService.create(transparencyClient))
+            .delegate(delegate.build())
             .build();
     }
 

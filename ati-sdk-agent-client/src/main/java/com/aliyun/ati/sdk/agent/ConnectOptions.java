@@ -2,6 +2,7 @@ package com.aliyun.ati.sdk.agent;
 
 import com.aliyun.ati.sdk.agent.http.auth.HttpAuthHeadersProvider;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 
 import java.nio.file.Path;
 import java.security.PrivateKey;
@@ -59,6 +60,7 @@ public final class ConnectOptions {
     private final X509Certificate clientCert;
     private final PrivateKey clientKey;
     private final TransparencyClient transparencyClient;
+    private final SealTrustChain sealTrustChain;
     private final HttpAuthHeadersProvider httpAuthHeadersProvider;
 
     private ConnectOptions(Builder builder) {
@@ -72,6 +74,7 @@ public final class ConnectOptions {
         this.clientCert = builder.clientCert;
         this.clientKey = builder.clientKey;
         this.transparencyClient = builder.transparencyClient;
+        this.sealTrustChain = builder.sealTrustChain;
         this.httpAuthHeadersProvider = builder.httpAuthHeadersProvider;
     }
 
@@ -184,6 +187,18 @@ public final class ConnectOptions {
     }
 
     /**
+     * Returns the Seal CA Chain used to path-validate Seal Certificates during Badge
+     * pre-verification, if configured.
+     *
+     * <p>{@code null} means the SDK-shipped production Seal CA Chain.</p>
+     *
+     * @return the Seal CA Chain, or null for the shipped chain
+     */
+    public SealTrustChain getSealTrustChain() {
+        return sealTrustChain;
+    }
+
+    /**
      * Returns the authentication provider, if configured.
      *
      * <p>The auth provider adds custom headers (e.g., Authorization) to
@@ -221,6 +236,7 @@ public final class ConnectOptions {
         private X509Certificate clientCert;
         private PrivateKey clientKey;
         private TransparencyClient transparencyClient;
+        private SealTrustChain sealTrustChain;
         private HttpAuthHeadersProvider httpAuthHeadersProvider;
 
         private Builder() {
@@ -366,6 +382,23 @@ public final class ConnectOptions {
          */
         public Builder transparencyClient(TransparencyClient client) {
             this.transparencyClient = client;
+            return this;
+        }
+
+        /**
+         * Sets the Seal CA Chain used to path-validate Seal Certificates during Badge
+         * pre-verification (ADR 0011).
+         *
+         * <p>{@code null} (the default) uses the SDK-shipped production chain. Pass a chain
+         * loaded via {@link SealTrustChain#resolve(String)} or {@link SealTrustChain#fromPemFile}
+         * to replace that pair wholesale — the same override Spring applies through
+         * {@code ati.sdk.transparency.seal.trust-certificate}.</p>
+         *
+         * @param chain the Seal CA Chain, or null for the shipped chain
+         * @return this builder
+         */
+        public Builder sealTrustChain(SealTrustChain chain) {
+            this.sealTrustChain = chain;
             return this;
         }
 

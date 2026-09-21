@@ -5,6 +5,7 @@ import com.aliyun.ati.sdk.agent.VerificationPolicy;
 import com.aliyun.ati.sdk.agent.exception.AgentConnectionException;
 import com.aliyun.ati.sdk.agent.verification.DaneTlsaVerifier;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpClient;
@@ -33,6 +34,31 @@ class DefaultAgentHttpClientFactoryTest {
         DaneTlsaVerifier mockVerifier = mock(DaneTlsaVerifier.class);
         DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory(mockVerifier);
         assertNotNull(factory);
+    }
+
+    @Test
+    void constructorWithDaneVerifierAndSealTrustChain() {
+        DaneTlsaVerifier mockVerifier = mock(DaneTlsaVerifier.class);
+        SealTrustChain chain = SealTrustChain.shipped();
+        DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory(mockVerifier, chain);
+        assertNotNull(factory);
+    }
+
+    @Test
+    void createVerifiedWithSealTrustChainOnOptions() {
+        DefaultAgentHttpClientFactory factory = new DefaultAgentHttpClientFactory();
+        ConnectOptions options = ConnectOptions.builder()
+            .verificationPolicy(VerificationPolicy.ENHANCED)
+            .transparencyClient(mock(TransparencyClient.class))
+            .sealTrustChain(SealTrustChain.shipped())
+            .build();
+
+        VerifiedClientResult result = factory.createVerified(
+            "example.com", options, Duration.ofSeconds(10));
+
+        assertNotNull(result);
+        assertNotNull(result.atiHttpClient());
+        assertNotNull(result.verifier());
     }
 
     @Test

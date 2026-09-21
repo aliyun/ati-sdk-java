@@ -42,7 +42,7 @@ ati:
 
 ### Badge pre-verification trust (`ati.sdk.transparency.seal.trust-certificate`)
 
-At Badge policies (`ENHANCED`/`ADVANCED`), the server verifies each Badge Entry's Seal against a **Seal CA Chain** (ADR-0011). By default this is the SDK-shipped production chain; `ati.sdk.transparency.seal.trust-certificate` optionally replaces it with an operator-supplied Root + Intermediate PEM. A present-but-missing or malformed override fails closed at startup (`BadgeVerificationService` is not created). The Seal itself must carry `seal.certificate`; the legacy `publicKey`-only path is removed.
+At Badge policies (`ENHANCED`/`ADVANCED`), both outbound **Connection** pre-verification (`AtiVerifiedClient` / `AtiClient`) and inbound **Client Verification** (`BadgeVerificationService`) path-validate each Badge Entry's Seal against a **Seal CA Chain** (ADR-0011). By default this is the SDK-shipped production chain; `ati.sdk.transparency.seal.trust-certificate` optionally replaces it with an operator-supplied Root + Intermediate PEM. A present-but-missing or malformed override fails closed at startup (`SealTrustChain` is not created). The Seal itself must carry `seal.certificate`; the legacy `publicKey`-only path is removed.
 
 ## Dependencies
 

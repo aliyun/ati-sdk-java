@@ -193,7 +193,7 @@ class SealVerifierValidationTimeTest {
     }
 
     @Test
-    @DisplayName("The convenience verify(log) overload validates as-of too (shared internal path)")
+    @DisplayName("The convenience verify(log) overload uses Seal Validation Time too (shared internal path)")
     void convenienceOverloadSharesAsOfPath() throws Exception {
         // verify(log) delegates to verify(log, shipped()). A test leaf never chains to the shipped
         // production anchor, so both an expired-but-in-window leaf and a currently-valid leaf fail —
@@ -296,7 +296,7 @@ class SealVerifierValidationTimeTest {
             ROOT_KEY = generateRsaKeyPair();
             INTERMEDIATE_KEY = generateRsaKeyPair();
             // Long-lived CA (production Root →2043, Intermediate →2033): backdate notBefore so a
-            // historical sealing time still chains under as-of validation (ADR 0012).
+            // historical sealing time still chains under Seal Validation Time checks (ADR 0012).
             ROOT_CERT = buildCertificate(ROOT_SUBJECT, ROOT_KEY.getPublic(),
                 ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(3650), true, null);
             INTERMEDIATE_CERT = buildCertificate(INTERMEDIATE_SUBJECT, INTERMEDIATE_KEY.getPublic(),

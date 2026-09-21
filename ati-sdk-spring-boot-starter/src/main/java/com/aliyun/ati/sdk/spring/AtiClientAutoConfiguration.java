@@ -3,8 +3,12 @@ package com.aliyun.ati.sdk.spring;
 import com.aliyun.ati.sdk.agent.AtiClient;
 import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.agent.VerificationPolicy;
+import com.aliyun.ati.sdk.agent.http.DefaultAgentHttpClientFactory;
+import com.aliyun.ati.sdk.agent.verification.DaneConfig;
+import com.aliyun.ati.sdk.agent.verification.DefaultDaneTlsaVerifier;
 import com.aliyun.ati.sdk.discovery.AtiDiscoveryClient;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -56,22 +60,45 @@ public class AtiClientAutoConfiguration {
     }
 
     /**
+     * Resolves the Seal CA Chain used for Badge pre-verification.
+     *
+     * <p>Blank/unset {@code ati.sdk.transparency.seal.trust-certificate} uses the SDK-shipped
+     * production chain; a non-blank path replaces that pair wholesale (never merges). A
+     * malformed override fails closed so this bean is not created (ADR 0011).</p>
+     *
+     * @param properties the ATI SDK properties
+     * @return the resolved Seal CA Chain
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    public SealTrustChain sealTrustChain(AtiSdkProperties properties) {
+        String override = properties.getTransparency().getSeal().getTrustCertificate();
+        SealTrustChain chain = SealTrustChain.resolve(override);
+        LOG.info("Seal CA Chain: {}",
+            override == null || override.isBlank() ? "shipped" : "override");
+        return chain;
+    }
+
+    /**
      * Creates an AtiClient bean for agent-to-agent communication.
      *
      * <p>Only created when mode is "client" or "both".</p>
      *
      * @param properties the ATI SDK properties
+     * @param sealTrustChain the Seal CA Chain for outbound Badge pre-verification
      * @return the ATI client
      */
     @Bean
     @ConditionalOnMissingBean
-    public AtiClient atiClient(AtiSdkProperties properties) {
+    public AtiClient atiClient(AtiSdkProperties properties, SealTrustChain sealTrustChain) {
         if (!properties.isClientMode()) {
             LOG.debug("Skipping AtiClient bean: mode={}", properties.getMode());
             return null;
         }
 
-        AtiClient.Builder builder = AtiClient.builder();
+        AtiClient.Builder builder = AtiClient.builder()
+            .httpClientFactory(new DefaultAgentHttpClientFactory(
+                new DefaultDaneTlsaVerifier(DaneConfig.defaults()), sealTrustChain));
 
         String connectTimeout = properties.getClient().getConnectTimeout();
         if (connectTimeout != null) {
@@ -109,12 +136,14 @@ public class AtiClientAutoConfiguration {
      *
      * @param properties the ATI SDK properties
      * @param transparencyClient the transparency client for badge verification
+     * @param sealTrustChain the Seal CA Chain for outbound Badge pre-verification
      * @return the verified client
      */
     @Bean
     @ConditionalOnMissingBean
     public AtiVerifiedClient atiVerifiedClient(AtiSdkProperties properties,
-                                               TransparencyClient transparencyClient) {
+                                               TransparencyClient transparencyClient,
+                                               SealTrustChain sealTrustChain) {
         if (!properties.isClientMode()) {
             LOG.debug("Skipping AtiVerifiedClient bean: mode={}", properties.getMode());
             return null;
@@ -126,6 +155,7 @@ public class AtiClientAutoConfiguration {
 
         AtiVerifiedClient.Builder builder = AtiVerifiedClient.builder()
             .transparencyClient(transparencyClient)
+            .sealTrustChain(sealTrustChain)
             .policy(policy);
 
         String connectTimeout = properties.getClient().getConnectTimeout();

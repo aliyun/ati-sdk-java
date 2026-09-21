@@ -1,6 +1,7 @@
 package com.aliyun.ati.sdk.agent;
 
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -153,6 +154,39 @@ class AtiVerifiedClientTest {
                 .build();
 
             assertThat(client.transparencyClient()).isSameAs(mockTransparencyClient);
+            client.close();
+        }
+
+        @Test
+        @DisplayName("unset sealTrustChain defaults to the shipped Seal CA Chain")
+        void unsetSealTrustChainDefaultsToShipped() throws Exception {
+            KeyStore keyStore = KeyStore.getInstance("PKCS12");
+            keyStore.load(null, "password".toCharArray());
+
+            AtiVerifiedClient client = AtiVerifiedClient.builder()
+                .keyStore(keyStore, "password".toCharArray())
+                .transparencyClient(mockTransparencyClient)
+                .build();
+
+            assertThat(client.sealTrustChain().root().getSubjectX500Principal().getName())
+                .contains("UCA RSA Non-Public Root CA - G1");
+            client.close();
+        }
+
+        @Test
+        @DisplayName("sealTrustChain() returns the configured chain")
+        void sealTrustChainReturnsConfiguredChain() throws Exception {
+            KeyStore keyStore = KeyStore.getInstance("PKCS12");
+            keyStore.load(null, "password".toCharArray());
+            SealTrustChain chain = SealTrustChain.shipped();
+
+            AtiVerifiedClient client = AtiVerifiedClient.builder()
+                .keyStore(keyStore, "password".toCharArray())
+                .transparencyClient(mockTransparencyClient)
+                .sealTrustChain(chain)
+                .build();
+
+            assertThat(client.sealTrustChain()).isSameAs(chain);
             client.close();
         }
 

@@ -13,6 +13,7 @@ import com.aliyun.ati.sdk.crypto.KeyPairManager;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
 import com.aliyun.ati.sdk.transparency.verification.CachingBadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import com.aliyun.ati.sdk.transparency.verification.ServerVerifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,21 +55,36 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
     private static final String DEFAULT_KEY_PASSWORD = "changeit";
 
     private final DaneTlsaVerifier daneVerifier;
+    private final SealTrustChain defaultSealTrustChain;
 
     /**
-     * Creates a factory with the default DANE verifier.
+     * Creates a factory with the default DANE verifier and the shipped Seal CA Chain.
      */
     public DefaultAgentHttpClientFactory() {
-        this(new DefaultDaneTlsaVerifier(DaneConfig.defaults()));
+        this(new DefaultDaneTlsaVerifier(DaneConfig.defaults()), null);
     }
 
     /**
-     * Creates a factory with a custom DANE verifier.
+     * Creates a factory with a custom DANE verifier and the shipped Seal CA Chain.
      *
      * @param daneVerifier the DANE verifier to use
      */
     public DefaultAgentHttpClientFactory(DaneTlsaVerifier daneVerifier) {
+        this(daneVerifier, null);
+    }
+
+    /**
+     * Creates a factory with a custom DANE verifier and Seal CA Chain.
+     *
+     * <p>{@code sealTrustChain} is the default used when {@link ConnectOptions} does not
+     * supply one (ADR 0011). {@code null} uses the SDK-shipped production chain.</p>
+     *
+     * @param daneVerifier the DANE verifier to use
+     * @param sealTrustChain the default Seal CA Chain, or null for the shipped chain
+     */
+    public DefaultAgentHttpClientFactory(DaneTlsaVerifier daneVerifier, SealTrustChain sealTrustChain) {
         this.daneVerifier = Objects.requireNonNull(daneVerifier, "DANE verifier cannot be null");
+        this.defaultSealTrustChain = sealTrustChain;
     }
 
     @Override
@@ -162,11 +178,16 @@ public class DefaultAgentHttpClientFactory implements AgentHttpClientFactory {
         TransparencyClient explicitClient = options.getTransparencyClient();
         if (explicitClient != null) {
             LOGGER.debug("Using explicit TransparencyClient - creating fresh verification service");
-            BadgeVerificationService delegate = BadgeVerificationService.builder()
-                .transparencyClient(explicitClient)
-                .build();
+            SealTrustChain chain = options.getSealTrustChain() != null
+                ? options.getSealTrustChain()
+                : defaultSealTrustChain;
+            BadgeVerificationService.Builder delegate = BadgeVerificationService.builder()
+                .transparencyClient(explicitClient);
+            if (chain != null) {
+                delegate.sealTrustChain(chain);
+            }
             return CachingBadgeVerificationService.builder()
-                .delegate(delegate)
+                .delegate(delegate.build())
                 .build();
         }
 

@@ -2,6 +2,7 @@ package com.aliyun.ati.sdk.agent;
 
 import com.aliyun.ati.sdk.agent.http.auth.HttpAuthHeadersProvider;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -261,6 +262,26 @@ class ConnectOptionsTest {
     }
 
     @Test
+    void builderShouldSetSealTrustChain() {
+        SealTrustChain chain = SealTrustChain.shipped();
+
+        ConnectOptions options = ConnectOptions.builder()
+            .sealTrustChain(chain)
+            .build();
+
+        assertSame(chain, options.getSealTrustChain());
+    }
+
+    @Test
+    void builderShouldAcceptNullSealTrustChain() {
+        ConnectOptions options = ConnectOptions.builder()
+            .sealTrustChain(null)
+            .build();
+
+        assertNull(options.getSealTrustChain());
+    }
+
+    @Test
     void builderShouldAcceptNullTransparencyClient() {
         ConnectOptions options = ConnectOptions.builder()
             .transparencyClient(null)
@@ -300,6 +321,7 @@ class ConnectOptionsTest {
         assertNull(options.getClientCert());
         assertNull(options.getClientKey());
         assertNull(options.getTransparencyClient());
+        assertNull(options.getSealTrustChain());
         assertNull(options.getAuthProvider());
     }
 

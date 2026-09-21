@@ -96,7 +96,7 @@ class BadgeVerificationServiceSealChainTest {
     @DisplayName("A chosen sealing time inside the leaf window verifies → VERIFIED (harness parameterization)")
     void chosenSealingTimeInsideLeafWindowVerifies() throws Exception {
         // Chosen sealing time inside the leaf window: proves the timestamp is injected into the
-        // JCS-signed content, staying green under validity-at-now and ticket 02's as-of rule.
+        // JCS-signed content, staying green under validity-at-now and the Seal Validation Time rule.
         Leaf leaf = leafFromTestCa(CNNIC_ATI_LEAF_SUBJECT, daysAgo(10), daysAhead(10));
         String sealingTime = sealingTimeAt(daysAgo(5));
         TransparencyLog registration = signedRegistration(leaf, true, sealingTime);
@@ -283,7 +283,7 @@ class BadgeVerificationServiceSealChainTest {
             ROOT_KEY = generateRsaKeyPair();
             INTERMEDIATE_KEY = generateRsaKeyPair();
             // Long-lived CA (production Root →2043, Intermediate →2033): backdate notBefore so a
-            // historical sealing time still chains under as-of validation (ADR 0012).
+            // historical sealing time still chains under Seal Validation Time checks (ADR 0012).
             ROOT_CERT = buildCertificate(ROOT_SUBJECT, ROOT_KEY.getPublic(),
                 ROOT_SUBJECT, ROOT_KEY.getPrivate(), daysAgo(3650), daysAhead(3650), true, null);
             INTERMEDIATE_CERT = buildCertificate(INTERMEDIATE_SUBJECT, INTERMEDIATE_KEY.getPublic(),

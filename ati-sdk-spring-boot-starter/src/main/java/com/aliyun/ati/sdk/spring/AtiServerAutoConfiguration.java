@@ -139,16 +139,25 @@ public class AtiServerAutoConfiguration {
     }
 
     /**
-     * Creates a DefaultClientRequestVerifier bean for server-side client verification.
+     * Resolves the Seal CA Chain used for Badge pre-verification.
      *
-     * <p>Only created when mode is "server" or "both". The verifier uses the
-     * {@link BadgeVerificationService} for badge-based client verification
-     * when available.</p>
+     * <p>Same bean as {@code AtiClientAutoConfiguration#sealTrustChain}: blank/unset uses the
+     * shipped chain; a non-blank {@code ati.sdk.transparency.seal.trust-certificate} replaces
+     * it wholesale. {@code @ConditionalOnMissingBean} so mode=both shares one instance.</p>
      *
      * @param properties the ATI SDK properties
-     * @param badgeVerificationServiceProvider the badge verification service (optional)
-     * @return the client request verifier
+     * @return the resolved Seal CA Chain
      */
+    @Bean
+    @ConditionalOnMissingBean
+    public SealTrustChain sealTrustChain(AtiSdkProperties properties) {
+        String override = properties.getTransparency().getSeal().getTrustCertificate();
+        SealTrustChain chain = SealTrustChain.resolve(override);
+        LOG.info("Seal CA Chain: {}",
+            override == null || override.isBlank() ? "shipped" : "override");
+        return chain;
+    }
+
     /**
      * Creates a BadgeVerificationService bean for server-side client verification.
      *
@@ -156,32 +165,27 @@ public class AtiServerAutoConfiguration {
      * is available. The badge service is used by {@link DefaultClientRequestVerifier}
      * to verify client certificates against the transparency log.</p>
      *
-     * <p>Badge pre-verification anchors Seal signature validation on a {@link SealTrustChain}.
-     * By default this is the SDK-shipped production Seal CA Chain; the
-     * {@code ati.sdk.transparency.seal.trust-certificate} property optionally replaces it with
-     * an operator-supplied two-certificate (Root + Intermediate) PEM. A malformed override fails
-     * closed, so the bean is not created.</p>
+     * <p>Badge pre-verification anchors Seal signature validation on a {@link SealTrustChain}
+     * bean (SDK-shipped production chain by default; {@code ati.sdk.transparency.seal.trust-certificate}
+     * optionally replaces it). A malformed override fails closed, so the bean is not created.</p>
      *
-     * @param properties the ATI SDK properties
      * @param transparencyClientProvider the transparency client (auto-configured by AtiClientAutoConfiguration)
+     * @param sealTrustChain the Seal CA Chain for Badge pre-verification
      * @return the badge verification service
      */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "ati.sdk", name = "enabled", havingValue = "true", matchIfMissing = true)
     public BadgeVerificationService badgeVerificationService(
-            AtiSdkProperties properties,
-            ObjectProvider<TransparencyClient> transparencyClientProvider) {
+            ObjectProvider<TransparencyClient> transparencyClientProvider,
+            SealTrustChain sealTrustChain) {
         TransparencyClient transparencyClient = transparencyClientProvider.getIfAvailable();
         if (transparencyClient == null) {
             LOG.warn("TransparencyClient not available, BadgeVerificationService will not be created");
             return null;
         }
-        String sealTrustOverride = properties.getTransparency().getSeal().getTrustCertificate();
-        SealTrustChain sealTrustChain = SealTrustChain.resolve(sealTrustOverride);
-        LOG.info("Creating BadgeVerificationService with transparencyClient={}, sealTrustChain={}",
-            transparencyClient.getClass().getSimpleName(),
-            sealTrustOverride == null || sealTrustOverride.isBlank() ? "shipped" : "override");
+        LOG.info("Creating BadgeVerificationService with transparencyClient={}",
+            transparencyClient.getClass().getSimpleName());
         return BadgeVerificationService.builder()
             .transparencyClient(transparencyClient)
             .sealTrustChain(sealTrustChain)

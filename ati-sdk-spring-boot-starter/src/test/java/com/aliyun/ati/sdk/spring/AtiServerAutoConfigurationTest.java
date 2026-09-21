@@ -2,6 +2,7 @@ package com.aliyun.ati.sdk.spring;
 
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
 import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -247,7 +248,11 @@ class AtiServerAutoConfigurationTest {
                 .withPropertyValues("ati.sdk.mode=server")
                 .run(context -> {
                     assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(SealTrustChain.class);
                     assertThat(context).hasSingleBean(BadgeVerificationService.class);
+                    assertThat(context.getBean(SealTrustChain.class).root()
+                            .getSubjectX500Principal().getName())
+                        .contains("UCA RSA Non-Public Root CA - G1");
                 });
         }
 
@@ -269,6 +274,7 @@ class AtiServerAutoConfigurationTest {
                     "ati.sdk.transparency.seal.trust-certificate=" + override)
                 .run(context -> {
                     assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(SealTrustChain.class);
                     assertThat(context).hasSingleBean(BadgeVerificationService.class);
                 });
         }

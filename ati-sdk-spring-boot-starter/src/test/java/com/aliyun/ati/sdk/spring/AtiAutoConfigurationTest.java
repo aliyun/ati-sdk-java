@@ -1,14 +1,23 @@
 package com.aliyun.ati.sdk.spring;
 
 import com.aliyun.ati.sdk.agent.AtiClient;
+import com.aliyun.ati.sdk.agent.AtiVerifiedClient;
 import com.aliyun.ati.sdk.transparency.TransparencyClient;
+import com.aliyun.ati.sdk.transparency.verification.BadgeVerificationService;
+import com.aliyun.ati.sdk.transparency.verification.SealTrustChain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -180,6 +189,83 @@ class AtiAutoConfigurationTest {
                     AtiSdkProperties props = context.getBean(AtiSdkProperties.class);
                     assertThat(props.isClientMode()).isFalse();
                     assertThat(props.isServerMode()).isTrue();
+                });
+        }
+    }
+
+    // ==================== Seal CA Chain Wiring Tests ====================
+
+    @Nested
+    @DisplayName("Seal CA Chain wiring (outbound Connection)")
+    class SealTrustChainWiringTests {
+
+        private static final String SHIPPED_SEAL_CHAIN_RESOURCE =
+            "/com/aliyun/ati/sdk/transparency/seal/seal-ca-chain.crt";
+
+        @Test
+        @DisplayName("Default (no property) injects the shipped Seal CA Chain into AtiVerifiedClient")
+        void shouldInjectShippedChainByDefault() {
+            contextRunner
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(SealTrustChain.class);
+                    AtiVerifiedClient client = context.getBean(AtiVerifiedClient.class);
+                    assertThat(client.sealTrustChain())
+                        .isSameAs(context.getBean(SealTrustChain.class));
+                    assertThat(client.sealTrustChain().root().getSubjectX500Principal().getName())
+                        .contains("UCA RSA Non-Public Root CA - G1");
+                });
+        }
+
+        @Test
+        @DisplayName("ati.sdk.transparency.seal.trust-certificate injects an override into AtiVerifiedClient")
+        void shouldInjectOverrideChainFromProperty(@TempDir Path tempDir) throws Exception {
+            Path override = tempDir.resolve("seal-ca-chain.pem");
+            try (InputStream in = getClass().getResourceAsStream(SHIPPED_SEAL_CHAIN_RESOURCE)) {
+                assertThat(in)
+                    .as("shipped Seal CA Chain resource must be on the test classpath")
+                    .isNotNull();
+                Files.copy(in, override, StandardCopyOption.REPLACE_EXISTING);
+            }
+
+            contextRunner
+                .withPropertyValues("ati.sdk.transparency.seal.trust-certificate=" + override)
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(SealTrustChain.class);
+                    AtiVerifiedClient client = context.getBean(AtiVerifiedClient.class);
+                    assertThat(client.sealTrustChain())
+                        .isSameAs(context.getBean(SealTrustChain.class));
+                });
+        }
+
+        @Test
+        @DisplayName("A malformed (nonexistent) override path fails closed at startup")
+        void shouldFailClosedOnMalformedOverride() {
+            contextRunner
+                .withPropertyValues(
+                    "ati.sdk.transparency.seal.trust-certificate=/nonexistent/seal-ca-chain.pem")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                        .hasStackTraceContaining("Seal CA Chain");
+                });
+        }
+
+        @Test
+        @DisplayName("mode=both shares one SealTrustChain between AtiVerifiedClient and BadgeVerificationService")
+        void bothModeSharesOneSealTrustChain() {
+            new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(
+                    AtiClientAutoConfiguration.class, AtiServerAutoConfiguration.class))
+                .withPropertyValues("ati.sdk.mode=both")
+                .run(context -> {
+                    assertThat(context.getStartupFailure()).isNull();
+                    assertThat(context).hasSingleBean(SealTrustChain.class);
+                    assertThat(context).hasSingleBean(AtiVerifiedClient.class);
+                    assertThat(context).hasSingleBean(BadgeVerificationService.class);
+                    assertThat(context.getBean(AtiVerifiedClient.class).sealTrustChain())
+                        .isSameAs(context.getBean(SealTrustChain.class));
                 });
         }
     }
