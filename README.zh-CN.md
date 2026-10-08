@@ -429,6 +429,8 @@ ati:
       private-key: /path/to/identity.key
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      # seal:
+      #   trust-certificate: /path/to/seal-ca-chain.pem  # 可选；恰好两张证，整链替换内嵌链
     verification:
       # BASIC | ENHANCED | ADVANCED（NONE 仅服务端）
       policy: ENHANCED
@@ -461,6 +463,10 @@ ati:
         # trust-certificate: /path/to/idca-chain.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      seal:
+        # 可选覆盖：整链替换 SDK 内嵌的 Seal CA Chain（Root + Intermediate）。
+        # 省略则使用内嵌链。与内嵌链互斥，不会合并。
+        # trust-certificate: /path/to/seal-ca-chain.pem
 ```
 
 ### 服务端双轨吊销
@@ -533,6 +539,8 @@ TransparencyClient tl = TransparencyClient.builder()
     .rootKeyCacheTtl(Duration.ofHours(12))   // 默认: 24 小时
     .build();
 ```
+
+Badge 预验证（`ENHANCED`/`ADVANCED`）要求 Seal 携带 `seal.certificate`，并把该叶子证路径校验到 SDK 内嵌的 **Seal CA Chain**（Root + Intermediate）。叶子 Subject 必须为 `O=中国互联网络信息中心` + `OU=ATI`。仅有 `publicKey` 的 Seal 以 `SEAL_VERIFICATION_FAILED` 失败关闭。有效期按 **Seal Validation Time** `min(payload.timestamp, now)`（条目自身已签名的封存时间）判断，因此封存之后才过期的历史 Badge Entry 仍然可以通过。时间戳落在 `notAfter` 之后或 `notBefore` 之前则失败关闭。未来时间戳钳制到 `now`；缺失或无法解析的时间戳回退到 `now`。详见 [ADR-0011](docs/adr/0011-seal-ca-chain-trust-anchor.md) 与 [ADR-0012](docs/adr/0012-seal-certificate-validity-as-of-sealing-time.md)。
 
 ### 验证策略
 
@@ -655,6 +663,8 @@ ati:
       private-key: /path/to/identity.key
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      # seal:
+      #   trust-certificate: /path/to/seal-ca-chain.pem  # 可选；恰好两张证，整链替换内嵌链
     verification:
       policy: ENHANCED
     client:
@@ -666,6 +676,7 @@ ati:
 |------|------|--------|
 | `ati.sdk.mode` | SDK 模式：`client`、`server` 或 `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC 透明日志地址 | `https://ati-tl.cnnic.cn` |
+| `ati.sdk.transparency.seal.trust-certificate` | 可选 Seal CA Chain PEM 覆盖（恰好两张证：Root + Intermediate；整链替换内嵌链） | 内嵌生产 Seal CA Chain |
 | `ati.sdk.verification.policy` | 客户端验证策略 | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | 服务端验证策略（`NONE` 仅服务端） | `BASIC` |
 | `ati.sdk.server.idca.trust-certificate` | 可选 IDCA Chain PEM 覆盖（恰好两张证；整链替换内嵌生产链） | 内嵌生产 IDCA Chain |

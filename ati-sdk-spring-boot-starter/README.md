@@ -42,7 +42,9 @@ ati:
 
 ### Badge pre-verification trust (`ati.sdk.transparency.seal.trust-certificate`)
 
-At Badge policies (`ENHANCED`/`ADVANCED`), both outbound **Connection** pre-verification (`AtiVerifiedClient` / `AtiClient`) and inbound **Client Verification** (`BadgeVerificationService`) path-validate each Badge Entry's Seal against a **Seal CA Chain** (ADR-0011). By default this is the SDK-shipped production chain; `ati.sdk.transparency.seal.trust-certificate` optionally replaces it with an operator-supplied Root + Intermediate PEM. A present-but-missing or malformed override fails closed at startup (`SealTrustChain` is not created). The Seal itself must carry `seal.certificate`; the legacy `publicKey`-only path is removed.
+At Badge policies (`ENHANCED`/`ADVANCED`), both outbound **Connection** pre-verification (`AtiVerifiedClient` / `AtiClient`) and inbound **Client Verification** (`BadgeVerificationService`) path-validate each Badge Entry's Seal against a **Seal CA Chain** (ADR-0011). By default this is the SDK-shipped production chain; `ati.sdk.transparency.seal.trust-certificate` optionally replaces it with an operator-supplied Root + Intermediate PEM. A present-but-missing or malformed override fails closed at startup (`SealTrustChain` is not created). The Seal itself must carry `seal.certificate`; the legacy `publicKey`-only path is removed. The leaf Subject must be `O=中国互联网络信息中心` + `OU=ATI`.
+
+The leaf and its chain are validated as-of the **Seal Validation Time** `min(payload.timestamp, now)` (ADR-0012) — the entry's signed sealing time. A historical Badge Entry whose Seal Certificate has expired since it was sealed still verifies. A signature timestamped after `notAfter` or before `notBefore` fails closed with `SEAL_VERIFICATION_FAILED`. A future timestamp is clamped to `now`; a missing or unparseable timestamp falls back to `now`.
 
 ## Dependencies
 

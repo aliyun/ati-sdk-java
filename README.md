@@ -429,6 +429,8 @@ ati:
       private-key: /path/to/identity.key
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      # seal:
+      #   trust-certificate: /path/to/seal-ca-chain.pem  # optional; exactly 2 certs, replaces shipped chain
     verification:
       # BASIC | ENHANCED | ADVANCED (NONE is server-only)
       policy: ENHANCED
@@ -461,6 +463,10 @@ ati:
         # trust-certificate: /path/to/idca-chain.pem
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      seal:
+        # Optional override: replaces the SDK-shipped Seal CA Chain (Root + Intermediate).
+        # Omit to use the bundled chain. Never merged with the shipped chain.
+        # trust-certificate: /path/to/seal-ca-chain.pem
 ```
 
 ### Server-side dual-track revocation
@@ -533,6 +539,8 @@ TransparencyClient tl = TransparencyClient.builder()
     .rootKeyCacheTtl(Duration.ofHours(12))   // default: 24 hours
     .build();
 ```
+
+Badge pre-verification (`ENHANCED`/`ADVANCED`) requires `seal.certificate` and path-validates that leaf against the SDK-shipped **Seal CA Chain** (Root + Intermediate). The leaf Subject must be `O=中国互联网络信息中心` + `OU=ATI`. A Seal that carries only `publicKey` fails closed with `SEAL_VERIFICATION_FAILED`. Validity is checked as-of the **Seal Validation Time** `min(payload.timestamp, now)` — the entry's signed sealing time — so a historical Badge Entry whose leaf has expired since it was sealed still verifies. A signature timestamped after `notAfter` or before `notBefore` fails closed. A future timestamp is clamped to `now`; a missing or unparseable timestamp falls back to `now`. See [ADR-0011](docs/adr/0011-seal-ca-chain-trust-anchor.md) and [ADR-0012](docs/adr/0012-seal-certificate-validity-as-of-sealing-time.md).
 
 ### Verification Policy
 
@@ -655,6 +663,8 @@ ati:
       private-key: /path/to/identity.key
     transparency:
       base-url: https://ati-tl.cnnic.cn
+      # seal:
+      #   trust-certificate: /path/to/seal-ca-chain.pem  # optional; exactly 2 certs, replaces shipped chain
     verification:
       policy: ENHANCED
     client:
@@ -666,6 +676,7 @@ ati:
 |----------|-------------|--------|
 | `ati.sdk.mode` | SDK mode: `client`, `server`, or `both` | `client` |
 | `ati.sdk.transparency.base-url` | CNNIC Transparency Log base URL | `https://ati-tl.cnnic.cn` |
+| `ati.sdk.transparency.seal.trust-certificate` | Optional Seal CA Chain PEM override (exactly 2 certs: Root + Intermediate; replaces shipped chain) | shipped production Seal CA Chain |
 | `ati.sdk.verification.policy` | Client verification policy | `ENHANCED` |
 | `ati.sdk.server.verification.policy` | Server verification policy (`NONE` is server-only) | `BASIC` |
 | `ati.sdk.server.idca.trust-certificate` | Optional IDCA Chain PEM override (exactly 2 certs; replaces shipped chain) | shipped production IDCA Chain |
